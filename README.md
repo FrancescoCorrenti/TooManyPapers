@@ -46,7 +46,9 @@ Open the plugin marketplace picker and add `FrancescoCorrenti/too-many-papers`, 
 
 ### Requirements
 
-- **Python 3.10+** — Claude Code installs the `mcp` Python package automatically the first time the server runs. If it doesn't, run `pip install mcp --break-system-packages` (or `pip install mcp` in a virtualenv) manually.
+- **[uv](https://docs.astral.sh/uv/)** — runs the MCP server. `uv` manages its own Python interpreter and installs dependencies on first run, so there's nothing to `pip install` and no dependency on whatever `python`/`python3` happens to be on your system PATH (this matters especially on Windows, and with conda — `uv` doesn't rely on an activated shell).
+  - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+  - Windows (PowerShell): `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 - **Node.js 18+** — only needed if you want the Paper Library web UI (`webui/launch.py`). The MCP server and skill work without it.
 
 ---

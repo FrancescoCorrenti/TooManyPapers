@@ -14,11 +14,10 @@ A local-first research assistant. No cloud, no database, no subscriptions — ju
 
 ## Setup
 
-Requires **Python 3.10+** and the `mcp` package:
+Requires **[uv](https://docs.astral.sh/uv/)**. The server runs via `uv run`, which provisions its own Python interpreter and installs dependencies (`mcp`) on first launch — nothing to `pip install` by hand, and no dependency on a system `python`/`python3` being on PATH.
 
-```bash
-pip install -e server/
-```
+- macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 
 (Node.js 18+ is only needed if you want the web UI.)
 
