@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "too-many-papers": {
-      "command": "python3",
+      "command": "python",
       "args": ["${CLAUDE_PLUGIN_ROOT}/server/_scripts/mcp_server.py"]
     }
   }
