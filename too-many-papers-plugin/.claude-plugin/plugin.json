@@ -1,0 +1,12 @@
+{
+  "name": "too-many-papers",
+  "version": "0.1.0",
+  "description": "LLM-powered knowledge graph for academic papers: tracks concepts, projects, and engagement as you read, with a local Paper Library web UI.",
+  "author": {
+    "name": "Totti"
+  },
+  "homepage": "https://github.com/FrancescoCorrenti/too-many-papers",
+  "repository": "https://github.com/FrancescoCorrenti/too-many-papers",
+  "license": "MIT",
+  "keywords": ["research", "papers", "knowledge-graph", "academic", "mcp"]
+}

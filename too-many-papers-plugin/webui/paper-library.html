@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paper Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ── Reset & Base ─────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #121418;
+    --surface:   #1c1f26;
+    --surface2:  #242830;
+    --border:    #333842;
+    --border-light:#4a4f5c;
+    --accent:    #D4AF37;
+    --accent-hover: #f3c944;
+    --accent2:   #8496B0;
+    --green:     #688C6F;
+    --orange:    #BA7C65;
+    --text:      #e0e2e5;
+    --text-dim:  #9095a0;
+    --read-bg:   #151a18;
+    --unread-bg: #1c1f26;
+    --radius:    4px;
+    --shadow:    0 8px 30px rgba(0,0,0,0.5);
+    
+    --font-heading: 'Crimson Pro', serif;
+    --font-body: 'Inter', system-ui, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  /* ── Header ───────────────────────────────────── */
+  header {
+    padding: 28px 40px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .header-left h1 {
+    font-family: var(--font-heading);
+    font-size: 1.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text);
+  }
+  .header-left h1 span { 
+    color: var(--accent); 
+    font-style: italic;
+  }
+
+  .stats {
+    display: flex;
+    gap: 28px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .stats b { 
+    color: var(--text); 
+    font-size: 1rem; 
+    font-weight: 500;
+    font-family: var(--font-heading);
+  }
+
+  /* ── Toolbar ──────────────────────────────────── */
+  .toolbar {
+    padding: 16px 40px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 200px;
+    max-width: 420px;
+  }
+  .search-wrap svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-dim);
+    pointer-events: none;
+  }
+  input[type="search"] {
+    width: 100%;
+    padding: 10px 14px 10px 38px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+    font-family: var(--font-body);
+  }
+  input[type="search"]:focus { 
+    border-color: var(--accent); 
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  input[type="search"]::placeholder {
+    color: var(--text-dim);
+    font-style: italic;
+  }
+
+  .filter-btns {
+    display: flex;
+    gap: 8px;
+  }
+  .filter-btn {
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    font-family: var(--font-body);
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .2s ease;
+    white-space: nowrap;
+  }
+  .filter-btn.active {
+    background: var(--surface2);
+    color: var(--accent);
+    border-color: var(--border);
+  }
+  .filter-btn:hover:not(.active) { 
+    color: var(--text); 
+    background: var(--surface2);
+  }
+
+  select.sel {
+    padding: 8px 30px 8px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface2) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="%239095a0" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>') no-repeat right 10px center;
+    color: var(--text);
+    font-size: 0.85rem;
+    font-family: var(--font-body);
+    outline: none;
+    cursor: pointer;
+    max-width: 220px;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  select.sel:focus { border-color: var(--accent); }
+
+  /* ── Sort ────────────────────────────────────── */
+  .sort-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-left: auto;
+  }
+  
+  #sort-toggle {
+    padding: 8px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all .2s;
+    user-select: none;
+    min-width: 32px;
+    text-align: center;
+  }
+  #sort-toggle:hover {
+    border-color: var(--border-light);
+  }
+
+  /* ── Main grid ────────────────────────────────── */
+  main {
+    padding: 32px 40px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 24px;
+  }
+
+  .empty {
+    grid-column: 1/-1;
+    text-align: center;
+    color: var(--text-dim);
+    padding: 80px 0;
+    font-size: 1.1rem;
+    font-family: var(--font-heading);
+    font-style: italic;
+  }
+
+  /* ── Paper card ───────────────────────────────── */
+  .card {
+    background: var(--unread-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+    position: relative;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 3px;
+    background: transparent;
+    transition: background .25s ease;
+  }
+  .card:hover { 
+    transform: translateY(-3px); 
+    box-shadow: var(--shadow); 
+    border-color: var(--border-light);
+  }
+  .card:hover::before {
+    background: var(--accent2);
+  }
+  .card.read  { 
+    background: var(--read-bg); 
+    border-color: #2a382e;
+  }
+  .card.outside { 
+    border-color: #4a362a; 
+  }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .paper-id {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--accent2);
+    font-family: var(--font-body);
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+  .paper-id.outside { color: var(--orange); }
+
+  .card-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .card-actions button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 4px;
+    border-radius: var(--radius);
+    transition: all .2s ease;
+    opacity: 0.6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .read-toggle:hover, .pin-btn:hover, .hide-btn:hover { 
+    opacity: 1; 
+    background: var(--surface2);
+  }
+  .read-toggle.loading { animation: pulse 1s ease-in-out infinite; opacity: .5; }
+  @keyframes pulse { 50% { opacity: 0.2; } }
+
+  .pin-btn.pinned { 
+    opacity: 1; 
+    color: var(--accent);
+    text-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+  }
+  
+  .card.pinned-card { 
+    border-color: rgba(212, 175, 55, 0.3); 
+  }
+  .card.pinned-card::before {
+    background: var(--accent);
+  }
+  
+  .card.drag-over { 
+    border-color: var(--accent); 
+    transform: scale(1.02); 
+  }
+
+  .card.hidden-card { 
+    opacity: .5; 
+    filter: grayscale(100%);
+  }
+  .paper-id.hidden-tag { color: var(--text-dim); }
+
+  .source-link {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-dim);
+    text-decoration: none;
+    padding: 4px;
+    border-radius: var(--radius);
+    opacity: 0.6;
+    transition: all .2s;
+  }
+  .source-link:hover { 
+    opacity: 1; 
+    color: var(--accent); 
+    background: var(--surface2);
+  }
+
+  .paper-title {
+    font-family: var(--font-heading);
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--text);
+    margin-top: 4px;
+  }
+  .card.read .paper-title { color: var(--green); }
+
+  .paper-authors {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+    font-style: italic;
+  }
+
+  /* ── Tags ─────────────────────────────────────── */
+  .card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    align-items: center;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75rem;
+    padding: 2px 0;
+    color: var(--text-dim);
+    white-space: nowrap;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.02em;
+  }
+  
+  .tag::before {
+    content: '•';
+    margin-right: 6px;
+    color: var(--border-light);
+  }
+  
+  .tag.year { 
+    color: var(--text); 
+    font-weight: 500; 
+  }
+  .tag.year::before { display: none; }
+  
+  .tag.venue { color: var(--accent2); }
+  .tag.concept { color: #A8B2C1; }
+  .tag.outside-tag { color: var(--orange); }
+
+  /* ── Card footer ──────────────────────────────── */
+  .card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .file-badge {
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    opacity: .7;
+    text-decoration: none;
+    transition: all .2s;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .file-badge.has-file {
+    color: var(--green);
+    border-color: rgba(104,140,111,0.4);
+    background: rgba(104,140,111,0.05);
+    opacity: 1;
+    cursor: pointer;
+  }
+  .file-badge.has-file:hover {
+    background: rgba(104,140,111,0.15);
+    border-color: var(--green);
+  }
+  .file-badge.missing-file {
+    color: var(--orange);
+    border-color: rgba(186,124,101,0.4);
+    background: rgba(186,124,101,0.05);
+    opacity: 1;
+    cursor: pointer;
+  }
+  .file-badge.missing-file:hover {
+    background: rgba(186,124,101,0.15);
+    border-color: var(--orange);
+  }
+
+  /* ── Citation links (cites / cited by) ─────────── */
+  .citations {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 0.8rem;
+    padding: 12px;
+    background: rgba(0,0,0,0.15);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+  .citations-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: baseline;
+  }
+  .citations-label {
+    color: var(--text-dim);
+    flex-shrink: 0;
+    font-weight: 600;
+    font-family: var(--font-heading);
+    font-size: 0.9rem;
+  }
+  .cite-link {
+    display: inline-block;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 2px 0;
+    color: var(--accent2);
+    cursor: pointer;
+    transition: color .2s;
+    text-decoration: underline;
+    text-decoration-color: rgba(132,150,176,0.3);
+    text-underline-offset: 3px;
+  }
+  .cite-link:hover {
+    color: var(--text);
+    text-decoration-color: var(--text);
+  }
+  .cite-link.cited-by-link {
+    color: #9AA7B1;
+  }
+
+  /* ── Error banner ─────────────────────────────── */
+  #error-banner {
+    display: none;
+    margin: 24px 40px;
+    padding: 16px 24px;
+    background: rgba(186,124,101,0.1);
+    border: 1px solid rgba(186,124,101,0.3);
+    border-left: 4px solid var(--orange);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.95rem;
+    line-height: 1.6;
+  }
+  #error-banner code { 
+    background: rgba(0,0,0,0.2); 
+    padding: 2px 6px; 
+    border-radius: var(--radius); 
+    font-family: monospace;
+  }
+
+  /* ── Toast ────────────────────────────────────── */
+  #toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--surface2);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    padding: 12px 24px;
+    font-size: 0.9rem;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .3s ease, transform .3s ease;
+    z-index: 999;
+    white-space: nowrap;
+    font-family: var(--font-body);
+    font-weight: 500;
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>📚 Paper <span>Library</span></h1>
+  </div>
+  <div class="stats">
+    <div>Total <b id="stat-total">—</b></div>
+    <div>Read <b id="stat-read" style="color:var(--green)">—</b></div>
+    <div>Unread <b id="stat-unread" style="color:var(--accent)">—</b></div>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="search-wrap">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+    <input type="search" id="search-input" placeholder="Search title, authors, ID...">
+  </div>
+
+  <div class="filter-btns">
+    <button class="filter-btn active" data-filter="all">All</button>
+    <button class="filter-btn" data-filter="unread">Unread</button>
+    <button class="filter-btn" data-filter="read">Read</button>
+    <button class="filter-btn" data-filter="hidden">Hidden</button>
+  </div>
+
+  <select class="sel" id="concept-filter">
+    <option value="">All concepts</option>
+  </select>
+
+  <select class="sel" id="venue-filter">
+    <option value="">All venues</option>
+  </select>
+
+  <div class="sort-wrap">
+    <span>Sort:</span>
+    <select class="sel" id="sort-select">
+      <option value="discovered">Date discovered</option>
+      <option value="year">Year pub.</option>
+      <option value="id">ID</option>
+    </select>
+    <button id="sort-toggle" title="Toggle ascending/descending" style="
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all .18s;
+      user-select: none;
+      min-width: 28px;
+      text-align: center;
+    ">↓</button>
+  </div>
+</div>
+
+<div id="error-banner"></div>
+<main id="grid"></main>
+<div id="toast"></div>
+
+<script>
+const API = 'http://localhost:3737/api';
+
+let allPapers   = [];
+let allVenues   = {};
+let allConcepts = {};
+let filterMode  = 'all';
+let searchQ     = '';
+let conceptF    = '';
+let venueF      = '';
+let sortMode    = 'discovered';
+let sortAscend  = false;
+let pinnedOrder = []; // ordered array of pinned IDs
+
+// ── Cookie helpers ────────────────────────────────────────────────────────────
+
+function savePins() {
+  const val = pinnedOrder.join(',');
+  document.cookie = `pinnedPapers=${encodeURIComponent(val)};path=/;max-age=${60*60*24*365}`;
+}
+
+function loadPins() {
+  const match = document.cookie.match(/(?:^|; )pinnedPapers=([^;]*)/);
+  if (match) {
+    pinnedOrder = decodeURIComponent(match[1]).split(',').filter(Boolean);
+  }
+}
+
+function isPinned(id) { return pinnedOrder.includes(id); }
+
+function togglePin(id) {
+  if (isPinned(id)) {
+    pinnedOrder = pinnedOrder.filter(x => x !== id);
+    toast(`Unpinned: ${id}`);
+  } else {
+    pinnedOrder.push(id);
+    toast(`Pinned: ${id}`);
+  }
+  savePins();
+  render();
+}
+
+// ── Drag & drop between pinned ────────────────────────────────────────────────
+
+let dragSrcId = null;
+
+function initDrag(grid) {
+  grid.querySelectorAll('.card.pinned-card').forEach(card => {
+    card.setAttribute('draggable', 'true');
+    card.addEventListener('dragstart', e => {
+      dragSrcId = card.dataset.id;
+      card.style.opacity = '0.4';
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.style.opacity = '';
+      grid.querySelectorAll('.card').forEach(c => c.classList.remove('drag-over'));
+    });
+    card.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      grid.querySelectorAll('.card').forEach(c => c.classList.remove('drag-over'));
+      card.classList.add('drag-over');
+    });
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      const targetId = card.dataset.id;
+      if (!dragSrcId || dragSrcId === targetId || !isPinned(targetId)) return;
+      // Reorder pinnedOrder
+      const fromIdx = pinnedOrder.indexOf(dragSrcId);
+      const toIdx   = pinnedOrder.indexOf(targetId);
+      pinnedOrder.splice(fromIdx, 1);
+      pinnedOrder.splice(toIdx, 0, dragSrcId);
+      savePins();
+      render();
+    });
+  });
+}
+
+// ── Fetch ────────────────────────────────────────────────────────────────────
+
+async function loadPapers() {
+  try {
+    const res  = await fetch(`${API}/papers`);
+    const data = await res.json();
+    allPapers   = data.papers   || [];
+    allVenues   = data.venues   || {};
+    allConcepts = data.concepts || {};
+    populateFilters();
+    render();
+  } catch (e) {
+    console.error("loadPapers error:", e);
+    showError(`Cannot reach server.<br>
+      Make sure you started:<br>
+      <code>node paper-library-server.js</code><br>
+      in the folder "Papers to Read", then reload this page.`);
+  }
+}
+
+async function toggleRead(id, btn) {
+  btn.classList.add('loading');
+  try {
+    const res  = await fetch(`${API}/toggle`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ id }),
+    });
+    const data  = await res.json();
+    allPapers   = data.papers   || [];
+    allVenues   = data.venues   || {};
+    allConcepts = data.concepts || {};
+    render();
+    const p = allPapers.find(p => p.id === id);
+    toast(p?.read ? `Marked as read: ${id}` : `Marked as unread: ${id}`);
+  } catch (e) {
+    toast('Error saving');
+  } finally {
+    btn.classList.remove('loading');
+  }
+}
+
+async function toggleHidden(id) {
+  try {
+    const res  = await fetch(`${API}/hide`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ id }),
+    });
+    const data  = await res.json();
+    allPapers   = data.papers   || [];
+    allVenues   = data.venues   || {};
+    allConcepts = data.concepts || {};
+    render();
+    const p = allPapers.find(p => p.id === id);
+    toast(p?.hidden ? `Hidden: ${id}` : `Restored: ${id}`);
+  } catch (e) {
+    toast('Error saving');
+  }
+}
+
+// ── Filters ──────────────────────────────────────────────────────────────────
+
+function populateFilters() {
+  // Concepts — readable name
+  const conceptSeen = new Map();
+  allPapers.forEach(p => {
+    (p.concepts || []).forEach(c => {
+      if (!conceptSeen.has(c.id)) conceptSeen.set(c.id, c.name);
+    });
+  });
+  const cSel = document.getElementById('concept-filter');
+  while (cSel.options.length > 1) cSel.remove(1);
+  [...conceptSeen.entries()].sort((a,b) => a[0].localeCompare(b[0])).forEach(([id, name]) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = `${id} — ${name}`;
+    cSel.appendChild(opt);
+  });
+
+  // Venues — real name
+  const venueSeen = new Map();
+  allPapers.forEach(p => {
+    if (p.venueId && !venueSeen.has(p.venueId)) venueSeen.set(p.venueId, p.venueName);
+  });
+  const vSel = document.getElementById('venue-filter');
+  while (vSel.options.length > 1) vSel.remove(1);
+  [...venueSeen.entries()].sort((a,b) => a[1].localeCompare(b[1])).forEach(([id, name]) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = name;
+    vSel.appendChild(opt);
+  });
+
+  // Restore saved selections from cookie
+  if (conceptF && [...cSel.options].some(o => o.value === conceptF)) cSel.value = conceptF;
+  if (venueF   && [...vSel.options].some(o => o.value === venueF))   vSel.value = venueF;
+}
+
+// ── Sort ─────────────────────────────────────────────────────────────────────
+
+function sortedPapers(list) {
+  const copy = [...list];
+  if (sortMode === 'discovered') {
+    copy.sort((a, b) => b.dataScop.localeCompare(a.dataScop) || a.id.localeCompare(b.id));
+  } else if (sortMode === 'year') {
+    copy.sort((a, b) => (b.annoPub - a.annoPub) || a.id.localeCompare(b.id));
+  } else if (sortMode === 'id') {
+    copy.sort((a, b) => a.id.localeCompare(b.id));
+  }
+  if (sortAscend) copy.reverse();
+  return copy;
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+
+function render() {
+  const q    = searchQ.toLowerCase();
+  const grid = document.getElementById('grid');
+
+  let filtered = allPapers.filter(p => {
+    if (filterMode === 'hidden') return !!p.hidden;
+    if (p.hidden) return false; // hidden papers don't appear in any other view
+    if (filterMode === 'read'   && !p.read) return false;
+    if (filterMode === 'unread' &&  p.read) return false;
+    if (conceptF && !(p.concepts || []).some(c => c.id === conceptF)) return false;
+    if (venueF   && p.venueId !== venueF) return false;
+    if (q) {
+      const hay = [p.id, p.titolo, p.autori, p.venueName, p.venueDetail,
+                   ...(p.concepts || []).map(c => c.name)].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  filtered = sortedPapers(filtered);
+
+  // Pinned on top, in saved order
+  const pinnedFiltered   = pinnedOrder.map(id => filtered.find(p => p.id === id)).filter(Boolean);
+  const unpinnedFiltered = filtered.filter(p => !isPinned(p.id));
+  filtered = [...pinnedFiltered, ...unpinnedFiltered];
+
+  // Stats over ALL non-hidden papers
+  const visible = allPapers.filter(p => !p.hidden);
+  const total = visible.length;
+  const read  = visible.filter(p => p.read).length;
+  document.getElementById('stat-total').textContent  = total;
+  document.getElementById('stat-read').textContent   = read;
+  document.getElementById('stat-unread').textContent = total - read;
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div class="empty">No papers found</div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map(cardHTML).join('');
+
+  grid.querySelectorAll('.read-toggle').forEach(btn => {
+    btn.addEventListener('click', () => toggleRead(btn.dataset.id, btn));
+  });
+  grid.querySelectorAll('.pin-btn').forEach(btn => {
+    btn.addEventListener('click', () => togglePin(btn.dataset.id));
+  });
+  grid.querySelectorAll('.hide-btn').forEach(btn => {
+    btn.addEventListener('click', () => toggleHidden(btn.dataset.id));
+  });
+  grid.querySelectorAll('.cite-link').forEach(el => {
+    el.addEventListener('click', () => gotoPaper(el.dataset.goto));
+  });
+  initDrag(grid);
+}
+
+// Navigate to a specific paper (from a Cites/Cited by link): reset filters
+// that would exclude it and put its ID in the searchbar, then scroll to the card.
+function gotoPaper(id) {
+  const target = allPapers.find(p => p.id === id);
+  if (!target) { toast(`${id} not found`); return; }
+  filterMode = target.hidden ? 'hidden' : 'all';
+  searchQ = id;
+  conceptF = '';
+  venueF = '';
+  document.getElementById('search-input').value = searchQ;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === filterMode);
+  });
+  document.getElementById('concept-filter').value = '';
+  document.getElementById('venue-filter').value = '';
+  saveUI();
+  render();
+  const card = document.querySelector(`.card[data-id="${id}"]`);
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// ── Card ─────────────────────────────────────────────────────────────────────
+
+function cardHTML(p) {
+  const isRead   = p.read;
+  const hasFile  = p.file && p.file.trim() !== '';
+  const extLink  = (typeof p.source === 'string' && p.source.trim() !== '') ? p.source
+                 : (typeof p.url === 'string' && p.url.trim() !== '') ? p.url
+                 : '';
+  const hasLink  = extLink !== '';
+  const isOut    = p.outsideZone;
+  const isHidden = p.hidden;
+  const isPinnedCard = isPinned(p.id);
+
+  // Venue label: venue name + detail (e.g. "arXiv · arXiv:2602.20994")
+  const venueLabel = p.venueDetail
+    ? `${p.venueName} · ${p.venueDetail}`
+    : p.venueName;
+
+  const conceptTags = (p.concepts || []).map(c =>
+    `<span class="tag concept" title="${esc(c.area)}">${esc(c.name)}</span>`
+  ).join('');
+
+  const sourceBtn = hasLink
+    ? `<a class="source-link" href="${esc(extLink)}" target="_blank" rel="noopener"
+          title="Open source">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+          <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+      </a>`
+    : '';
+
+  // Cites / Cited by — only papers actually present in the local catalog
+  // (the server already filters in loadData(), here we just render).
+  const cites   = p.cites   || [];
+  const citedBy = p.citedBy || [];
+  const citationsHTML = (cites.length || citedBy.length) ? `
+    <div class="citations">
+      ${cites.length ? `
+      <div class="citations-row">
+        <span class="citations-label">Cites:</span>
+        ${cites.map(c => `<span class="cite-link" data-goto="${esc(c.id)}" title="${esc(c.title)}">${esc(c.id)} — ${esc(truncate(c.title, 28))}</span>`).join('')}
+      </div>` : ''}
+      ${citedBy.length ? `
+      <div class="citations-row">
+        <span class="citations-label">Cited by:</span>
+        ${citedBy.map(c => `<span class="cite-link cited-by-link" data-goto="${esc(c.id)}" title="${esc(c.title)}">${esc(c.id)} — ${esc(truncate(c.title, 28))}</span>`).join('')}
+      </div>` : ''}
+    </div>` : '';
+
+  return `
+  <div class="card ${isRead ? 'read' : ''} ${isOut ? 'outside' : ''} ${isPinnedCard ? 'pinned-card' : ''} ${isHidden ? 'hidden-card' : ''}" data-id="${esc(p.id)}">
+    <div class="card-header">
+      <span class="paper-id ${isOut ? 'outside' : ''} ${isHidden ? 'hidden-tag' : ''}">${esc(p.id)}${isOut ? ' ↗' : ''}${isHidden ? ' (Hidden)' : ''}</span>
+      <div class="card-actions">
+        <button class="pin-btn ${isPinnedCard ? 'pinned' : ''}" data-id="${esc(p.id)}" title="${isPinnedCard ? 'Unpin' : 'Pin to top'}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.68V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.68a2 2 0 0 1-1.11 1.87l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg></button>
+        ${sourceBtn}
+        <button class="hide-btn" data-id="${esc(p.id)}" title="${isHidden ? 'Restore (remove from Hidden)' : 'Hide'}">${isHidden ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'}</button>
+        <button class="read-toggle" data-id="${esc(p.id)}" title="${isRead ? 'Mark as unread' : 'Mark as read'}">
+          ${isRead ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>'}
+        </button>
+      </div>
+    </div>
+    <div class="paper-title">${esc(p.titolo)}</div>
+    <div class="paper-authors">${esc(truncate(p.autori, 100))}</div>
+    <div class="card-meta">
+      <span class="tag year">${esc(String(p.annoPub))}</span>
+      <span class="tag venue" title="${esc(venueLabel)}">${esc(truncate(venueLabel, 40))}</span>
+      ${conceptTags}
+      ${isOut ? '<span class="tag outside-tag">outside zone</span>' : ''}
+    </div>
+    ${citationsHTML}
+    <div class="card-footer">
+      <span>Discovered: ${esc(p.dataScop)}</span>
+      ${hasFile && p.fileExists
+        ? `<a class="file-badge has-file" href="/pdf/${encodeURIComponent(p.file)}" target="_blank" rel="noopener" title="Open local PDF"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;vertical-align:-2px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>PDF</a>`
+        : hasFile
+          ? `<a class="file-badge missing-file" href="/pdf/${encodeURIComponent(p.file)}" target="_blank" rel="noopener" title="PDF registered but not found"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;vertical-align:-2px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>PDF (Missing)</a>`
+          : `<span class="file-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;vertical-align:-2px;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>No PDF</span>`}
+
+    </div>
+  </div>`;
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+function showError(html) {
+  const b = document.getElementById('error-banner');
+  b.innerHTML = html;
+  b.style.display = 'block';
+}
+
+// ── UI state persistence ──────────────────────────────────────────────────────
+
+function saveUI() {
+  const state = { filterMode, searchQ, conceptF, venueF, sortMode, sortAscend };
+  document.cookie = `paperLibUI=${encodeURIComponent(JSON.stringify(state))};path=/;max-age=${60*60*24*365}`;
+}
+
+function loadUI() {
+  const match = document.cookie.match(/(?:^|; )paperLibUI=([^;]*)/);
+  if (!match) return;
+  try {
+    const s = JSON.parse(decodeURIComponent(match[1]));
+    filterMode = s.filterMode  || 'all';
+    searchQ    = s.searchQ     || '';
+    conceptF   = s.conceptF    || '';
+    venueF     = s.venueF      || '';
+    sortMode   = s.sortMode    || 'discovered';
+    sortAscend = !!s.sortAscend;
+  } catch(e) {}
+}
+
+function applyUIToDOM() {
+  // Search
+  document.getElementById('search-input').value = searchQ;
+  // Filter buttons
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === filterMode);
+  });
+  // Sort select
+  document.getElementById('sort-select').value = sortMode;
+  // Sort toggle button
+  const sortBtn = document.getElementById('sort-toggle');
+  sortBtn.textContent = sortAscend ? '↑' : '↓';
+  sortBtn.style.background  = sortAscend ? 'var(--accent)' : 'var(--surface2)';
+  sortBtn.style.color       = sortAscend ? '#fff' : 'var(--text)';
+  sortBtn.style.borderColor = sortAscend ? 'var(--accent)' : 'var(--border)';
+  // Concept and venue selects are populated after fetch, applied in populateFilters
+}
+
+
+// ── Events ────────────────────────────────────────────────────────────────────
+
+document.getElementById('search-input').addEventListener('input', e => {
+  searchQ = e.target.value;
+  saveUI();
+  render();
+});
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filterMode = btn.dataset.filter;
+    saveUI();
+    render();
+  });
+});
+
+document.getElementById('concept-filter').addEventListener('change', e => {
+  conceptF = e.target.value;
+  saveUI();
+  render();
+});
+
+document.getElementById('venue-filter').addEventListener('change', e => {
+  venueF = e.target.value;
+  saveUI();
+  render();
+});
+
+document.getElementById('sort-select').addEventListener('change', e => {
+  sortMode = e.target.value;
+  saveUI();
+  render();
+});
+
+document.getElementById('sort-toggle').addEventListener('click', () => {
+  sortAscend = !sortAscend;
+  const btn = document.getElementById('sort-toggle');
+  btn.textContent = sortAscend ? '↑' : '↓';
+  btn.style.background  = sortAscend ? 'var(--accent)' : 'var(--surface2)';
+  btn.style.color       = sortAscend ? '#fff' : 'var(--text)';
+  btn.style.borderColor = sortAscend ? 'var(--accent)' : 'var(--border)';
+  saveUI();
+  render();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+loadPins();
+loadUI();
+applyUIToDOM();
+loadPapers();
+</script>
+</body>
+</html>

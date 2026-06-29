@@ -1,0 +1,361 @@
+#!/usr/bin/env python3
+"""
+MCP Server for Papers to Read — Knowledge Graph Research Assistant
+Exposes papers_api.py functions as MCP tools.
+Run: python _scripts/mcp_server.py
+"""
+
+from mcp.server.fastmcp import FastMCP
+import io
+import contextlib
+import json
+import sys
+from pathlib import Path
+
+# Add script dir to path so we can import papers_api
+sys.path.insert(0, str(Path(__file__).parent))
+import papers_api
+
+mcp = FastMCP("papers-research-assistant")
+
+
+def _capture(func, args=None):
+    """Run a papers_api command and capture its stdout output."""
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        func(args or [])
+    return buf.getvalue()
+
+
+# =============================================================================
+# Paper tools
+# =============================================================================
+
+@mcp.tool()
+def papers_list() -> str:
+    """List all papers in the catalog (ID, title, year, venue)."""
+    return _capture(papers_api.cmd_list)
+
+
+@mcp.tool()
+def papers_get(id: str) -> str:
+    """Get the full record for a paper by its ID (e.g. P001)."""
+    return _capture(papers_api.cmd_get, [id])
+
+
+@mcp.tool()
+def papers_search(query: str) -> str:
+    """Fuzzy search papers by title or author name."""
+    return _capture(papers_api.cmd_search, [query])
+
+
+@mcp.tool()
+def papers_by_concept(concept_id: str) -> str:
+    """List papers linked to a concept (e.g. C003)."""
+    return _capture(papers_api.cmd_by_concept, [concept_id])
+
+
+@mcp.tool()
+def papers_by_author(author: str) -> str:
+    """List papers whose author list contains the given surname."""
+    return _capture(papers_api.cmd_by_author, [author])
+
+
+@mcp.tool()
+def papers_by_venue(venue_id: str) -> str:
+    """List papers published in a venue (e.g. V001)."""
+    return _capture(papers_api.cmd_by_venue, [venue_id])
+
+
+@mcp.tool()
+def papers_by_year(year: int) -> str:
+    """List papers published in a given year."""
+    return _capture(papers_api.cmd_by_year, [str(year)])
+
+
+@mcp.tool()
+def papers_outside() -> str:
+    """List papers marked as 'outside the comfort zone'."""
+    return _capture(papers_api.cmd_outside)
+
+
+@mcp.tool()
+def papers_hidden() -> str:
+    """List hidden papers."""
+    return _capture(papers_api.cmd_hidden)
+
+
+@mcp.tool()
+def papers_next_id() -> str:
+    """Return the next available paper ID (e.g. P021)."""
+    return _capture(papers_api.cmd_next_id)
+
+
+@mcp.tool()
+def papers_add(payload: str) -> str:
+    """Add a new paper to the catalog. ID is assigned automatically.
+
+    Args:
+        payload: JSON string with required fields: title, authors, year,
+            discovered, venue_id, venue_detail, source_verified, concepts,
+            file, outside_zone, notes. Optional: url, hidden, cites, cited_by.
+    """
+    return _capture(papers_api.cmd_add_paper, [payload])
+
+
+@mcp.tool()
+def papers_update(id: str, payload: str) -> str:
+    """Update fields on an existing paper (merge patch).
+
+    Args:
+        id: Paper ID (e.g. P004).
+        payload: JSON string with fields to update (partial merge).
+    """
+    return _capture(papers_api.cmd_update_paper, [id, payload])
+
+
+@mcp.tool()
+def papers_check_duplicates(payload: str) -> str:
+    """Check a list of candidate papers against the catalog for duplicates.
+    Returns only non-duplicate candidates. Always call this BEFORE adding papers.
+
+    Args:
+        payload: JSON string — a list of candidates, or an object with a
+            'results' key containing the list. Each candidate should have
+            title, and optionally doi and arxiv_id.
+    """
+    return _capture(papers_api.cmd_check_duplicates, [payload])
+
+
+@mcp.tool()
+def papers_hide(id: str) -> str:
+    """Hide a paper (sets hidden=true). Hidden papers are excluded from
+    standard filters and the daily briefing."""
+    return _capture(papers_api.cmd_hide, [id])
+
+
+@mcp.tool()
+def papers_unhide(id: str) -> str:
+    """Unhide a previously hidden paper (sets hidden=false)."""
+    return _capture(papers_api.cmd_unhide, [id])
+
+
+# =============================================================================
+# Citation tools
+# =============================================================================
+
+@mcp.tool()
+def citations_get(id: str) -> str:
+    """Fetch real citations from Semantic Scholar for a paper. Read-only —
+    does NOT save anything to disk."""
+    return _capture(papers_api.cmd_get_citations, [id])
+
+
+@mcp.tool()
+def citations_apply(id: str) -> str:
+    """Fetch citations from Semantic Scholar and save the links to _papers.json."""
+    return _capture(papers_api.cmd_apply_citations, [id])
+
+
+@mcp.tool()
+def citations_sync() -> str:
+    """Run apply-citations on ALL papers in the catalog. May take a while
+    due to Semantic Scholar rate limits."""
+    return _capture(papers_api.cmd_sync_citations)
+
+
+# =============================================================================
+# Venue tools
+# =============================================================================
+
+@mcp.tool()
+def venues_list() -> str:
+    """List all venues (ID, name, type)."""
+    return _capture(papers_api.cmd_venue_list)
+
+
+@mcp.tool()
+def venues_get(id: str) -> str:
+    """Get the full record for a venue by its ID (e.g. V003)."""
+    return _capture(papers_api.cmd_venue_get, [id])
+
+
+@mcp.tool()
+def venues_add(payload: str) -> str:
+    """Add a new venue. ID is assigned automatically.
+
+    Args:
+        payload: JSON string with required fields: name, type.
+            Optional: publisher, url, open_access, peer_reviewed, metrics, notes.
+            Note: venue name must NOT include the year.
+    """
+    return _capture(papers_api.cmd_add_venue, [payload])
+
+
+@mcp.tool()
+def venues_update(id: str, payload: str) -> str:
+    """Update fields on an existing venue (merge patch).
+
+    Args:
+        id: Venue ID (e.g. V003).
+        payload: JSON string with fields to update.
+    """
+    return _capture(papers_api.cmd_update_venue, [id, payload])
+
+
+# =============================================================================
+# Graph tools
+# =============================================================================
+
+@mcp.tool()
+def graph_status() -> str:
+    """Overview of the knowledge graph: node counts by type, edge count,
+    interaction count, and latest interaction date."""
+    return _capture(papers_api.cmd_graph_status)
+
+
+@mcp.tool()
+def graph_node(id: str) -> str:
+    """Get a single node with full context: all fields, connected edges,
+    and recent interactions."""
+    return _capture(papers_api.cmd_graph_node, [id])
+
+
+@mcp.tool()
+def graph_nodes(node_type: str = "") -> str:
+    """List all nodes in the knowledge graph, optionally filtered by type.
+
+    Args:
+        node_type: If provided, filter by type. Must be one of:
+            concept, project, endpoint, idea, pool.
+            Leave empty to list all nodes.
+    """
+    args = []
+    if node_type:
+        args = ["--type", node_type]
+    return _capture(papers_api.cmd_graph_nodes, args)
+
+
+@mcp.tool()
+def graph_add_node(node_type: str, payload: str) -> str:
+    """Add a node to the knowledge graph.
+
+    Args:
+        node_type: Must be one of: concept, project, endpoint, idea, pool
+        payload: JSON string with node fields. Required fields by type:
+            - concept: name, area
+            - project: name, status
+            - endpoint: name, status
+            - idea: name, status, created
+            - pool: name, created
+    """
+    return _capture(papers_api.cmd_graph_add_node, [node_type, payload])
+
+
+@mcp.tool()
+def graph_update_node(id: str, payload: str) -> str:
+    """Update fields on an existing graph node (merge patch).
+
+    Args:
+        id: Node ID (e.g. C003, PROJ-FOO).
+        payload: JSON string with fields to update.
+    """
+    return _capture(papers_api.cmd_graph_update_node, [id, payload])
+
+
+@mcp.tool()
+def graph_remove_node(id: str) -> str:
+    """Remove a node and all its edges from the knowledge graph."""
+    return _capture(papers_api.cmd_graph_remove_node, [id])
+
+
+@mcp.tool()
+def graph_add_edge(src: str, tgt: str, edge_type: str, note: str = "") -> str:
+    """Add an edge between two nodes in the knowledge graph.
+
+    Args:
+        src: Source node ID.
+        tgt: Target node ID.
+        edge_type: Must be one of: connected_to, uses_concept, part_of,
+            inspired_by, relevant_to, derived_from, enables
+        note: Optional free-text annotation for the edge.
+    """
+    args = [src, tgt, edge_type]
+    if note:
+        args.append(note)
+    return _capture(papers_api.cmd_graph_add_edge, args)
+
+
+@mcp.tool()
+def graph_remove_edge(src: str, tgt: str, edge_type: str = "") -> str:
+    """Remove edge(s) between two nodes, optionally filtered by type.
+
+    Args:
+        src: Source node ID.
+        tgt: Target node ID.
+        edge_type: If provided, only remove edges of this type.
+    """
+    args = [src, tgt]
+    if edge_type:
+        args.extend(["--type", edge_type])
+    return _capture(papers_api.cmd_graph_remove_edge, args)
+
+
+@mcp.tool()
+def graph_neighbors(id: str, depth: int = 1, edge_type: str = "") -> str:
+    """BFS traversal from a node, returning all reachable neighbors.
+
+    Args:
+        id: Starting node ID.
+        depth: How many hops to traverse (1-3, default 1).
+        edge_type: If provided, only follow edges of this type.
+    """
+    args = [id, "--depth", str(depth)]
+    if edge_type:
+        args.extend(["--edge-type", edge_type])
+    return _capture(papers_api.cmd_graph_neighbors, args)
+
+
+@mcp.tool()
+def graph_path(from_id: str, to_id: str) -> str:
+    """Find the shortest path between two nodes (BFS, max depth 6)."""
+    return _capture(papers_api.cmd_graph_path, [from_id, to_id])
+
+
+@mcp.tool()
+def graph_interact(id: str, interaction_type: str, weight: int = 0) -> str:
+    """Log an interaction with a node (updates engagement scores).
+
+    Args:
+        id: Node ID to interact with.
+        interaction_type: Must be one of: discussed, deepened,
+            paper_requested, read, linked
+        weight: Override the default weight for this interaction type.
+            If 0, uses the default (discussed=3, deepened=5,
+            paper_requested=10, read=2, linked=8).
+    """
+    args = [id, interaction_type]
+    if weight:
+        args.extend(["--weight", str(weight)])
+    return _capture(papers_api.cmd_graph_interact, args)
+
+
+@mcp.tool()
+def graph_engagement(top_n: int = 10) -> str:
+    """Compute engagement scores for all nodes using exponential decay
+    (decay factor 0.7 per week). Returns the top N nodes ranked by score.
+
+    Args:
+        top_n: Number of top nodes to return (default 10).
+    """
+    return _capture(papers_api.cmd_graph_engagement, ["--top", str(top_n)])
+
+
+@mcp.tool()
+def graph_search(query: str) -> str:
+    """Full-text search across graph nodes and papers."""
+    return _capture(papers_api.cmd_graph_search, [query])
+
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
