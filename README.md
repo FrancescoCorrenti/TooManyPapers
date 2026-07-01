@@ -244,4 +244,13 @@ Yes. `papers_api.py` works as a standalone CLI, and the Too Many Papers web UI w
 It's just files. Copy `too-many-papers-plugin/server/` (inside your plugin install directory, typically under `~/.claude/plugins/cache/...`) or fork this repo and commit your own data.
 
 **Can the AI modify my files directly?**
-No. The skill instructs the AI to use MCP tools only. The tools validate everything: the AI cannot invent new node types, edge types, or bypass anti-hallucinat
+No. The skill instructs the AI to use MCP tools only. The tools validate everything: the AI cannot invent new node types, edge types, or bypass anti-hallucination checks.
+
+**How do I update?**
+Run `/plugin marketplace update` then `/plugin update too-many-papers@too-many-papers`.
+
+---
+
+## License
+
+MIT

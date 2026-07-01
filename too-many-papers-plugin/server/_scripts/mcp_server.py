@@ -357,4 +357,59 @@ def graph_engagement(top_n: int = 10) -> str:
     Args:
         top_n: Number of top nodes to return (default 10).
     """
-    return _capture(papers_api.cmd_graph_eng
+    return _capture(papers_api.cmd_graph_engagement, ["--top", str(top_n)])
+
+
+@mcp.tool()
+def graph_search(query: str) -> str:
+    """Full-text search across graph nodes and papers."""
+    return _capture(papers_api.cmd_graph_search, [query])
+
+
+# =============================================================================
+# Paper Library web UI
+# =============================================================================
+
+def _port_in_use(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+@mcp.tool()
+def webui_launch() -> str:
+    """Start the local Paper Library web UI (search, filters, PDF viewer,
+    citation graph) and return its URL. Runs entirely from files already
+    inside the installed plugin — no separate download or repo clone
+    needed. Requires Node.js. Safe to call even if it's already running."""
+    if not WEBUI_SERVER.exists():
+        return f"Error: web UI files not found at {WEBUI_SERVER}."
+
+    if not shutil.which("node"):
+        return (
+            "Node.js is not installed or not on PATH. Install it from "
+            "https://nodejs.org, then try again."
+        )
+
+    if _port_in_use(WEBUI_PORT):
+        return f"Paper Library is already running at http://localhost:{WEBUI_PORT}"
+
+    import os
+
+    subprocess.Popen(
+        ["node", str(WEBUI_SERVER)],
+        cwd=str(WEBUI_DIR),
+        env={**os.environ, "PORT": str(WEBUI_PORT)},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+    return (
+        f"Paper Library starting at http://localhost:{WEBUI_PORT} "
+        "— open that URL in your browser."
+    )
+
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
