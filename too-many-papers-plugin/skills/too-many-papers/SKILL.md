@@ -27,23 +27,22 @@ Never invent titles, authors, years, venues, DOI/URL, abstracts, numerical resul
 
 ## First Run — Onboarding
 
-When the knowledge graph is empty (check via `graph_status`: no nodes), run the onboarding flow:
+When the knowledge graph is empty (check via `graph_status`: no nodes), run the onboarding flow. It has exactly one form-like question (Step 2) plus the briefing question (Step 4) — everything else is conversational, driven by what the user tells you.
 
-**Step 1. Welcome the user:**
+**Step 1. Introduce yourself, briefly.** Do not over-explain the whole system up front. A couple of sentences is enough:
 
-> Welcome to Too Many Papers! This is your personal research assistant. It maintains a knowledge graph of concepts, projects, and ideas connected to the academic papers you read. As we discuss papers and topics, the graph grows organically, tracking what interests you, how concepts relate, and which research directions you're exploring.
->
-> Everything is stored locally in simple JSON files. I interact with them through validated tools, so I cannot invent data or bypass checks.
->
-> Let's set up your graph. I need three things from you.
+> Welcome to Too Many Papers — your research assistant maintains a knowledge graph of your concepts, projects, and papers as you go, so it can track what you're working on and suggest what to read next. Everything's stored locally; I only touch it through validated tools.
 
-**Step 2. Ask for 3 starter concepts.** These are the user's core research areas. For each, ask for: name (e.g., "Brain Lesion Segmentation"), area (e.g., "Medical Imaging / Deep Learning"), and an optional one-sentence description.
+**Step 2. Ask one open question.** Do not ask the user to fill in a structured list of concepts/projects one field at a time. Instead ask something like:
 
-Create each via `graph_add_node("concept", ...)`. Then ask if there are connections between them and create edges via `graph_add_edge`.
+> To get started, tell me a bit about what you're working on right now — your general research area(s), any active projects, and anything specific you're focused on. Just describe it in your own words, as much or as little detail as you like.
 
-**Step 3. Ask about active projects** (optional). For ongoing research projects, ask for: project name, status (ideation / literature-review / active / writing), one-sentence goal, and which concepts it relates to.
+**Step 3. Propose a graph from their description.** Read their free-text answer and draft a proposal yourself:
+- Identify distinct research areas mentioned → propose them as `concept` nodes (name + area, and a one-sentence description inferred from their text).
+- Identify concrete ongoing efforts → propose them as `project` nodes (name, a reasonable `status` guess, one-sentence goal).
+- Identify plausible relationships between the concepts/projects they described → propose `connected_to` / `uses_concept` edges.
 
-Create via `graph_add_node("project", ...)` and connect to concepts with `graph_add_edge`.
+Present this as a short, readable summary (not raw JSON) and ask for confirmation/edits, e.g. "Here's what I'd set up based on that — anything to add, remove, or rename?" Only call `graph_add_node` / `graph_add_edge` after the user confirms (or after they give corrections and you re-confirm the final version). Keep the proposal reasonably sized — a handful of concepts and projects, not an exhaustive taxonomy; the graph is meant to grow organically afterward, not be fully specified on day one.
 
 **Step 4. Offer the morning briefing.** Ask:
 
@@ -51,7 +50,7 @@ Create via `graph_add_node("project", ...)` and connect to concepts with `graph_
 
 If yes and the client supports scheduled tasks, set one up using the exact prompt in "Morning Briefing Prompt" below — do not modify it. If scheduled tasks are not available, tell the user they can ask for a briefing any time by saying "give me today's paper briefing".
 
-**Step 5. Confirm setup.** Show the graph status and explain that interactions will now be logged automatically, new concepts proposed when they emerge, and connections to projects signaled. Mention the Too Many Papers web UI can be opened any time by asking — it's launched via the `webui_launch` tool, no extra download needed.
+**Step 5. Confirm setup.** Show the graph status and explain that interactions will now be logged automatically, new concepts proposed when they emerge, and connections to projects signaled. Mention the Too Many Papers web UI can be opened any time by asking (or via `/too-many-papers:webui`) — it's launched via the `webui_launch` tool, no extra download needed.
 
 ## Morning Briefing Prompt
 

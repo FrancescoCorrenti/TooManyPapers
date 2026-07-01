@@ -25,7 +25,7 @@ Once installed via Cowork / Claude Code, the MCP server starts automatically —
 
 ## Usage
 
-Just talk about papers. On first use, the skill walks you through onboarding: 3 starter research concepts, optional active projects, and an optional daily briefing schedule.
+Just talk about papers. On first use, the skill gives a brief self-introduction, then asks a single open question — describe what you're currently working on — and drafts a proposed set of concepts/projects from your answer for you to confirm or edit, followed by an optional daily briefing schedule.
 
 Examples:
 - "I just read this paper: [link] — add it to my library"
@@ -33,13 +33,7 @@ Examples:
 - "Give me today's paper briefing"
 - "Connect this paper to my FCD project"
 
-To open the visual library, run:
-
-```bash
-python webui/launch.py
-```
-
-then visit http://localhost:3737. (Or double-click `webui/launch.bat` on Windows.)
+To open the visual library, run `/too-many-papers:webui`, or just ask to open Too Many Papers. This calls the `webui_launch` MCP tool and gives you the link (http://localhost:3737) — no manual script to find or run.
 
 ## Data
 

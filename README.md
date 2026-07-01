@@ -40,6 +40,8 @@ This repository is both the plugin source and a self-hosted **plugin marketplace
 
 That's it. The MCP server, the skill (behavioral rules, onboarding, anti-hallucination protocol, morning briefing), and the Too Many Papers web UI are all installed together.
 
+**Restart Claude after installing** — the MCP server, skill, and `/too-many-papers:webui` command are only loaded on startup.
+
 ### Cowork
 
 1. Open the **Customize** tab.
@@ -47,6 +49,8 @@ That's it. The MCP server, the skill (behavioral rules, onboarding, anti-halluci
 3. Click **Add** (top right).
 4. Choose **Add from repository** and paste the GitHub repo link as the marketplace: `https://github.com/FrancescoCorrenti/TooManyPapers`.
 5. Sync, then add the **too-many-papers** plugin.
+
+**Restart Claude after installing** for the plugin to take effect.
 
 ### Requirements
 
@@ -67,6 +71,10 @@ It has two main interfaces:
 Once installed, run `/too-many-papers:webui` (or just ask the AI to "open Too Many Papers") — it calls the `webui_launch` MCP tool, which starts the server from the files already inside the installed plugin (no separate download, no need to locate the plugin folder yourself) and gives you the link: http://localhost:3737.
 
 Features: full-text search, filter by concept/venue/read status, pin favorites to the top, citation network links (click to navigate), local PDF viewer, dark theme.
+
+### First run
+
+The AI gives a short self-introduction, then asks a single open question: describe in your own words what you're currently working on (research areas, active projects, anything specific). From that free-text answer, it drafts a proposed set of concepts and projects for the graph and shows it to you for confirmation/edits before creating anything — no multi-step form to fill in field by field. It then asks whether you want a daily briefing.
 
 ### The knowledge graph
 
