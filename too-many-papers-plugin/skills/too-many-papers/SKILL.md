@@ -8,7 +8,7 @@ description: >
   read/discussed this paper", "what are my research concepts", "connect this
   paper to my project", or any conversation about papers the user is reading
   or wants to track. Also trigger when the user asks to set up their research
-  graph for the first time, or to open the Paper Library web UI.
+  graph for the first time, or to open the Too Many Papers web UI.
 metadata:
   version: "0.1.0"
 ---
@@ -51,7 +51,7 @@ Create via `graph_add_node("project", ...)` and connect to concepts with `graph_
 
 If yes and the client supports scheduled tasks, set one up using the exact prompt in "Morning Briefing Prompt" below — do not modify it. If scheduled tasks are not available, tell the user they can ask for a briefing any time by saying "give me today's paper briefing".
 
-**Step 5. Confirm setup.** Show the graph status and explain that interactions will now be logged automatically, new concepts proposed when they emerge, and connections to projects signaled. Mention the Paper Library web UI can be opened by running `launch.py` from the plugin's `webui/` directory (see README).
+**Step 5. Confirm setup.** Show the graph status and explain that interactions will now be logged automatically, new concepts proposed when they emerge, and connections to projects signaled. Mention the Too Many Papers web UI can be opened any time by asking — it's launched via the `webui_launch` tool, no extra download needed.
 
 ## Morning Briefing Prompt
 
@@ -119,6 +119,6 @@ All types are enforced by the server. The LLM cannot invent new types.
 5. **Venue names never include year.** Year is a paper attribute, not a venue attribute.
 6. **Engagement drives recommendations.** Use `graph_engagement` to understand what the user cares about most right now.
 
-## Paper Library Web UI
+## Too Many Papers Web UI
 
-A local web UI for browsing papers (search, filter by concept/venue/read status, pin papers, citation network links, local PDF viewer). Launch it by running `python launch.py` from the plugin's `webui/` directory, or manually with `node paper-library-server.js` then opening http://localhost:3737. Mention this to the user when relevant, but do not launch it automatically — it requires Node.js and opens a browser window.
+A local web UI for browsing papers (search, filter by concept/venue/read status, pin papers, citation network links, local PDF viewer). Launch it by calling the `webui_launch` MCP tool — it starts the server from files already inside the installed plugin (no repo clone or manual download needed) and returns the URL (http://localhost:3737) to open. Requires Node.js; the tool reports a clear error if it's missing. Mention the web UI to the user when relevant, but only call `webui_launch` when they ask to open it.

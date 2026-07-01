@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Paper Library Launcher - double-click to start.
+Too Many Papers Launcher - double-click to start.
 Opens http://localhost:3737 in your browser.
 Close this window to stop the server.
 """
@@ -29,7 +29,7 @@ try:
         sys.exit(1)
 
     print("=" * 50)
-    print("  Paper Library")
+    print("  Too Many Papers")
     print(f"  http://localhost:{PORT}")
     print()
     print("  Close this window to stop the server.")

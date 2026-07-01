@@ -1,5 +1,5 @@
 /**
- * Paper Library - Mini Server
+ * Too Many Papers - Mini Server
  * Run with: node paper-library-server.js
  * Then open: http://localhost:3737
  *
@@ -247,7 +247,7 @@ const server = http.createServer(function(req, res) {
 });
 
 server.listen(PORT, function() {
-  console.log('\nPaper Library listening on http://localhost:' + PORT);
+  console.log('\nToo Many Papers listening on http://localhost:' + PORT);
   console.log('   Sources: _papers.json, _venues.json, _graph.json');
   console.log('   Press Ctrl+C to stop the server.\n');
 });

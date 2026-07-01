@@ -9,6 +9,9 @@ from mcp.server.fastmcp import FastMCP
 import io
 import contextlib
 import json
+import shutil
+import socket
+import subprocess
 import sys
 from pathlib import Path
 
@@ -17,6 +20,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 import papers_api
 
 mcp = FastMCP("papers-research-assistant")
+
+# server/_scripts/mcp_server.py -> plugin root -> webui/
+PLUGIN_ROOT = Path(__file__).parent.parent.parent
+WEBUI_DIR = PLUGIN_ROOT / "webui"
+WEBUI_SERVER = WEBUI_DIR / "paper-library-server.js"
+WEBUI_PORT = 3737
 
 
 def _capture(func, args=None):
@@ -348,14 +357,4 @@ def graph_engagement(top_n: int = 10) -> str:
     Args:
         top_n: Number of top nodes to return (default 10).
     """
-    return _capture(papers_api.cmd_graph_engagement, ["--top", str(top_n)])
-
-
-@mcp.tool()
-def graph_search(query: str) -> str:
-    """Full-text search across graph nodes and papers."""
-    return _capture(papers_api.cmd_graph_search, [query])
-
-
-if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    return _capture(papers_api.cmd_graph_eng

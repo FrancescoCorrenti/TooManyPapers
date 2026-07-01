@@ -2,7 +2,7 @@
 
 **An LLM-powered knowledge graph for the papers you'll never finish reading.**
 
-A local-first research assistant for Claude. No cloud, no database, no subscriptions — just JSON files and an MCP server that lets Claude read and write them through validated tools.
+A local-first research assistant for Claude. No cloud, no database, no subscriptions. Just JSON files and an MCP server that lets Claude read and write them through validated tools.
 
 ```
           ┌─────────────┐
@@ -25,7 +25,7 @@ A local-first research assistant for Claude. No cloud, no database, no subscript
    └──────────────────────────┘
 ```
 
-This repository is both the plugin source and a self-hosted **plugin marketplace**, so it installs in one command — no manual cloning, no `pip install`, no `claude mcp add`.
+This repository is both the plugin source and a self-hosted **plugin marketplace**, so it installs in one command.
 
 ---
 
@@ -38,18 +38,22 @@ This repository is both the plugin source and a self-hosted **plugin marketplace
 /plugin install too-many-papers@too-many-papers
 ```
 
-That's it. The MCP server, the skill (behavioral rules, onboarding, anti-hallucination protocol, morning briefing), and the Paper Library web UI are all installed together.
+That's it. The MCP server, the skill (behavioral rules, onboarding, anti-hallucination protocol, morning briefing), and the Too Many Papers web UI are all installed together.
 
 ### Cowork
 
-Open the plugin marketplace picker and add `FrancescoCorrenti/too-many-papers`, then install the `too-many-papers` plugin from the list.
+1. Open the **Customize** tab.
+2. Go to **Plugins**.
+3. Click **Add** (top right).
+4. Choose **Add from repository** and paste the GitHub repo link as the marketplace: `https://github.com/FrancescoCorrenti/TooManyPapers`.
+5. Sync, then add the **too-many-papers** plugin.
 
 ### Requirements
 
 - **[uv](https://docs.astral.sh/uv/)** — runs the MCP server. `uv` manages its own Python interpreter and installs dependencies on first run, so there's nothing to `pip install` and no dependency on whatever `python`/`python3` happens to be on your system PATH (this matters especially on Windows, and with conda — `uv` doesn't rely on an activated shell).
   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
   - Windows (PowerShell): `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
-- **Node.js 18+** — only needed if you want the Paper Library web UI (`webui/launch.py`). The MCP server and skill work without it.
+- **Node.js 18+** — only needed if you want the Too Many Papers web UI. The MCP server and skill work without it.
 
 ---
 
@@ -58,15 +62,9 @@ Open the plugin marketplace picker and add `FrancescoCorrenti/too-many-papers`, 
 It has two main interfaces:
 
 1. **Your LLM chat**, where you discuss papers and the AI maintains a knowledge graph of your interests.
-2. **The Paper Library**, a local web app for browsing, searching, and managing your paper collection.
+2. **Too Many Papers**, a local web app for browsing, searching, and managing your paper collection.
 
-Once installed, run:
-
-```bash
-python webui/launch.py
-```
-
-(from inside the installed plugin directory) to open http://localhost:3737.
+Once installed, run `/too-many-papers:webui` (or just ask the AI to "open Too Many Papers") — it calls the `webui_launch` MCP tool, which starts the server from the files already inside the installed plugin (no separate download, no need to locate the plugin folder yourself) and gives you the link: http://localhost:3737.
 
 Features: full-text search, filter by concept/venue/read status, pin favorites to the top, citation network links (click to navigate), local PDF viewer, dark theme.
 
@@ -149,9 +147,11 @@ too-many-papers/                     (this repo = the marketplace)
     │       ├── SKILL.md             # behavioral rules, onboarding, briefing prompt
     │       └── references/
     │           └── mcp-tools.md     # full tool reference
+    ├── commands/
+    │   └── webui.md                 # /too-many-papers:webui — launches the web UI
     └── webui/
-        ├── paper-library-server.js  # Paper Library backend
-        ├── paper-library.html       # Paper Library frontend
+        ├── paper-library-server.js  # Too Many Papers backend
+        ├── paper-library.html       # Too Many Papers frontend
         ├── launch.py                # double-click to start the web UI
         └── launch.bat
 ```
@@ -238,19 +238,10 @@ The system is designed for Claude and tested with Claude Code / Claude Desktop /
 Inside the installed plugin directory: `too-many-papers-plugin/server/_papers.json`, `_venues.json`, `_graph.json`. Plain JSON, version-controllable, portable.
 
 **Can I use this without an LLM?**
-Yes. `papers_api.py` works as a standalone CLI, and the Paper Library web UI works independently.
+Yes. `papers_api.py` works as a standalone CLI, and the Too Many Papers web UI works independently.
 
 **How do I back up?**
 It's just files. Copy `too-many-papers-plugin/server/` (inside your plugin install directory, typically under `~/.claude/plugins/cache/...`) or fork this repo and commit your own data.
 
 **Can the AI modify my files directly?**
-No. The skill instructs the AI to use MCP tools only. The tools validate everything: the AI cannot invent new node types, edge types, or bypass anti-hallucination checks.
-
-**How do I update?**
-Run `/plugin marketplace update` then `/plugin update too-many-papers@too-many-papers`.
-
----
-
-## License
-
-MIT
+No. The skill instructs the AI to use MCP tools only. The tools validate everything: the AI cannot invent new node types, edge types, or bypass anti-hallucinat
