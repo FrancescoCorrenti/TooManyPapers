@@ -112,7 +112,11 @@ Every interaction with a concept is logged with a weight:
 | `linked` | 8 |
 | `paper_requested` | 10 |
 
-Scores decay at **0.7x per week**. The AI logs interactions automatically; no manual scoring needed.
+Scores decay at **0.7x per week**. `linked` is logged automatically by the server whenever a `relevant_to`/`uses_concept` edge is created — it's a structural fact, not a judgment call. The other four require the AI's read of the conversation (only it can tell that something was "discussed" or "deepened"), so it calls `graph_interact` for those explicitly.
+
+### Audit log and health checks
+
+Every mutation (paper added, edge created, node deleted, etc.) is written automatically to an append-only `_log.jsonl` — a mechanical "what changed, when" record the server produces as a side effect of the tool call, not something the AI has to remember to do separately. `graph_lint` complements this by health-checking the graph on request: orphan nodes with no edges, projects with no papers linked, dangling `cites`/`cited_by` references, papers pointing at a deleted venue, ideas left open and untouched for months, and concepts that have gone quiet. It only reports issues — nothing is fixed or deleted automatically.
 
 ### Anti-hallucination
 
@@ -150,7 +154,7 @@ too-many-papers/                     (this repo = the marketplace)
     │   ├── _graph.json              # knowledge graph (your data)
     │   └── _scripts/
     │       ├── papers_api.py        # core API (CLI + library)
-    │       └── mcp_server.py        # MCP server wrapper, exposes 43 tools
+    │       └── mcp_server.py        # MCP server wrapper, exposes 44 tools
     ├── skills/
     │   └── too-many-papers/
     │       ├── SKILL.md             # behavioral rules, onboarding, briefing prompt
@@ -200,7 +204,7 @@ A bare plugin repo can still be installed directly (`/plugin install owner/repo`
 </details>
 
 <details>
-<summary><b>Graph tools</b> (17)</summary>
+<summary><b>Graph tools</b> (18)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -214,13 +218,14 @@ A bare plugin repo can still be installed directly (`/plugin install owner/repo`
 | `graph_add_pool` | Add a pool node (name, created, description?) |
 | `graph_update_node` | Update node fields (rejects unrecognized fields for the node's type) |
 | `graph_remove_node` | Remove a node and all its edges |
-| `graph_add_edge` | Add a typed edge between nodes |
+| `graph_add_edge` | Add a typed edge between nodes — auto-logs a "linked" interaction for relevant_to/uses_concept edges |
 | `graph_remove_edge` | Remove edges between nodes |
 | `graph_neighbors` | BFS traversal from a node (configurable depth) |
 | `graph_path` | Find shortest path between two nodes |
-| `graph_interact` | Log an interaction (engagement tracking) |
+| `graph_interact` | Log a conversational interaction (engagement tracking) — for signals only a human/LLM judgment can detect |
 | `graph_engagement` | Compute engagement scores with decay |
 | `graph_search` | Full-text search across nodes and papers |
+| `graph_lint` | Health-check: orphan nodes, projects with no papers, dangling references, stale ideas, quiet concepts (read-only) |
 
 Each `graph_add_*` tool is typed per node type — its MCP schema only exposes that type's real fields, so a field that isn't part of the schema (e.g. a made-up "goal") can't be passed at all, rather than being silently accepted or invented.
 </details>
@@ -236,4 +241,41 @@ Each `graph_add_*` tool is typed per node type — its MCP schema only exposes t
 </details>
 
 <details>
-<summary><b
+<summary><b>Venue tools</b> (5)</summary>
+
+| Tool | Description |
+|------|-------------|
+| `venues_list` | List all venues |
+| `venues_get` | Get venue details |
+| `venues_add` | Add a new venue |
+| `venues_update` | Update venue fields |
+| `venues_delete` | Permanently delete a venue — refuses if papers still reference it unless forced. Cannot be undone. |
+</details>
+
+---
+
+## FAQ
+
+**Do I need Claude specifically?**
+The system is designed for Claude and tested with Claude Code / Claude Desktop / Cowork. Any MCP-compatible client will work, but you'll need to load `skills/too-many-papers/SKILL.md` manually or adapt it to your client's conventions.
+
+**Where is my data stored?**
+Inside the installed plugin directory: `too-many-papers-plugin/server/_papers.json`, `_venues.json`, `_graph.json`, plus an append-only `_log.jsonl` audit trail. Plain JSON, version-controllable, portable.
+
+**Can I use this without an LLM?**
+Yes. `papers_api.py` works as a standalone CLI, and the Too Many Papers web UI works independently.
+
+**How do I back up?**
+It's just files. Copy `too-many-papers-plugin/server/` (inside your plugin install directory, typically under `~/.claude/plugins/cache/...`) or fork this repo and commit your own data.
+
+**Can the AI modify my files directly?**
+No. The skill instructs the AI to use MCP tools only. The tools validate everything: the AI cannot invent new node types, edge types, or bypass anti-hallucination checks.
+
+**How do I update?**
+Run `/plugin marketplace update` then `/plugin update too-many-papers@too-many-papers`.
+
+---
+
+## License
+
+MIT

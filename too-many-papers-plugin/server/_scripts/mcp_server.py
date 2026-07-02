@@ -486,6 +486,11 @@ def graph_interact(id: str, interaction_type: str, weight: int = 0) -> str:
         weight: Override the default weight for this interaction type.
             If 0, uses the default (discussed=3, deepened=5,
             paper_requested=10, read=2, linked=8).
+
+    Note: you rarely need "linked" here. graph_add_edge already logs it
+    automatically when it creates a relevant_to or uses_concept edge, since
+    that IS the linking event. Only use "linked" manually for edge types
+    graph_add_edge doesn't auto-log (e.g. inspired_by, derived_from).
     """
     args = [id, interaction_type]
     if weight:
@@ -508,6 +513,25 @@ def graph_engagement(top_n: int = 10) -> str:
 def graph_search(query: str) -> str:
     """Full-text search across graph nodes and papers."""
     return _capture(papers_api.cmd_graph_search, [query])
+
+
+@mcp.tool()
+def graph_lint(stale_days: int = 90, quiet_days: int = 45) -> str:
+    """Health-check the graph and paper catalog for hygiene issues. Read-only
+    — reports problems, never fixes them automatically. Checks: orphan nodes
+    (no edges), projects with no papers linked, papers with no concept/edge,
+    ideas untouched for stale_days+ and not closed, papers pointing at a
+    missing venue, cites/cited_by pointing at a missing paper, and concepts
+    with no interaction in quiet_days+. Run this occasionally, or when the
+    user asks to check the graph's health — never automatically without
+    being asked.
+
+    Args:
+        stale_days: Age threshold (days) for flagging an open idea as stale (default 90).
+        quiet_days: Days without interaction before a concept is flagged as quiet (default 45).
+    """
+    return _capture(papers_api.cmd_graph_lint,
+                     ["--stale-days", str(stale_days), "--quiet-days", str(quiet_days)])
 
 
 # =============================================================================

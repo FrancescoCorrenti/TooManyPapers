@@ -13,3 +13,4 @@ Thumbs.db
 too-many-papers-plugin/server/_papers.json
 too-many-papers-plugin/server/_venues.json
 too-many-papers-plugin/server/_graph.json
+too-many-papers-plugin/server/_log.jsonl

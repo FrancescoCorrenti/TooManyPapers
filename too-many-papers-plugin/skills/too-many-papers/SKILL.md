@@ -15,7 +15,9 @@ metadata:
 
 # Too Many Papers — Knowledge Graph Research Assistant
 
-A personal academic reading system built around a knowledge graph. All data lives in three JSON files (`_papers.json`, `_venues.json`, `_graph.json`) inside the MCP server's data directory. All writes go through the `too-many-papers` MCP tools. Never edit the JSON files directly.
+A personal academic reading system built around a knowledge graph. All data lives in three JSON files (`_papers.json`, `_venues.json`, `_graph.json`) plus an append-only audit log (`_log.jsonl`) inside the MCP server's data directory. All writes go through the `too-many-papers` MCP tools. Never edit these files directly.
+
+`_log.jsonl` is written automatically by the server itself, one line per mutation (paper added, edge created, node deleted, etc.) — you never call anything to produce it, it's a side effect of the tool you already called. It's a plain mechanical record ("what changed, when"), distinct from `graph_interact`, which is about something different: your judgment of what the user is engaged with. See "Behavioral Rules" below for the distinction.
 
 ## Anti-Hallucination Protocol (absolute, never override)
 
@@ -118,4 +120,55 @@ Rules:
 ### Paper Tools
 `papers_list` . `papers_get(id)` . `papers_search(query)` . `papers_by_concept(concept_id)` . `papers_by_author(author)` . `papers_by_venue(venue_id)` . `papers_by_year(year)` . `papers_outside` . `papers_hidden` . `papers_next_id` . `papers_discover(query?, concept_id?, seed_paper_ids?, providers?, year_from?, max_results?)` . `papers_add(payload)` . `papers_update(id, payload)` . `papers_check_duplicates(payload)` . `papers_hide(id)` . `papers_unhide(id)` . `papers_delete(id)`
 
-`papers_delete` permanently removes a paper (unlike `papers_hide`, which only flags it) and scrubs the deleted ID out of every other paper's `cites`/`cit
+`papers_delete` permanently removes a paper (unlike `papers_hide`, which only flags it) and scrubs the deleted ID out of every other paper's `cites`/`cited_by` lists. Always confirm with the user before calling it — it cannot be undone. If they just want it out of normal views, use `papers_hide` instead.
+
+`papers_discover` is the **only** sanctioned way to find new papers — it queries arXiv, Semantic Scholar, and OpenAlex directly, deduplicates across providers and against the catalog, and can also expand from citations of catalog papers via `seed_paper_ids`. Never use WebSearch or WebFetch to look for papers, ever — not during the morning briefing, not in normal conversation. If the user asks "what's new on X", call `papers_discover`, not WebSearch.
+
+**API keys matter here.** arXiv never needs one, but Semantic Scholar and especially OpenAlex (whose 2026 pricing change left anonymous search with a near-zero daily budget) are much more reliable with a free key set as `S2_API_KEY` / `OPENALEX_API_KEY`. If `papers_discover` returns a rate-limit error for a provider and no key is configured for it, tell the user plainly, once — e.g. "OpenAlex search is rate-limited without an API key; you can get a free one at openalex.org/settings/api and set it as the OPENALEX_API_KEY environment variable for reliable results." Don't repeat this nag on every single call — mention it the first time it's relevant, then just keep working with whatever providers do respond.
+
+### Citation Tools
+`citations_get(id)` . `citations_apply(id)` . `citations_sync`
+
+### Venue Tools
+`venues_list` . `venues_get(id)` . `venues_add(payload)` . `venues_update(id, payload)` . `venues_delete(id, force?)`
+
+`venues_delete` refuses to delete a venue that papers still reference — reassign those papers' `venue_id` first, or pass `force: true` to delete anyway and leave them pointing at a missing venue. Always confirm with the user before calling it.
+
+### Graph Tools (Read)
+`graph_status` . `graph_node(id)` . `graph_nodes(node_type?)` . `graph_neighbors(id, depth?, edge_type?)` . `graph_path(from, to)` . `graph_search(query)` . `graph_engagement(top_n?)` . `graph_lint(stale_days?, quiet_days?)`
+
+`graph_lint` health-checks the graph and catalog: orphan nodes with no edges, projects with no papers linked, papers with no concept/edge, ideas left open and untouched past `stale_days` (default 90), papers pointing at a missing venue, dangling `cites`/`cited_by`, and concepts with no interaction in `quiet_days` (default 45). It only reports — it never deletes or fixes anything itself. Run it when the user asks to check the graph's health, or suggest it occasionally if the graph has grown a lot since the last check. Never run it silently as a background/automatic step the user didn't ask for or wasn't told about.
+
+### Graph Tools (Write)
+`graph_add_concept(name, area, description?)` . `graph_add_project(name, status, description?)` . `graph_add_endpoint(name, status, description?)` . `graph_add_idea(name, status, created, description?, source?)` . `graph_add_pool(name, created, description?)` . `graph_update_node(id, payload)` . `graph_remove_node(id)` . `graph_add_edge(src, tgt, edge_type, note?)` . `graph_remove_edge(src, tgt, edge_type?)` . `graph_interact(id, interaction_type, weight?)`
+
+For full per-tool details, see `references/mcp-tools.md`.
+
+## Strict Type System
+
+All types are enforced by the server. The LLM cannot invent new types.
+
+**Node types:** `concept` . `project` . `endpoint` . `idea` . `pool`
+
+**Edge types:** `connected_to` . `uses_concept` . `part_of` . `inspired_by` . `relevant_to` . `derived_from` . `enables`
+
+**Interaction types:** `discussed` (w=3) . `deepened` (w=5) . `paper_requested` (w=10) . `read` (w=2) . `linked` (w=8)
+
+**Engagement decay:** 0.7^weeks. Recent activity is weighted more heavily.
+
+## Behavioral Rules
+
+1. **All writes go through MCP tools.** Never modify `_papers.json`, `_venues.json`, `_graph.json`, or `_log.jsonl` directly via file writes.
+2. **Log conversational engagement explicitly; structural events are automatic.** These are two different things:
+   - Structural facts (a paper added, an edge created, a node deleted) are logged automatically by the server the moment you call the tool that does them — you don't do anything extra. `graph_add_edge` also auto-logs a "linked" interaction for `relevant_to`/`uses_concept` edges, since that IS a linking event, not a judgment call.
+   - Conversational signals — the user discussed a concept in depth, asked for a paper, or seemed to deepen their understanding of something — can only come from your read of the conversation. Nothing in the code can infer these, so you still call `graph_interact` yourself for `discussed`, `deepened`, `paper_requested`, and `read`. Do this whenever the conversation actually shows one of these signals — don't skip it just because other bookkeeping is automatic now.
+3. **Concepts need user approval.** When a new concept emerges in discussion, propose it. Wait for explicit confirmation before calling `graph_add_concept` (or the corresponding `graph_add_*` tool for other node types).
+4. **Proactive project connections.** When discussing a paper, check if it is relevant to active projects (`graph_nodes` with type=project) and signal connections.
+5. **Venue names never include year.** Year is a paper attribute, not a venue attribute.
+6. **Engagement drives recommendations.** Use `graph_engagement` to understand what the user cares about most right now.
+7. **Never search the web for papers.** `papers_discover` (arXiv + Semantic Scholar + OpenAlex, with dedup) is the only sanctioned way to find new papers, whether for the morning briefing or a normal "find me something on X" request. WebSearch/WebFetch defeat the anti-hallucination guarantees this plugin exists to provide.
+8. **Confirm before permanent deletion.** `papers_delete`, `venues_delete`, and `graph_remove_node`/`graph_remove_edge` cannot be undone. Always get explicit confirmation from the user before calling any of them — don't infer consent from an ambiguous request like "clean this up."
+
+## Too Many Papers Web UI
+
+A local web UI for browsing papers (search, filter by concept/venue/read status, pin papers, citation network links, local PDF viewer). Launch it by calling the `webui_launch` MCP tool — it starts the server from files already inside the installed plugin (no repo clone or manual download needed) and returns the URL (http://localhost:3737) to open. Requires Node.js; the tool reports a clear error if it's missing. Mention the web UI to the user when relevant, but only call `webui_launch` when they ask to open it.

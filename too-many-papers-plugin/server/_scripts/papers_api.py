@@ -42,6 +42,7 @@ PAPER COMMANDS — WRITE
   update-paper <ID> <json|@file> -> updates fields of an existing paper (partial merge)
   hide <ID>                     -> hides a paper (field hidden = true)
   unhide <ID>                   -> restores a hidden paper (field hidden = false)
+  delete-paper <ID>             -> permanently deletes a paper (not a soft hide)
 
 PAPER COMMANDS — VALIDATION
 -----------------------------
@@ -68,6 +69,7 @@ VENUE COMMANDS — WRITE
 -----------------------
   add-venue <json>              -> adds a venue (ID assigned automatically)
   update-venue <VID> <json>     -> updates fields of an existing venue (partial merge)
+  delete-venue <VID> [force]    -> permanently deletes a venue (blocked if papers reference it)
 
 GRAPH COMMANDS
 --------------
@@ -84,6 +86,8 @@ GRAPH COMMANDS
   graph-interact <id> <type> [--weight N] -> logs interaction
   graph-engagement [--top N]    -> engagement ranking (exponential decay)
   graph-search <text>           -> full-text search on nodes and papers
+  graph-lint [--stale-days N] [--quiet-days N] -> health-check: orphan nodes,
+                                  projects with no papers, dangling refs, stale ideas
 
 EXAMPLES
 --------
@@ -134,6 +138,12 @@ DATA_DIR = Path(os.environ.get("TOO_MANY_PAPERS_DATA_DIR") or ROOT_DIR)
 PAPERS_FILE = DATA_DIR / "_papers.json"
 VENUES_FILE = DATA_DIR / "_venues.json"
 GRAPH_FILE = DATA_DIR / "_graph.json"
+# Append-only, machine-written audit trail of every mutation. Unlike
+# graph "interactions" (which record conversational/engagement signals and
+# are logged explicitly by Claude via graph-interact), every line here is
+# written automatically by the command that performs the mutation — Claude
+# never has to remember to log anything for this file to stay accurate.
+LOG_FILE = DATA_DIR / "_log.jsonl"
 
 
 def _ensure_data_files():
@@ -152,6 +162,8 @@ def _ensure_data_files():
                 target.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
             else:
                 target.write_text("{}", encoding="utf-8")
+    if not LOG_FILE.exists():
+        LOG_FILE.touch()
 
 
 _ensure_data_files()
@@ -196,6 +208,27 @@ def load_graph():
 def save_graph(data):
     with open(GRAPH_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+def _log_event(event: str, **fields):
+    """Append one JSON-line record to _log.jsonl. Called automatically by
+    every mutating command right after its save_*() succeeds — this is
+    plumbing, not something Claude has to remember to invoke. Best-effort:
+    a logging failure must never break the actual operation that triggered it."""
+    try:
+        entry = {"ts": datetime.now().isoformat(timespec="seconds"), "event": event}
+        entry.update(fields)
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+def _safe_date(s):
+    """Parse an ISO date string, returning None instead of raising on
+    anything malformed or missing."""
+    try:
+        return date.fromisoformat(s)
+    except (ValueError, TypeError):
+        return None
 
 # -- Helpers ----------------------------------------------------------------
 
@@ -562,6 +595,7 @@ def cmd_add_paper(args):
               f"({back_new_links} new links): {', '.join(sorted(citers))}")
 
     save_papers(data)
+    _log_event("paper_added", id=new_id, title=payload.get("title"))
     print(f"Paper added with ID: {new_id}")
     print(format_paper(new_id, data["papers"][new_id], verbose=True))
 
@@ -650,6 +684,7 @@ def cmd_update_paper(args):
     data["papers"][pid].update(patch)
     data["_meta"]["last_updated"] = str(date.today())
     save_papers(data)
+    _log_event("paper_updated", id=pid, fields=sorted(patch.keys()))
     print(f"Paper {pid} updated.")
     print(format_paper(pid, data["papers"][pid], verbose=True))
 
@@ -663,6 +698,7 @@ def cmd_hide(args):
     data["papers"][pid]["hidden"] = True
     data["_meta"]["last_updated"] = str(date.today())
     save_papers(data)
+    _log_event("paper_hidden", id=pid)
     print(f"Paper {pid} hidden.")
     print(format_paper(pid, data["papers"][pid], verbose=True))
 
@@ -676,6 +712,7 @@ def cmd_unhide(args):
     data["papers"][pid]["hidden"] = False
     data["_meta"]["last_updated"] = str(date.today())
     save_papers(data)
+    _log_event("paper_unhidden", id=pid)
     print(f"Paper {pid} restored (no longer hidden).")
     print(format_paper(pid, data["papers"][pid], verbose=True))
 
@@ -702,6 +739,7 @@ def cmd_delete_paper(args):
     data["_meta"]["total_papers"] = len(data["papers"])
     data["_meta"]["last_updated"] = str(date.today())
     save_papers(data)
+    _log_event("paper_deleted", id=pid, title=removed.get("title", ""), scrubbed=scrubbed)
     print(f"Paper {pid} ({removed.get('title', '')}) permanently deleted. "
           f"Scrubbed {scrubbed} cross-reference(s) in other papers.")
 
@@ -1110,6 +1148,7 @@ def cmd_apply_citations(args):
     new_links = _apply_links(data, pid, result["matched"], result["unmatched"])
     data["_meta"]["last_updated"] = str(date.today())
     save_papers(data)
+    _log_event("citations_applied", id=pid, matched=len(result["matched"]), new_links=new_links)
 
     print(f"{pid}: {len(result['matched'])} links to the catalog "
           f"({new_links} new). cited_by updated on cited papers.")
@@ -1147,6 +1186,8 @@ def cmd_sync_citations(args):
 
     data["_meta"]["last_updated"] = str(date.today())
     save_papers(data)
+    _log_event("citations_synced", processed=processed, new_links=total_new_links,
+               no_id=len(no_id), errors=len(errors))
 
     print("\n" + SEP_HEAVY * 70)
     print("SUMMARY sync-citations")
@@ -1595,6 +1636,7 @@ def cmd_add_venue(args):
     data["_meta"]["total_venues"] = len(data["venues"])
     data["_meta"]["last_updated"] = str(date.today())
     save_venues(data)
+    _log_event("venue_added", id=new_id, name=payload.get("name"))
     print(f"Venue added with ID: {new_id}")
     print(format_venue(new_id, payload, verbose=True))
 
@@ -1620,6 +1662,7 @@ def cmd_update_venue(args):
     data["venues"][vid].update(patch)
     data["_meta"]["last_updated"] = str(date.today())
     save_venues(data)
+    _log_event("venue_updated", id=vid, fields=sorted(patch.keys()))
     print(f"Venue {vid} updated.")
     print(format_venue(vid, data["venues"][vid], verbose=True))
 
@@ -1644,6 +1687,8 @@ def cmd_delete_venue(args):
     venues["_meta"]["total_venues"] = len(venues["venues"])
     venues["_meta"]["last_updated"] = str(date.today())
     save_venues(venues)
+    _log_event("venue_deleted", id=vid, name=removed.get("name", ""),
+               orphaned_papers=len(referencing))
     note = f" ({len(referencing)} paper(s) now reference a missing venue)" if referencing else ""
     print(f"Venue {vid} ({removed.get('name', '')}) permanently deleted.{note}")
 
@@ -1875,6 +1920,7 @@ def cmd_graph_add_node(args):
     payload["type"] = node_type
     nodes[new_id] = payload
     save_graph(graph)
+    _log_event("node_added", id=new_id, type=node_type, name=payload.get("name"))
 
     print(f"Node added with ID: {new_id}")
     print(SEP_LINE * 40)
@@ -1915,6 +1961,7 @@ def cmd_graph_update_node(args):
 
     nodes[node_id].update(patch)
     save_graph(graph)
+    _log_event("node_updated", id=node_id, type=node_type, fields=sorted(patch.keys()))
     print(f"Node {node_id} updated.")
     for k, v in nodes[node_id].items():
         print(f"  {k:<14} {v}")
@@ -1938,6 +1985,8 @@ def cmd_graph_remove_node(args):
     edges_removed = edges_before - len(graph["edges"])
 
     save_graph(graph)
+    _log_event("node_removed", id=node_id, name=removed_node.get("name", ""),
+               type=removed_node.get("type"), edges_removed=edges_removed)
     print(f"Removed node {node_id} ({removed_node.get('name','')}) and {edges_removed} edges.")
 
 
@@ -1977,11 +2026,30 @@ def cmd_graph_add_edge(args):
     if note:
         new_edge["note"] = note
     edges.append(new_edge)
+
+    # Structural fact, not a conversational judgment call: creating a
+    # relevant_to/uses_concept edge IS the "linked" engagement signal by
+    # definition, so it's recorded automatically here instead of requiring
+    # Claude to remember a separate graph-interact call for it.
+    auto_linked = []
+    if edge_type in ("relevant_to", "uses_concept"):
+        interactions = graph.setdefault("interactions", [])
+        linked_weight = INTERACTION_TYPES.get("linked", 8)
+        today_str = str(date.today())
+        for nid in (src, tgt):
+            interactions.append({
+                "node": nid, "type": "linked", "weight": linked_weight, "date": today_str,
+            })
+            auto_linked.append(nid)
+
     save_graph(graph)
+    _log_event("edge_added", src=src, tgt=tgt, type=edge_type, auto_linked=auto_linked)
 
     src_name = src_node.get("name", "")[:30]
     tgt_name = tgt_node.get("name", "")[:30]
     print(f"Edge added: {src} ({src_name}) -> {tgt} ({tgt_name}) [{edge_type}]")
+    if auto_linked:
+        print(f"[ENGAGEMENT] 'linked' interaction auto-logged for: {', '.join(auto_linked)}")
 
 
 def cmd_graph_remove_edge(args):
@@ -2004,6 +2072,7 @@ def cmd_graph_remove_edge(args):
                               (type_filter is None or e.get("type") == type_filter))]
     removed = before - len(graph["edges"])
     save_graph(graph)
+    _log_event("edge_removed", src=src, tgt=tgt, type=type_filter, count=removed)
     print(f"Removed {removed} edges between {src} and {tgt}.")
 
 
@@ -2150,6 +2219,7 @@ def cmd_graph_interact(args):
         "date": str(date.today()),
     })
     save_graph(graph)
+    _log_event("interaction_logged", node=node_id, type=int_type, weight=weight)
 
     name = node.get("name", "")[:40]
     print(f"Interaction logged: {node_id} ({name}) | {int_type} | w={weight} | {date.today()}")
@@ -2214,6 +2284,160 @@ def cmd_graph_engagement(args):
         else:
             trend = "STABLE"
         print(f"{nid:<16} {name:<30} {info['score']:>7.1f} {info['last_date']:>12} {trend}")
+
+
+def cmd_graph_lint(args):
+    """Health-check the graph and paper catalog for common hygiene issues.
+    Read-only — reports problems, never fixes them automatically. Run this
+    occasionally to catch orphaned nodes, dead references, and stale ideas
+    before they pile up."""
+    stale_idea_days = 90
+    quiet_days = 45
+    if "--stale-days" in args:
+        idx = args.index("--stale-days")
+        if idx + 1 < len(args):
+            try:
+                stale_idea_days = int(args[idx + 1])
+            except ValueError:
+                pass
+    if "--quiet-days" in args:
+        idx = args.index("--quiet-days")
+        if idx + 1 < len(args):
+            try:
+                quiet_days = int(args[idx + 1])
+            except ValueError:
+                pass
+
+    graph = load_graph()
+    nodes = graph.get("nodes", {})
+    edges = graph.get("edges", [])
+    interactions = graph.get("interactions", [])
+
+    try:
+        papers = load_papers().get("papers", {})
+    except Exception:
+        papers = {}
+    try:
+        venues = load_venues().get("venues", {})
+    except Exception:
+        venues = {}
+
+    today = date.today()
+    issues = {
+        "orphan_nodes": [], "projects_without_papers": [], "orphan_papers": [],
+        "stale_ideas": [], "broken_venue_refs": [], "dangling_citations": [],
+        "quiet_concepts": [],
+    }
+
+    touched = set()
+    incoming_by_tgt = {}
+    for e in edges:
+        touched.add(e.get("src"))
+        touched.add(e.get("tgt"))
+        incoming_by_tgt.setdefault(e.get("tgt"), []).append(e)
+
+    # Orphan graph nodes: no edges at all, in either direction.
+    for nid, n in nodes.items():
+        if nid not in touched:
+            issues["orphan_nodes"].append(
+                {"id": nid, "type": n.get("type"), "name": n.get("name", "")})
+
+    # Projects with no paper marked relevant_to them.
+    for nid, n in nodes.items():
+        if n.get("type") != "project":
+            continue
+        has_paper = any(
+            e.get("type") == "relevant_to" and str(e.get("src", "")).startswith("P")
+            for e in incoming_by_tgt.get(nid, [])
+        )
+        if not has_paper:
+            issues["projects_without_papers"].append({"id": nid, "name": n.get("name", "")})
+
+    # Papers with no concept tag and no graph edge at all — read but never filed.
+    for pid, p in papers.items():
+        if p.get("hidden"):
+            continue
+        if pid not in touched and not p.get("concepts"):
+            issues["orphan_papers"].append({"id": pid, "title": p.get("title", "")})
+
+    # Ideas not marked done/discarded, old, and with no recent interaction.
+    CLOSED_STATUSES = {"done", "completed", "discarded", "closed", "abandoned"}
+    for nid, n in nodes.items():
+        if n.get("type") != "idea":
+            continue
+        if (n.get("status") or "").lower() in CLOSED_STATUSES:
+            continue
+        created = _safe_date(n.get("created"))
+        if created is None:
+            continue
+        age_days = (today - created).days
+        if age_days < stale_idea_days:
+            continue
+        recent = any(
+            i.get("node") == nid and _safe_date(i.get("date")) is not None and
+            (today - _safe_date(i.get("date"))).days <= stale_idea_days
+            for i in interactions
+        )
+        if not recent:
+            issues["stale_ideas"].append({
+                "id": nid, "name": n.get("name", ""), "age_days": age_days,
+                "status": n.get("status"),
+            })
+
+    # Papers pointing at a venue_id that no longer exists.
+    for pid, p in papers.items():
+        vid = p.get("venue_id")
+        if vid and vid not in venues:
+            issues["broken_venue_refs"].append({"paper": pid, "venue_id": vid})
+
+    # cites/cited_by pointing at a paper ID no longer in the catalog.
+    for pid, p in papers.items():
+        for field in ("cites", "cited_by"):
+            for ref in (p.get(field) or []):
+                if ref not in papers:
+                    issues["dangling_citations"].append(
+                        {"paper": pid, "field": field, "missing_id": ref})
+
+    # Concepts that have edges but haven't seen an interaction in a while.
+    last_interaction_by_node = {}
+    for i in interactions:
+        nid = i.get("node")
+        d = _safe_date(i.get("date"))
+        if nid and d and (nid not in last_interaction_by_node or d > last_interaction_by_node[nid]):
+            last_interaction_by_node[nid] = d
+    for nid, n in nodes.items():
+        if n.get("type") != "concept" or nid not in touched:
+            continue
+        last = last_interaction_by_node.get(nid)
+        if last is None or (today - last).days > quiet_days:
+            issues["quiet_concepts"].append({
+                "id": nid, "name": n.get("name", ""),
+                "last_interaction": str(last) if last else "never",
+            })
+
+    total = sum(len(v) for v in issues.values())
+    if total == 0:
+        print("Graph lint: no issues found. Everything looks healthy.")
+        return
+
+    print(f"Graph lint: {total} issue(s) found.")
+    print(SEP_HEAVY * 70)
+    labels = {
+        "orphan_nodes": "Orphan nodes (no edges at all)",
+        "projects_without_papers": "Projects with no papers linked",
+        "orphan_papers": "Papers not linked to any concept or graph node",
+        "stale_ideas": f"Ideas untouched for {stale_idea_days}+ days, not closed",
+        "broken_venue_refs": "Papers pointing to a missing venue",
+        "dangling_citations": "cites/cited_by pointing to a missing paper",
+        "quiet_concepts": f"Concepts with no interaction in {quiet_days}+ days",
+    }
+    for key, label in labels.items():
+        items = issues[key]
+        if not items:
+            continue
+        print(f"\n[{label}] ({len(items)})")
+        for it in items:
+            print(f"  {json.dumps(it, ensure_ascii=False)}")
 
 
 def cmd_graph_search(args):
@@ -2306,6 +2530,7 @@ COMMANDS = {
     "graph-interact":     cmd_graph_interact,
     "graph-engagement":   cmd_graph_engagement,
     "graph-search":       cmd_graph_search,
+    "graph-lint":         cmd_graph_lint,
 }
 
 def main():

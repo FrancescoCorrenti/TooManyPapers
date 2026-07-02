@@ -35,7 +35,7 @@
 
 Returns `new_candidates` (ready for `papers_add`), `already_in_catalog` (titles dropped as duplicates), and `errors` (per-provider failures — e.g. rate limits — reported plainly, never silently swallowed or papered over with invented data).
 
-## Graph tools (17)
+## Graph tools (18)
 
 | Tool | Description |
 |------|-------------|
@@ -49,9 +49,87 @@ Returns `new_candidates` (ready for `papers_add`), `already_in_catalog` (titles 
 | `graph_add_pool` | Add a pool node — `name`, `created`, `description?` |
 | `graph_update_node` | Update node fields (merge patch; rejects fields not valid for that node's type) |
 | `graph_remove_node` | Remove a node and all its edges |
-| `graph_add_edge` | Add a typed edge between nodes |
+| `graph_add_edge` | Add a typed edge between nodes. Auto-logs a "linked" interaction for `relevant_to`/`uses_concept` edges. |
 | `graph_remove_edge` | Remove edges between nodes |
 | `graph_neighbors` | BFS traversal from a node (configurable depth) |
 | `graph_path` | Find shortest path between two nodes |
-| `graph_interact` | Log an interaction (engagement tracking) |
-| `graph_engage
+| `graph_interact` | Log a conversational interaction (engagement tracking) — for signals the server can't infer on its own (discussed/deepened/paper_requested/read) |
+| `graph_engagement` | Compute engagement scores with decay |
+| `graph_search` | Full-text search across nodes and papers |
+| `graph_lint` | Health-check: orphan nodes, projects with no papers, dangling references, stale ideas, quiet concepts. Read-only. |
+
+There is one typed `graph_add_*` tool per node type instead of a single generic
+`graph_add_node(type, payload)` — each tool's parameters are exactly that
+type's real fields (required ones as required parameters, `description` and
+other optional fields defaulting to empty). This means a field that doesn't
+exist for that node type (e.g. a made-up "goal" on a project — the right
+field is `description`) isn't just rejected by validation, it isn't part of
+the tool's schema at all.
+
+### `graph_lint` parameters
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `stale_days` | int | Age threshold for flagging an open idea as stale (default 90). |
+| `quiet_days` | int | Days without an interaction before a concept is flagged as quiet (default 45). |
+
+### Automatic audit log (`_log.jsonl`)
+
+Every mutating command (`papers_add`, `papers_delete`, `venues_add`, `graph_add_edge`, etc.) appends one JSON line to `_log.jsonl` as a side effect — this happens inside the server itself, not via a separate tool call. It's a plain mechanical record of what changed and when, distinct from `graph_interact`'s engagement/interaction log, which records conversational signals a machine can't infer on its own.
+
+## Citation tools (3)
+
+| Tool | Description |
+|------|-------------|
+| `citations_get` | Fetch real citations from Semantic Scholar (read-only) |
+| `citations_apply` | Fetch and save citation links to paper |
+| `citations_sync` | Sync citations for all papers |
+
+## Venue tools (5)
+
+| Tool | Description |
+|------|-------------|
+| `venues_list` | List all venues |
+| `venues_get` | Get venue details |
+| `venues_add` | Add a new venue |
+| `venues_update` | Update venue fields |
+| `venues_delete` | Permanently delete a venue. Refuses if papers still reference it, unless `force: true` is passed. Cannot be undone — confirm with the user first. |
+
+## Node types
+
+| Node type | What it represents |
+|-----------|-------------------|
+| `concept` | A research area you care about |
+| `project` | An active research project with goals |
+| `endpoint` | A specific milestone within a project |
+| `idea` | A concrete idea connected to a project |
+| `pool` | A transversal idea that spans projects |
+
+## Edge types
+
+| Edge type | Connects |
+|-----------|----------|
+| `connected_to` | concept <> concept |
+| `uses_concept` | project > concept |
+| `part_of` | endpoint/idea > project |
+| `inspired_by` | idea > paper |
+| `relevant_to` | paper > project |
+| `enables` | concept > concept (directional) |
+| `derived_from` | any > any |
+
+## CLI usage (without MCP)
+
+`papers_api.py` also works standalone from the terminal:
+
+```bash
+python server/_scripts/papers_api.py list
+python server/_scripts/papers_api.py search "attention mechanism"
+python server/_scripts/papers_api.py add-paper '{"title": "...", "authors": [...], ...}'
+python server/_scripts/papers_api.py graph-status
+python server/_scripts/papers_api.py graph-neighbors C001 --depth 2
+python server/_scripts/papers_api.py graph-path C003 PROJ-FCD
+python server/_scripts/papers_api.py graph-engagement --top 5
+python server/_scripts/papers_api.py graph-search "segmentation"
+python server/_scripts/papers_api.py graph-lint
+python server/_scripts/papers_api.py --help
+```
