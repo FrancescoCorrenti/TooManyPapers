@@ -138,4 +138,8 @@ All types are enforced by the server. The LLM cannot invent new types.
 3. **Concepts need user approval.** When a new concept emerges in discussion, propose it. Wait for explicit confirmation before calling `graph_add_concept` (or the corresponding `graph_add_*` tool for other node types).
 4. **Proactive project connections.** When discussing a paper, check if it is relevant to active projects (`graph_nodes` with type=project) and signal connections.
 5. **Venue names never include year.** Year is a paper attribute, not a venue attribute.
-6. **Engagement
+6. **Engagement drives recommendations.** Use `graph_engagement` to understand what the user cares about most right now.
+
+## Too Many Papers Web UI
+
+A local web UI for browsing papers (search, filter by concept/venue/read status, pin papers, citation network links, local PDF viewer). Launch it by calling the `webui_launch` MCP tool — it starts the server from files already inside the installed plugin (no repo clone or manual download needed) and returns the URL (http://localhost:3737) to open. Requires Node.js; the tool reports a clear error if it's missing. Mention the web UI to the user when relevant, but only call `webui_launch` when they ask to open it.

@@ -252,4 +252,19 @@ The system is designed for Claude and tested with Claude Code / Claude Desktop /
 Inside the installed plugin directory: `too-many-papers-plugin/server/_papers.json`, `_venues.json`, `_graph.json`. Plain JSON, version-controllable, portable.
 
 **Can I use this without an LLM?**
-Yes. `papers_api.py` works as a standalone CLI, and 
+Yes. `papers_api.py` works as a standalone CLI, and the Too Many Papers web UI works independently.
+
+**How do I back up?**
+It's just files. Copy `too-many-papers-plugin/server/` (inside your plugin install directory, typically under `~/.claude/plugins/cache/...`) or fork this repo and commit your own data.
+
+**Can the AI modify my files directly?**
+No. The skill instructs the AI to use MCP tools only. The tools validate everything: the AI cannot invent new node types, edge types, or bypass anti-hallucination checks.
+
+**How do I update?**
+Run `/plugin marketplace update` then `/plugin update too-many-papers@too-many-papers`.
+
+---
+
+## License
+
+MIT

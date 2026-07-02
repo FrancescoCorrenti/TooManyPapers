@@ -37,4 +37,8 @@ To open the visual library, run `/too-many-papers:webui`, or just ask to open To
 
 ## Data
 
-Everything lives in `server/_papers.json`, `server/_venues.json`, `server/_graph.json`. Plain JSON, version-controllable, portable. Back up by copying
+Everything lives in `server/_papers.json`, `server/_venues.json`, `server/_graph.json`. Plain JSON, version-controllable, portable. Back up by copying the `server/` folder or committing it to git.
+
+## License
+
+MIT

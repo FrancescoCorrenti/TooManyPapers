@@ -81,4 +81,26 @@ the tool's schema at all.
 
 | Edge type | Connects |
 |-----------|----------|
-| `connected_to
+| `connected_to` | concept <> concept |
+| `uses_concept` | project > concept |
+| `part_of` | endpoint/idea > project |
+| `inspired_by` | idea > paper |
+| `relevant_to` | paper > project |
+| `enables` | concept > concept (directional) |
+| `derived_from` | any > any |
+
+## CLI usage (without MCP)
+
+`papers_api.py` also works standalone from the terminal:
+
+```bash
+python server/_scripts/papers_api.py list
+python server/_scripts/papers_api.py search "attention mechanism"
+python server/_scripts/papers_api.py add-paper '{"title": "...", "authors": [...], ...}'
+python server/_scripts/papers_api.py graph-status
+python server/_scripts/papers_api.py graph-neighbors C001 --depth 2
+python server/_scripts/papers_api.py graph-path C003 PROJ-FCD
+python server/_scripts/papers_api.py graph-engagement --top 5
+python server/_scripts/papers_api.py graph-search "segmentation"
+python server/_scripts/papers_api.py --help
+```
