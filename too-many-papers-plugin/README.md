@@ -30,4 +30,28 @@ Once installed via Cowork / Claude Code, the MCP server starts automatically —
 | Variable | Effect | Get one at |
 |----------|--------|------------|
 | `S2_API_KEY` | Semantic Scholar API key — much higher rate limit for search + citations (anonymous falls back to ~1 request/3.5s). | [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api#api-key-form) |
-| `OPENALEX_API_KEY` | OpenAle
+| `OPENALEX_API_KEY` | OpenAlex API key — required in practice for reliable search since their 2026 pricing change; $1/day free usage, plenty for personal use. | [openalex.org/settings/api](https://openalex.org/settings/api) |
+| `TOO_MANY_PAPERS_CONTACT_EMAIL` | Used only if `OPENALEX_API_KEY` isn't set, as OpenAlex's "polite pool" contact. | — |
+| `ARXIV_MIN_INTERVAL`, `OPENALEX_MIN_INTERVAL`, `S2_MIN_INTERVAL` | Minimum seconds between requests to each provider, if you want to tune throttling manually. Default automatically slower when no key is set. |
+
+If discovery keeps failing with rate-limit errors, the AI should tell you to set these — see the error message from `papers_discover`, which spells out exactly which key is missing and where to get it.
+
+## Usage
+
+Just talk about papers. On first use, the skill gives a brief self-introduction, then asks a single open question — describe what you're currently working on — and drafts a proposed set of concepts/projects from your answer for you to confirm or edit, followed by an optional daily briefing schedule.
+
+Examples:
+- "I just read this paper: [link] — add it to my library"
+- "What should I read next on segmentation?"
+- "Give me today's paper briefing"
+- "Connect this paper to my FCD project"
+
+To open the visual library, run `/too-many-papers:webui`, or just ask to open Too Many Papers. This calls the `webui_launch` MCP tool and gives you the link (http://localhost:3737) — no manual script to find or run.
+
+## Data
+
+Everything lives in `server/_papers.json`, `server/_venues.json`, `server/_graph.json`. Plain JSON, version-controllable, portable. Back up by copying the `server/` folder or committing it to git.
+
+## License
+
+MIT
