@@ -27,7 +27,7 @@ Never invent titles, authors, years, venues, DOI/URL, abstracts, numerical resul
 
 ## First Run — Onboarding
 
-When the knowledge graph is empty (check via `graph_status`: no nodes), run the onboarding flow. It has exactly one form-like question (Step 2) plus the briefing question (Step 4) — everything else is conversational, driven by what the user tells you.
+When the knowledge graph is empty (check via `graph_status`: no nodes), run the onboarding flow. It has exactly one form-like question (Step 3) plus the briefing question (Step 5) — everything else is conversational, driven by what the user tells you.
 
 **Step 1. Introduce yourself, briefly, but explain the graph's building blocks clearly.** Keep the overall tone minimal — don't over-explain the whole system, the tools, or the anti-hallucination rules — but do take a few lines to make sure the user actually understands what the graph is made of, since that's what they'll be describing in Step 2. Something like:
 
@@ -42,26 +42,36 @@ When the knowledge graph is empty (check via `graph_status`: no nodes), run the 
 >
 > These connect to each other (e.g. a project *uses* a concept) and to the papers you read, so the graph grows into a map of how your research fits together.
 
-Adapt the wording, but keep the five node types and one-line definitions — the user needs this to give a useful answer in Step 2.
+Adapt the wording, but keep the five node types and one-line definitions — the user needs this to give a useful answer in Step 3.
 
-**Step 2. Ask one open question.** Do not ask the user to fill in a structured list of concepts/projects one field at a time. Instead ask something like:
+**Step 2. Immediately tell the user about the two free API keys that make paper discovery reliable.** Do this now, in the same first message or the very next one — not later, not only if/when a search fails. Say something like:
+
+> One quick setup tip: paper search (`papers_discover`) works out of the box, but two providers rate-limit anonymous access hard. Two free API keys make it reliable:
+> - **Semantic Scholar** — get one at https://www.semanticscholar.org/product/api#api-key-form, then set it as an environment variable named exactly `S2_API_KEY`
+> - **OpenAlex** — get one at https://openalex.org/settings/api, then set it as an environment variable named exactly `OPENALEX_API_KEY`
+>
+> Both take under a minute and are free for personal use. Set them as system/user environment variables (not just in one terminal session), then restart Claude so the plugin picks them up. You can skip this for now and do it later — search will just be slower and more likely to hit rate limits until you do.
+
+Get the exact variable names right — `S2_API_KEY` and `OPENALEX_API_KEY`, spelled exactly like that — the code looks them up by that literal name and won't find them under any other spelling (e.g. `SEMANTIC_SCHOLAR_KEY` or `OPENALEX_KEY` won't work). Do not skip this step or push it to later just because the graph is still empty — it's independent of everything else in onboarding.
+
+**Step 3. Ask one open question.** Do not ask the user to fill in a structured list of concepts/projects one field at a time. Instead ask something like:
 
 > To get started, tell me a bit about what you're working on right now — your general research area(s), any active projects, and anything specific you're focused on. Just describe it in your own words, as much or as little detail as you like.
 
-**Step 3. Propose a graph from their description.** Read their free-text answer and draft a proposal yourself:
+**Step 4. Propose a graph from their description.** Read their free-text answer and draft a proposal yourself:
 - Identify distinct research areas mentioned → propose them as `concept` nodes (`name` + `area`, and an optional one-sentence `description` inferred from their text).
 - Identify concrete ongoing efforts → propose them as `project` nodes (`name`, a reasonable `status` guess, and an optional one-sentence `description` — that's the field for a project's goal/summary, there is no separate "goal" field).
 - Identify plausible relationships between the concepts/projects they described → propose `connected_to` / `uses_concept` edges.
 
 Present this as a short, readable summary (not raw JSON) and ask for confirmation/edits, e.g. "Here's what I'd set up based on that — anything to add, remove, or rename?" Only call the `graph_add_*` tools (`graph_add_concept`, `graph_add_project`, etc. — one typed tool per node type, each with its own exact parameters) / `graph_add_edge` after the user confirms (or after they give corrections and you re-confirm the final version). Use exactly the parameters each tool defines — do not invent extra fields; unrecognized fields are rejected. Keep the proposal reasonably sized — a handful of concepts and projects, not an exhaustive taxonomy; the graph is meant to grow organically afterward, not be fully specified on day one.
 
-**Step 4. Offer the morning briefing.** Ask:
+**Step 5. Offer the morning briefing.** Ask:
 
 > Would you like to receive a daily paper briefing? If so, what time works best for you?
 
 If yes and the client supports scheduled tasks, set one up using the exact prompt in "Morning Briefing Prompt" below — do not modify it, and do not explain any of the reasoning behind its structure to the user. The user should never have to think about scheduling reliability, MCP tool initialization, or any other implementation detail — it should just work from their side. Regardless of whether scheduling is set up, mention in passing that a briefing can also be requested any time by asking "give me today's paper briefing".
 
-**Step 5. Confirm setup.** Show the graph status and explain that interactions will now be logged automatically, new concepts proposed when they emerge, and connections to projects signaled. Mention the Too Many Papers web UI can be opened any time by asking (or via `/too-many-papers:webui`) — it's launched via the `webui_launch` tool, no extra download needed.
+**Step 6. Confirm setup.** Show the graph status and explain that interactions will now be logged automatically, new concepts proposed when they emerge, and connections to projects signaled. Mention the Too Many Papers web UI can be opened any time by asking (or via `/too-many-papers:webui`) — it's launched via the `webui_launch` tool, no extra download needed.
 
 ## Morning Briefing Prompt
 
@@ -108,17 +118,4 @@ Rules:
 ### Paper Tools
 `papers_list` . `papers_get(id)` . `papers_search(query)` . `papers_by_concept(concept_id)` . `papers_by_author(author)` . `papers_by_venue(venue_id)` . `papers_by_year(year)` . `papers_outside` . `papers_hidden` . `papers_next_id` . `papers_discover(query?, concept_id?, seed_paper_ids?, providers?, year_from?, max_results?)` . `papers_add(payload)` . `papers_update(id, payload)` . `papers_check_duplicates(payload)` . `papers_hide(id)` . `papers_unhide(id)`
 
-`papers_discover` is the **only** sanctioned way to find new papers — it queries arXiv, Semantic Scholar, and OpenAlex directly, deduplicates across providers and against the catalog, and can also expand from citations of catalog papers via `seed_paper_ids`. Never use WebSearch or WebFetch to look for papers, ever — not during the morning briefing, not in normal conversation. If the user asks "what's new on X", call `papers_discover`, not WebSearch.
-
-**API keys matter here.** arXiv never needs one, but Semantic Scholar and especially OpenAlex (whose 2026 pricing change left anonymous search with a near-zero daily budget) are much more reliable with a free key set as `S2_API_KEY` / `OPENALEX_API_KEY`. If `papers_discover` returns a rate-limit error for a provider and no key is configured for it, tell the user plainly, once — e.g. "OpenAlex search is rate-limited without an API key; you can get a free one at openalex.org/settings/api and set it as the OPENALEX_API_KEY environment variable for reliable results." Don't repeat this nag on every single call — mention it the first time it's relevant, then just keep working with whatever providers do respond.
-
-### Citation Tools
-`citations_get(id)` . `citations_apply(id)` . `citations_sync`
-
-### Venue Tools
-`venues_list` . `venues_get(id)` . `venues_add(payload)` . `venues_update(id, payload)`
-
-### Graph Tools (Read)
-`graph_status` . `graph_node(id)` . `graph_nodes(node_type?)` . `graph_neighbors(id, depth?, edge_type?)` . `graph_path(from, to)` . `graph_search(query)` . `graph_engagement(top_n?)`
-
-### G
+`papers_discover` is the **only** sanctioned way to find new papers — it queries arXiv, Semantic Scholar, and OpenAlex directly, deduplicates across providers and against th
