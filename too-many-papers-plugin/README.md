@@ -9,7 +9,7 @@ A local-first research assistant. No cloud, no database, no subscriptions — ju
 | Component | What it does |
 |-----------|--------------|
 | **Skill** (`skills/too-many-papers`) | Behavioral rules, onboarding flow, anti-hallucination protocol, and the hardcoded morning-briefing prompt. Loads automatically when you talk about papers, research concepts, or ask for a briefing. |
-| **MCP server** (`server/`) | 35 tools (`papers_*`, `venues_*`, `graph_*`, `citations_*`) backed by `papers_api.py`. All reads/writes to `_papers.json`, `_venues.json`, `_graph.json` go through here — the LLM cannot invent node/edge/interaction types or bypass validation. |
+| **MCP server** (`server/`) | 39 tools (`papers_*`, `venues_*`, `graph_*`, `citations_*`) backed by `papers_api.py`. All reads/writes to `_papers.json`, `_venues.json`, `_graph.json` go through here — each tool's parameters are typed per node/edge type, so the LLM can't invent fields, node/edge/interaction types, or bypass validation. |
 | **Too Many Papers web UI** (`webui/`) | Local browser app for searching, filtering, and pinning papers, with citation network links and a PDF viewer. Shares the same data files as the MCP server. |
 
 ## Setup
@@ -37,8 +37,4 @@ To open the visual library, run `/too-many-papers:webui`, or just ask to open To
 
 ## Data
 
-Everything lives in `server/_papers.json`, `server/_venues.json`, `server/_graph.json`. Plain JSON, version-controllable, portable. Back up by copying the `server/` folder or committing it to git.
-
-## License
-
-MIT
+Everything lives in `server/_papers.json`, `server/_venues.json`, `server/_graph.json`. Plain JSON, version-controllable, portable. Back up by copying

@@ -1490,6 +1490,18 @@ def cmd_graph_update_node(args):
     if node_id not in nodes:
         print(f"Node '{node_id}' not found in the graph."); return
 
+    node_type = nodes[node_id].get("type")
+    if node_type in NODE_REQUIRED_FIELDS:
+        allowed = NODE_REQUIRED_FIELDS[node_type] | NODE_OPTIONAL_FIELDS.get(node_type, set())
+        unknown = set(patch.keys()) - allowed
+        if unknown:
+            print(f"ERROR: unrecognized fields for type '{node_type}': {', '.join(sorted(unknown))}. "
+                  f"Allowed: {', '.join(sorted(allowed))}")
+            sys.exit(1)
+        if "type" in patch and patch["type"] != node_type:
+            print("ERROR: a node's type cannot be changed via update.")
+            sys.exit(1)
+
     nodes[node_id].update(patch)
     save_graph(graph)
     print(f"Node {node_id} updated.")
@@ -1877,7 +1889,6 @@ COMMANDS = {
     "graph-add-edge":     cmd_graph_add_edge,
     "graph-remove-edge":  cmd_graph_remove_edge,
     "graph-neighbors":    cmd_graph_neighbors,
-    "graph-path":         cmd_graph_path,
     "graph-interact":     cmd_graph_interact,
     "graph-engagement":   cmd_graph_engagement,
     "graph-search":       cmd_graph_search,

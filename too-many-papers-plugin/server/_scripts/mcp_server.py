@@ -29,10 +29,22 @@ WEBUI_PORT = 3737
 
 
 def _capture(func, args=None):
-    """Run a papers_api command and capture its stdout output."""
+    """Run a papers_api command and capture its stdout output.
+
+    papers_api's cmd_* functions are written for CLI use and call
+    sys.exit(1) on validation errors. Left uncaught, that SystemExit
+    propagates out of the tool call and kills the whole long-running MCP
+    server process — turning one bad call (e.g. an unrecognized field)
+    into a full server crash. Catch it here so a bad call just returns an
+    error string and the server keeps running."""
     buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        func(args or [])
+    try:
+        with contextlib.redirect_stdout(buf):
+            func(args or [])
+    except SystemExit:
+        pass
+    except Exception as e:
+        buf.write(f"\nERROR: unexpected exception in '{func.__name__}': {e}")
     return buf.getvalue()
 
 
@@ -245,20 +257,90 @@ def graph_nodes(node_type: str = "") -> str:
     return _capture(papers_api.cmd_graph_nodes, args)
 
 
+def _add_node(node_type: str, payload: dict) -> str:
+    return _capture(papers_api.cmd_graph_add_node, [node_type, json.dumps(payload)])
+
+
 @mcp.tool()
-def graph_add_node(node_type: str, payload: str) -> str:
-    """Add a node to the knowledge graph.
+def graph_add_concept(name: str, area: str, description: str = "") -> str:
+    """Add a concept node to the knowledge graph — a research area the user
+    cares about (e.g. "Brain Lesion Segmentation").
 
     Args:
-        node_type: Must be one of: concept, project, endpoint, idea, pool
-        payload: JSON string with node fields. Required fields by type:
-            - concept: name, area
-            - project: name, status
-            - endpoint: name, status
-            - idea: name, status, created
-            - pool: name, created
+        name: Concept name.
+        area: Broader field/area this concept belongs to (e.g. "Medical Imaging / Deep Learning").
+        description: Optional one-sentence description.
     """
-    return _capture(papers_api.cmd_graph_add_node, [node_type, payload])
+    payload = {"name": name, "area": area}
+    if description:
+        payload["description"] = description
+    return _add_node("concept", payload)
+
+
+@mcp.tool()
+def graph_add_project(name: str, status: str, description: str = "") -> str:
+    """Add a project node — an active research project with a goal.
+
+    Args:
+        name: Project name.
+        status: Free-text status, e.g. ideation, literature-review, active, writing.
+        description: Optional one-sentence goal/summary. Use this field for
+            anything like a project's goal or description — there is no
+            separate "goal" field.
+    """
+    payload = {"name": name, "status": status}
+    if description:
+        payload["description"] = description
+    return _add_node("project", payload)
+
+
+@mcp.tool()
+def graph_add_endpoint(name: str, status: str, description: str = "") -> str:
+    """Add an endpoint node — a specific milestone within a project.
+
+    Args:
+        name: Endpoint name.
+        status: Free-text status.
+        description: Optional one-sentence description.
+    """
+    payload = {"name": name, "status": status}
+    if description:
+        payload["description"] = description
+    return _add_node("endpoint", payload)
+
+
+@mcp.tool()
+def graph_add_idea(name: str, status: str, created: str, description: str = "", source: str = "") -> str:
+    """Add an idea node — a concrete idea connected to a project.
+
+    Args:
+        name: Idea name.
+        status: Free-text status.
+        created: Creation date, e.g. "2026-07-02".
+        description: Optional one-sentence description.
+        source: Optional origin of the idea (e.g. a paper ID).
+    """
+    payload = {"name": name, "status": status, "created": created}
+    if description:
+        payload["description"] = description
+    if source:
+        payload["source"] = source
+    return _add_node("idea", payload)
+
+
+@mcp.tool()
+def graph_add_pool(name: str, created: str, description: str = "") -> str:
+    """Add a pool node — a broader idea that spans multiple projects.
+
+    Args:
+        name: Pool name.
+        created: Creation date, e.g. "2026-07-02".
+        description: Optional one-sentence description.
+    """
+    payload = {"name": name, "created": created}
+    if description:
+        payload["description"] = description
+    return _add_node("pool", payload)
 
 
 @mcp.tool()

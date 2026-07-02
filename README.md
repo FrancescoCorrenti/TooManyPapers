@@ -149,7 +149,7 @@ too-many-papers/                     (this repo = the marketplace)
     │   ├── _graph.json              # knowledge graph (your data)
     │   └── _scripts/
     │       ├── papers_api.py        # core API (CLI + library)
-    │       └── mcp_server.py        # MCP server wrapper, exposes 35 tools
+    │       └── mcp_server.py        # MCP server wrapper, exposes 39 tools
     ├── skills/
     │   └── too-many-papers/
     │       ├── SKILL.md             # behavioral rules, onboarding, briefing prompt
@@ -195,15 +195,19 @@ A bare plugin repo can still be installed directly (`/plugin install owner/repo`
 </details>
 
 <details>
-<summary><b>Graph tools</b> (13)</summary>
+<summary><b>Graph tools</b> (17)</summary>
 
 | Tool | Description |
 |------|-------------|
 | `graph_status` | Overview: node/edge/interaction counts |
 | `graph_node` | Get a node with all its edges and recent interactions |
 | `graph_nodes` | List nodes, optionally filtered by type |
-| `graph_add_node` | Add a node (concept/project/endpoint/idea/pool) |
-| `graph_update_node` | Update node fields |
+| `graph_add_concept` | Add a concept node (name, area, description?) |
+| `graph_add_project` | Add a project node (name, status, description?) |
+| `graph_add_endpoint` | Add an endpoint node (name, status, description?) |
+| `graph_add_idea` | Add an idea node (name, status, created, description?, source?) |
+| `graph_add_pool` | Add a pool node (name, created, description?) |
+| `graph_update_node` | Update node fields (rejects unrecognized fields for the node's type) |
 | `graph_remove_node` | Remove a node and all its edges |
 | `graph_add_edge` | Add a typed edge between nodes |
 | `graph_remove_edge` | Remove edges between nodes |
@@ -212,6 +216,8 @@ A bare plugin repo can still be installed directly (`/plugin install owner/repo`
 | `graph_interact` | Log an interaction (engagement tracking) |
 | `graph_engagement` | Compute engagement scores with decay |
 | `graph_search` | Full-text search across nodes and papers |
+
+Each `graph_add_*` tool is typed per node type — its MCP schema only exposes that type's real fields, so a field that isn't part of the schema (e.g. a made-up "goal") can't be passed at all, rather than being silently accepted or invented.
 </details>
 
 <details>
@@ -246,19 +252,4 @@ The system is designed for Claude and tested with Claude Code / Claude Desktop /
 Inside the installed plugin directory: `too-many-papers-plugin/server/_papers.json`, `_venues.json`, `_graph.json`. Plain JSON, version-controllable, portable.
 
 **Can I use this without an LLM?**
-Yes. `papers_api.py` works as a standalone CLI, and the Too Many Papers web UI works independently.
-
-**How do I back up?**
-It's just files. Copy `too-many-papers-plugin/server/` (inside your plugin install directory, typically under `~/.claude/plugins/cache/...`) or fork this repo and commit your own data.
-
-**Can the AI modify my files directly?**
-No. The skill instructs the AI to use MCP tools only. The tools validate everything: the AI cannot invent new node types, edge types, or bypass anti-hallucination checks.
-
-**How do I update?**
-Run `/plugin marketplace update` then `/plugin update too-many-papers@too-many-papers`.
-
----
-
-## License
-
-MIT
+Yes. `papers_api.py` works as a standalone CLI, and 

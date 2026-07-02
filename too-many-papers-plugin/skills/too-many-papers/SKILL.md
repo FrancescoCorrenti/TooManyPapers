@@ -49,11 +49,11 @@ Adapt the wording, but keep the five node types and one-line definitions — the
 > To get started, tell me a bit about what you're working on right now — your general research area(s), any active projects, and anything specific you're focused on. Just describe it in your own words, as much or as little detail as you like.
 
 **Step 3. Propose a graph from their description.** Read their free-text answer and draft a proposal yourself:
-- Identify distinct research areas mentioned → propose them as `concept` nodes (name + area, and a one-sentence description inferred from their text).
-- Identify concrete ongoing efforts → propose them as `project` nodes (name, a reasonable `status` guess, one-sentence goal).
+- Identify distinct research areas mentioned → propose them as `concept` nodes (`name` + `area`, and an optional one-sentence `description` inferred from their text).
+- Identify concrete ongoing efforts → propose them as `project` nodes (`name`, a reasonable `status` guess, and an optional one-sentence `description` — that's the field for a project's goal/summary, there is no separate "goal" field).
 - Identify plausible relationships between the concepts/projects they described → propose `connected_to` / `uses_concept` edges.
 
-Present this as a short, readable summary (not raw JSON) and ask for confirmation/edits, e.g. "Here's what I'd set up based on that — anything to add, remove, or rename?" Only call `graph_add_node` / `graph_add_edge` after the user confirms (or after they give corrections and you re-confirm the final version). Keep the proposal reasonably sized — a handful of concepts and projects, not an exhaustive taxonomy; the graph is meant to grow organically afterward, not be fully specified on day one.
+Present this as a short, readable summary (not raw JSON) and ask for confirmation/edits, e.g. "Here's what I'd set up based on that — anything to add, remove, or rename?" Only call the `graph_add_*` tools (`graph_add_concept`, `graph_add_project`, etc. — one typed tool per node type, each with its own exact parameters) / `graph_add_edge` after the user confirms (or after they give corrections and you re-confirm the final version). Use exactly the parameters each tool defines — do not invent extra fields; unrecognized fields are rejected. Keep the proposal reasonably sized — a handful of concepts and projects, not an exhaustive taxonomy; the graph is meant to grow organically afterward, not be fully specified on day one.
 
 **Step 4. Offer the morning briefing.** Ask:
 
@@ -115,7 +115,7 @@ Rules:
 `graph_status` . `graph_node(id)` . `graph_nodes(node_type?)` . `graph_neighbors(id, depth?, edge_type?)` . `graph_path(from, to)` . `graph_search(query)` . `graph_engagement(top_n?)`
 
 ### Graph Tools (Write)
-`graph_add_node(node_type, payload)` . `graph_update_node(id, payload)` . `graph_remove_node(id)` . `graph_add_edge(src, tgt, edge_type, note?)` . `graph_remove_edge(src, tgt, edge_type?)` . `graph_interact(id, interaction_type, weight?)`
+`graph_add_concept(name, area, description?)` . `graph_add_project(name, status, description?)` . `graph_add_endpoint(name, status, description?)` . `graph_add_idea(name, status, created, description?, source?)` . `graph_add_pool(name, created, description?)` . `graph_update_node(id, payload)` . `graph_remove_node(id)` . `graph_add_edge(src, tgt, edge_type, note?)` . `graph_remove_edge(src, tgt, edge_type?)` . `graph_interact(id, interaction_type, weight?)`
 
 For full per-tool details, see `references/mcp-tools.md`.
 
@@ -135,11 +135,7 @@ All types are enforced by the server. The LLM cannot invent new types.
 
 1. **All writes go through MCP tools.** Never modify `_papers.json`, `_venues.json`, or `_graph.json` directly via file writes.
 2. **Log interactions implicitly.** When the user discusses a concept, requests a paper, or deepens a topic, call `graph_interact` with the appropriate type. No manual scoring needed.
-3. **Concepts need user approval.** When a new concept emerges in discussion, propose it. Wait for explicit confirmation before calling `graph_add_node`.
+3. **Concepts need user approval.** When a new concept emerges in discussion, propose it. Wait for explicit confirmation before calling `graph_add_concept` (or the corresponding `graph_add_*` tool for other node types).
 4. **Proactive project connections.** When discussing a paper, check if it is relevant to active projects (`graph_nodes` with type=project) and signal connections.
 5. **Venue names never include year.** Year is a paper attribute, not a venue attribute.
-6. **Engagement drives recommendations.** Use `graph_engagement` to understand what the user cares about most right now.
-
-## Too Many Papers Web UI
-
-A local web UI for browsing papers (search, filter by concept/venue/read status, pin papers, citation network links, local PDF viewer). Launch it by calling the `webui_launch` MCP tool — it starts the server from files already inside the installed plugin (no repo clone or manual download needed) and returns the URL (http://localhost:3737) to open. Requires Node.js; the tool reports a clear error if it's missing. Mention the web UI to the user when relevant, but only call `webui_launch` when they ask to open it.
+6. **Engagement

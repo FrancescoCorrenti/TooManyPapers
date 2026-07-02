@@ -20,15 +20,19 @@
 | `papers_hide` | Hide a paper from default views |
 | `papers_unhide` | Restore a hidden paper |
 
-## Graph tools (13)
+## Graph tools (17)
 
 | Tool | Description |
 |------|-------------|
 | `graph_status` | Overview: node/edge/interaction counts |
 | `graph_node` | Get a node with all its edges and recent interactions |
 | `graph_nodes` | List nodes, optionally filtered by type |
-| `graph_add_node` | Add a node (concept/project/endpoint/idea/pool) |
-| `graph_update_node` | Update node fields |
+| `graph_add_concept` | Add a concept node — `name`, `area`, `description?` |
+| `graph_add_project` | Add a project node — `name`, `status`, `description?` |
+| `graph_add_endpoint` | Add an endpoint node — `name`, `status`, `description?` |
+| `graph_add_idea` | Add an idea node — `name`, `status`, `created`, `description?`, `source?` |
+| `graph_add_pool` | Add a pool node — `name`, `created`, `description?` |
+| `graph_update_node` | Update node fields (merge patch; rejects fields not valid for that node's type) |
 | `graph_remove_node` | Remove a node and all its edges |
 | `graph_add_edge` | Add a typed edge between nodes |
 | `graph_remove_edge` | Remove edges between nodes |
@@ -37,6 +41,14 @@
 | `graph_interact` | Log an interaction (engagement tracking) |
 | `graph_engagement` | Compute engagement scores with decay |
 | `graph_search` | Full-text search across nodes and papers |
+
+There is one typed `graph_add_*` tool per node type instead of a single generic
+`graph_add_node(type, payload)` — each tool's parameters are exactly that
+type's real fields (required ones as required parameters, `description` and
+other optional fields defaulting to empty). This means a field that doesn't
+exist for that node type (e.g. a made-up "goal" on a project — the right
+field is `description`) isn't just rejected by validation, it isn't part of
+the tool's schema at all.
 
 ## Citation tools (3)
 
@@ -69,26 +81,4 @@
 
 | Edge type | Connects |
 |-----------|----------|
-| `connected_to` | concept <> concept |
-| `uses_concept` | project > concept |
-| `part_of` | endpoint/idea > project |
-| `inspired_by` | idea > paper |
-| `relevant_to` | paper > project |
-| `enables` | concept > concept (directional) |
-| `derived_from` | any > any |
-
-## CLI usage (without MCP)
-
-`papers_api.py` also works standalone from the terminal:
-
-```bash
-python server/_scripts/papers_api.py list
-python server/_scripts/papers_api.py search "attention mechanism"
-python server/_scripts/papers_api.py add-paper '{"title": "...", "authors": [...], ...}'
-python server/_scripts/papers_api.py graph-status
-python server/_scripts/papers_api.py graph-neighbors C001 --depth 2
-python server/_scripts/papers_api.py graph-path C003 PROJ-FCD
-python server/_scripts/papers_api.py graph-engagement --top 5
-python server/_scripts/papers_api.py graph-search "segmentation"
-python server/_scripts/papers_api.py --help
-```
+| `connected_to
