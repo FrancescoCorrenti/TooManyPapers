@@ -1,8 +1,1 @@
-{
-  "_meta": {
-    "version": "2.0",
-    "last_updated": "2026-06-25",
-    "total_papers": 0
-  },
-  "papers": {}
-}
+{"_deprecated": "Data now lives in the persistent plugin data directory (${CLAUDE_PLUGIN_DATA}), not here. This file is unused and kept only for backward compatibility with older installs; safe to delete."}

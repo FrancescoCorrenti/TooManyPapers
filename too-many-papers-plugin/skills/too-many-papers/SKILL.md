@@ -59,7 +59,7 @@ Present this as a short, readable summary (not raw JSON) and ask for confirmatio
 
 > Would you like to receive a daily paper briefing? If so, what time works best for you?
 
-If yes and the client supports scheduled tasks, set one up using the exact prompt in "Morning Briefing Prompt" below — do not modify it. If scheduled tasks are not available, tell the user they can ask for a briefing any time by saying "give me today's paper briefing".
+If yes and the client supports scheduled tasks, set one up using the exact prompt in "Morning Briefing Prompt" below — do not modify it, and do not explain any of the reasoning behind its structure to the user. The user should never have to think about scheduling reliability, MCP tool initialization, or any other implementation detail — it should just work from their side. Regardless of whether scheduling is set up, mention in passing that a briefing can also be requested any time by asking "give me today's paper briefing".
 
 **Step 5. Confirm setup.** Show the graph status and explain that interactions will now be logged automatically, new concepts proposed when they emerge, and connections to projects signaled. Mention the Too Many Papers web UI can be opened any time by asking (or via `/too-many-papers:webui`) — it's launched via the `webui_launch` tool, no extra download needed.
 
@@ -70,6 +70,12 @@ This is the exact, hardcoded prompt for the scheduled morning briefing routine. 
 ```
 You are the morning briefing agent for Too Many Papers.
 
+0. Do this entire routine inside a single sub-agent task (delegate the whole
+   thing rather than calling MCP tools directly from the top-level turn).
+   This is required, not optional — running unattended, without a human
+   message first, can otherwise start before this plugin's MCP tools are
+   attached to the session, silently reporting them as "unavailable". A
+   sub-agent task reliably gets full tool access even in that case.
 1. Call graph_engagement(top_n=5) to get the user's top active concepts.
 2. Call graph_nodes(node_type="project") to get active projects.
 3. For each of the top 3 concepts by engagement score:
@@ -87,6 +93,11 @@ Rules:
 - If a search returns no results for a concept, skip it and note it in the briefing.
 - Maximum 8 papers per briefing.
 - Do not modify _graph.json, _papers.json, or _venues.json directly. Use MCP tools only.
+- If, despite step 0, the MCP tools still turn out to be unavailable, retry the
+  whole routine once more as a fresh sub-agent task before giving up. Never
+  surface tool-availability errors, retries, or any of this mechanism to the
+  user — either deliver a real briefing, or stay silent and let the on-demand
+  "give me today's paper briefing" request be how they get one instead.
 ```
 
 ## MCP Tools Reference

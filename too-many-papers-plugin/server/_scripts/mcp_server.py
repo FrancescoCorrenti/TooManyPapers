@@ -378,7 +378,7 @@ def _port_in_use(port: int) -> bool:
 
 @mcp.tool()
 def webui_launch() -> str:
-    """Start the local Paper Library web UI (search, filters, PDF viewer,
+    """Start the local Too Many Papers web UI (search, filters, PDF viewer,
     citation graph) and return its URL. Runs entirely from files already
     inside the installed plugin — no separate download or repo clone
     needed. Requires Node.js. Safe to call even if it's already running."""
@@ -392,21 +392,25 @@ def webui_launch() -> str:
         )
 
     if _port_in_use(WEBUI_PORT):
-        return f"Paper Library is already running at http://localhost:{WEBUI_PORT}"
+        return f"Too Many Papers is already running at http://localhost:{WEBUI_PORT}"
 
     import os
 
     subprocess.Popen(
         ["node", str(WEBUI_SERVER)],
         cwd=str(WEBUI_DIR),
-        env={**os.environ, "PORT": str(WEBUI_PORT)},
+        env={
+            **os.environ,
+            "PORT": str(WEBUI_PORT),
+            "TOO_MANY_PAPERS_DATA_DIR": str(papers_api.DATA_DIR),
+        },
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
 
     return (
-        f"Paper Library starting at http://localhost:{WEBUI_PORT} "
+        f"Too Many Papers starting at http://localhost:{WEBUI_PORT} "
         "— open that URL in your browser."
     )
 

@@ -116,9 +116,43 @@ from pathlib import Path
 # _scripts/ is a subfolder of the project root
 SCRIPT_DIR = Path(__file__).parent
 ROOT_DIR = SCRIPT_DIR.parent
-PAPERS_FILE = ROOT_DIR / "_papers.json"
-VENUES_FILE = ROOT_DIR / "_venues.json"
-GRAPH_FILE = ROOT_DIR / "_graph.json"
+
+# Bundled empty seed files, shipped with the plugin and version-controlled.
+TEMPLATES_DIR = ROOT_DIR / "_templates"
+
+# Where the user's actual data lives. When running as an installed Claude
+# Code / Cowork plugin, .mcp.json sets TOO_MANY_PAPERS_DATA_DIR to
+# ${CLAUDE_PLUGIN_DATA} — a directory that persists across plugin updates
+# (unlike the plugin's own source tree, which gets wiped and replaced on
+# every update/reinstall). Falling back to ROOT_DIR keeps local/dev usage
+# (running the script directly, without the plugin's env var) working the
+# same as before.
+DATA_DIR = Path(os.environ.get("TOO_MANY_PAPERS_DATA_DIR") or ROOT_DIR)
+
+PAPERS_FILE = DATA_DIR / "_papers.json"
+VENUES_FILE = DATA_DIR / "_venues.json"
+GRAPH_FILE = DATA_DIR / "_graph.json"
+
+
+def _ensure_data_files():
+    """Create DATA_DIR and seed it from the bundled templates the first time
+    it's used. Never overwrites existing data — this only fills in files
+    that don't exist yet (fresh install, or a brand new persistent data dir)."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    for target, template_name in (
+        (PAPERS_FILE, "_papers.json"),
+        (VENUES_FILE, "_venues.json"),
+        (GRAPH_FILE, "_graph.json"),
+    ):
+        if not target.exists():
+            template = TEMPLATES_DIR / template_name
+            if template.exists():
+                target.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+            else:
+                target.write_text("{}", encoding="utf-8")
+
+
+_ensure_data_files()
 
 def _configure_stdio():
     """On Windows, redirected stdout (e.g. > file.txt) often uses cp1252 and

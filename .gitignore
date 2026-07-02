@@ -5,3 +5,11 @@ node_modules/
 .DS_Store
 Thumbs.db
 *.pdf
+
+# Local/dev-mode data files (dev fallback when TOO_MANY_PAPERS_DATA_DIR isn't
+# set). Real installs store data in the persistent plugin data directory
+# (${CLAUDE_PLUGIN_DATA}), not here — see server/_templates/ for the seed
+# files that ship with the plugin.
+too-many-papers-plugin/server/_papers.json
+too-many-papers-plugin/server/_venues.json
+too-many-papers-plugin/server/_graph.json

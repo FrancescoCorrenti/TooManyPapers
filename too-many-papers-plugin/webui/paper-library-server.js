@@ -12,8 +12,11 @@ const fs   = require('fs');
 const path = require('path');
 
 const PORT        = parseInt(process.env.PORT, 10) || 3737;
-// Data lives in ../server, shared with the MCP server (single source of truth)
-const DATA_DIR    = path.join(__dirname, '..', 'server');
+// Data lives in the persistent plugin data directory (TOO_MANY_PAPERS_DATA_DIR,
+// set to ${CLAUDE_PLUGIN_DATA} when launched via the webui_launch MCP tool), so
+// it survives plugin updates and stays in sync with the MCP server (single
+// source of truth). Falls back to ../server for manual/dev use.
+const DATA_DIR    = process.env.TOO_MANY_PAPERS_DATA_DIR || path.join(__dirname, '..', 'server');
 const PAPERS_FILE = path.join(DATA_DIR, '_papers.json');
 const VENUES_FILE = path.join(DATA_DIR, '_venues.json');
 const GRAPH_FILE  = path.join(DATA_DIR, '_graph.json');

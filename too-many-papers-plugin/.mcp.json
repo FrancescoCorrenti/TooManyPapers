@@ -2,7 +2,10 @@
   "mcpServers": {
     "too-many-papers": {
       "command": "uv",
-      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}/server", "_scripts/mcp_server.py"]
+      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}/server", "_scripts/mcp_server.py"],
+      "env": {
+        "TOO_MANY_PAPERS_DATA_DIR": "${CLAUDE_PLUGIN_DATA}"
+      }
     }
   }
 }
