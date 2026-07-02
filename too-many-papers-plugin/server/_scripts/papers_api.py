@@ -107,6 +107,8 @@ import time
 import math
 import urllib.request
 import urllib.error
+import urllib.parse
+import xml.etree.ElementTree as ET
 from collections import deque
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -1130,6 +1132,345 @@ def cmd_sync_citations(args):
     for pid, e in errors:
         print(f"  * {pid}: {e}")
 
+# -- Paper discovery (arXiv, Semantic Scholar, OpenAlex) --------------------
+#
+# This is the ONLY sanctioned way to find new papers. It exists so Claude
+# never has to fall back to WebSearch/WebFetch to locate papers: every
+# candidate returned here comes from a real, verifiable API response from
+# one of these providers, already deduplicated across providers and against
+# the local catalog. No metadata is invented — a field a provider didn't
+# return is simply absent, never guessed.
+
+ARXIV_API_BASE = "http://export.arxiv.org/api/query"
+OPENALEX_API_BASE = "https://api.openalex.org/works"
+DISCOVERY_CONTACT_EMAIL = os.environ.get("TOO_MANY_PAPERS_CONTACT_EMAIL", "")
+
+_ARXIV_NS = {"atom": "http://www.w3.org/2005/Atom"}
+_arxiv_bucket = [0.0]
+_openalex_bucket = [0.0]
+ARXIV_MIN_INTERVAL = float(os.environ.get("ARXIV_MIN_INTERVAL", "3.0"))
+OPENALEX_MIN_INTERVAL = float(os.environ.get("OPENALEX_MIN_INTERVAL", "0.2"))
+
+
+def _throttle(bucket: list, min_interval: float):
+    elapsed = time.monotonic() - bucket[0]
+    wait = min_interval - elapsed
+    if wait > 0:
+        time.sleep(wait)
+    bucket[0] = time.monotonic()
+
+
+def _http_get(url: str, headers: dict | None = None, timeout: int = 20,
+              max_retries: int = 4, base_delay: float = 2.0) -> tuple[str | None, str | None]:
+    """Generic GET with retry/backoff on 429/5xx. Returns (body_text, None) on
+    success or (None, error_string) if every attempt failed. Never raises."""
+    req = urllib.request.Request(url, headers=headers or {})
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read().decode("utf-8"), None
+        except urllib.error.HTTPError as e:
+            if e.code == 429 or 500 <= e.code < 600:
+                last_err = f"HTTP {e.code}"
+                time.sleep(base_delay * (attempt + 1))
+                continue
+            return None, f"HTTP {e.code}: {e.reason}"
+        except urllib.error.URLError as e:
+            last_err = f"Network error: {e.reason}"
+            time.sleep(base_delay)
+            continue
+    return None, f"Persistent failure after {max_retries} attempts ({last_err})"
+
+
+def search_arxiv(query: str, max_results: int = 10, year_from: int | None = None) -> tuple[list[dict], str | None]:
+    """Real keyword search against the arXiv API. No auth required."""
+    _throttle(_arxiv_bucket, ARXIV_MIN_INTERVAL)
+    q = urllib.parse.quote(f"all:{query}")
+    url = (f"{ARXIV_API_BASE}?search_query={q}&sortBy=relevance&sortOrder=descending"
+           f"&max_results={max_results}")
+    body, err = _http_get(url)
+    if err:
+        return [], f"arXiv request failed: {err}"
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError as e:
+        return [], f"arXiv returned unparseable XML: {e}"
+
+    out = []
+    for entry in root.findall("atom:entry", _ARXIV_NS):
+        title = (entry.findtext("atom:title", default="", namespaces=_ARXIV_NS) or "").strip()
+        title = " ".join(title.split())
+        if not title:
+            continue
+        summary = (entry.findtext("atom:summary", default="", namespaces=_ARXIV_NS) or "").strip()
+        published = entry.findtext("atom:published", default="", namespaces=_ARXIV_NS) or ""
+        year = int(published[:4]) if published[:4].isdigit() else None
+        if year_from and year and year < year_from:
+            continue
+        authors = [a.findtext("atom:name", default="", namespaces=_ARXIV_NS)
+                   for a in entry.findall("atom:author", _ARXIV_NS)]
+        entry_id = entry.findtext("atom:id", default="", namespaces=_ARXIV_NS) or ""
+        m = ARXIV_ID_RE.search(entry_id)
+        arxiv_id = m.group(1) if m else None
+        out.append({
+            "title": title,
+            "authors": [a for a in authors if a],
+            "year": year,
+            "venue": "arXiv",
+            "abstract": summary or None,
+            "doi": None,
+            "arxiv_id": arxiv_id,
+            "url": entry_id or None,
+            "source_provider": "arxiv",
+        })
+    return out, None
+
+
+def search_semantic_scholar(query: str, max_results: int = 10, year_from: int | None = None) -> tuple[list[dict], str | None]:
+    """Real keyword search against the Semantic Scholar Graph API's
+    /paper/search endpoint (different from the /paper/{id} lookups used for
+    citations, but the same base URL, auth, and rate-limit handling)."""
+    fields = "title,authors,year,venue,abstract,externalIds,url"
+    q = urllib.parse.quote(query)
+    year_param = f"&year={year_from}-" if year_from else ""
+    url = f"{S2_API_BASE}/search?query={q}&fields={fields}&limit={max_results}{year_param}"
+    data, err = s2_request(url)
+    if err:
+        return [], f"Semantic Scholar search failed: {err}"
+    out = []
+    for item in (data or {}).get("data") or []:
+        ext = item.get("externalIds") or {}
+        out.append({
+            "title": item.get("title"),
+            "authors": [a.get("name") for a in (item.get("authors") or []) if a.get("name")],
+            "year": item.get("year"),
+            "venue": item.get("venue") or None,
+            "abstract": item.get("abstract"),
+            "doi": ext.get("DOI"),
+            "arxiv_id": ext.get("ArXiv"),
+            "url": item.get("url"),
+            "source_provider": "semantic_scholar",
+        })
+    return out, None
+
+
+def _openalex_reconstruct_abstract(inv_index: dict | None) -> str | None:
+    """OpenAlex returns abstracts as an inverted index (word -> [positions])
+    instead of plain text, for copyright reasons. Reconstructing it is a
+    pure, lossless rearrangement of words OpenAlex itself returned — not an
+    inference."""
+    if not inv_index:
+        return None
+    positions = []
+    for word, idxs in inv_index.items():
+        for i in idxs:
+            positions.append((i, word))
+    if not positions:
+        return None
+    positions.sort(key=lambda p: p[0])
+    return " ".join(w for _, w in positions)
+
+
+def search_openalex(query: str, max_results: int = 10, year_from: int | None = None) -> tuple[list[dict], str | None]:
+    """Real keyword search against the OpenAlex Works API. No auth required;
+    a contact email (env var TOO_MANY_PAPERS_CONTACT_EMAIL, if set) is sent
+    for OpenAlex's polite pool, which gets faster/more reliable responses."""
+    _throttle(_openalex_bucket, OPENALEX_MIN_INTERVAL)
+    params = {"search": query, "per_page": str(max(1, min(max_results, 50)))}
+    if year_from:
+        params["filter"] = f"from_publication_date:{year_from}-01-01"
+    if DISCOVERY_CONTACT_EMAIL:
+        params["mailto"] = DISCOVERY_CONTACT_EMAIL
+    url = f"{OPENALEX_API_BASE}?{urllib.parse.urlencode(params)}"
+    body, err = _http_get(url)
+    if err:
+        return [], f"OpenAlex request failed: {err}"
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError as e:
+        return [], f"OpenAlex returned invalid JSON: {e}"
+
+    out = []
+    for item in data.get("results") or []:
+        authors = [(a.get("author") or {}).get("display_name")
+                   for a in (item.get("authorships") or [])]
+        primary_loc = item.get("primary_location") or {}
+        source = primary_loc.get("source") or {}
+        ids = item.get("ids") or {}
+        doi = ids.get("doi")
+        if doi:
+            doi = doi.replace("https://doi.org/", "")
+        out.append({
+            "title": item.get("title") or item.get("display_name"),
+            "authors": [a for a in authors if a],
+            "year": item.get("publication_year"),
+            "venue": source.get("display_name"),
+            "abstract": _openalex_reconstruct_abstract(item.get("abstract_inverted_index")),
+            "doi": doi,
+            "arxiv_id": None,
+            "url": primary_loc.get("landing_page_url") or item.get("id"),
+            "source_provider": "openalex",
+        })
+    return out, None
+
+
+DEFAULT_DISCOVERY_PROVIDERS = ["arxiv", "semantic_scholar", "openalex"]
+DISCOVERY_PROVIDER_FUNCS = {
+    "arxiv": search_arxiv,
+    "semantic_scholar": search_semantic_scholar,
+    "openalex": search_openalex,
+}
+
+
+def _dedupe_candidates(candidates: list[dict]) -> list[dict]:
+    """Cross-provider dedup: the same paper found by 2+ providers (matched on
+    DOI, arXiv ID, or normalized title) is merged into a single entry —
+    keeping every non-empty field seen across the duplicates and recording
+    which providers found it, instead of showing the same paper 2-3 times."""
+    seen_doi, seen_arxiv, seen_title = {}, {}, {}
+    merged = []
+    for c in candidates:
+        doi = (c.get("doi") or "").lower().strip()
+        arxiv_id = (c.get("arxiv_id") or "").lower().strip()
+        ntitle = normalize_title(c.get("title") or "")
+
+        existing = seen_doi.get(doi) if doi else None
+        existing = existing or (seen_arxiv.get(arxiv_id) if arxiv_id else None)
+        existing = existing or (seen_title.get(ntitle) if ntitle else None)
+
+        if existing:
+            providers = existing.setdefault("source_providers", [existing.get("source_provider")])
+            if c.get("source_provider") and c["source_provider"] not in providers:
+                providers.append(c["source_provider"])
+            for k in ("doi", "arxiv_id", "abstract", "venue", "year"):
+                if not existing.get(k) and c.get(k):
+                    existing[k] = c[k]
+            continue
+
+        c["source_providers"] = [c.get("source_provider")]
+        merged.append(c)
+        if doi:
+            seen_doi[doi] = c
+        if arxiv_id:
+            seen_arxiv[arxiv_id] = c
+        if ntitle:
+            seen_title[ntitle] = c
+    return merged
+
+
+def cmd_papers_discover(args):
+    """Search external providers for real papers matching a topic, and/or
+    expand from the citations of papers already in the catalog. Combines
+    cross-provider dedup with the same catalog-dedup logic as
+    check-duplicates, so the output is ready to feed straight into add-paper.
+
+    Payload fields:
+      query          - topic/keywords (optional if concept_id or seed_paper_ids given)
+      concept_id     - graph concept ID; its name/area/description are appended to query
+      seed_paper_ids - list of catalog paper IDs; their S2 references are pulled in too
+      providers      - subset of arxiv, semantic_scholar, openalex (default: all three)
+      year_from      - minimum publication year
+      max_results    - per-provider cap before merge/dedup (1-50, default 10)
+    """
+    if not args:
+        print("Usage: papers-discover '<json>'"); return
+    try:
+        payload = parse_json_arg(args)
+    except PayloadError as e:
+        print(f"ERROR: {e}"); sys.exit(1)
+    if not isinstance(payload, dict):
+        print("ERROR: payload must be a JSON object."); sys.exit(1)
+
+    query = (payload.get("query") or "").strip()
+    concept_id = payload.get("concept_id")
+    seed_paper_ids = payload.get("seed_paper_ids") or []
+    providers = payload.get("providers") or DEFAULT_DISCOVERY_PROVIDERS
+    year_from = payload.get("year_from")
+    max_results = int(payload.get("max_results") or 10)
+    max_results = max(1, min(max_results, 50))
+
+    unknown_providers = set(providers) - set(DISCOVERY_PROVIDER_FUNCS)
+    if unknown_providers:
+        print(f"ERROR: unknown providers: {', '.join(sorted(unknown_providers))}. "
+              f"Available: {', '.join(sorted(DISCOVERY_PROVIDER_FUNCS))}")
+        sys.exit(1)
+
+    if concept_id:
+        graph = load_graph()
+        node = graph.get("nodes", {}).get(concept_id)
+        if not node:
+            print(f"ERROR: concept '{concept_id}' not found in graph."); sys.exit(1)
+        extra = " ".join(x for x in [node.get("name"), node.get("area"), node.get("description")] if x)
+        query = f"{query} {extra}".strip() if query else extra
+
+    if not query and not seed_paper_ids:
+        print("ERROR: provide 'query' and/or 'seed_paper_ids'."); sys.exit(1)
+
+    all_candidates = []
+    errors = []
+
+    if query:
+        for p in providers:
+            results, err = DISCOVERY_PROVIDER_FUNCS[p](query, max_results=max_results, year_from=year_from)
+            if err:
+                errors.append(f"{p}: {err}")
+            all_candidates.extend(results)
+
+    if seed_paper_ids:
+        papers = load_papers()["papers"]
+        for pid in seed_paper_ids:
+            seed = papers.get(pid)
+            if not seed:
+                errors.append(f"seed paper '{pid}' not found in catalog")
+                continue
+            refs, err = fetch_s2_references(seed)
+            if err:
+                errors.append(f"citations for {pid}: {err}")
+                continue
+            for r in refs or []:
+                r["source_provider"] = "semantic_scholar_citations"
+                r.setdefault("authors", [])
+                r.setdefault("venue", None)
+                r.setdefault("abstract", None)
+                r.setdefault("url", None)
+                all_candidates.append(r)
+
+    merged = _dedupe_candidates(all_candidates)
+
+    data = load_papers()
+    existing_doi, existing_arxiv, existing_title = set(), set(), set()
+    for p in data["papers"].values():
+        sv = _as_str(p.get("source_verified")).lower()
+        if "doi.org/" in sv:
+            existing_doi.add(sv.split("doi.org/", 1)[1].strip())
+        if "arxiv.org/abs/" in sv:
+            existing_arxiv.add(sv.split("arxiv.org/abs/", 1)[1].strip().rstrip("/"))
+        existing_title.add(normalize_title(p.get("title", "")))
+
+    new_candidates, already_in_catalog = [], []
+    for c in merged:
+        doi = (c.get("doi") or "").lower().strip()
+        arxiv_id = (c.get("arxiv_id") or "").lower().strip()
+        ntitle = normalize_title(c.get("title") or "")
+        if ((doi and doi in existing_doi) or (arxiv_id and arxiv_id in existing_arxiv)
+                or (ntitle and ntitle in existing_title)):
+            already_in_catalog.append(c.get("title"))
+        else:
+            new_candidates.append(c)
+
+    result = {
+        "query": query or None,
+        "providers_used": providers,
+        "total_found_raw": len(all_candidates),
+        "total_after_provider_dedup": len(merged),
+        "already_in_catalog": already_in_catalog,
+        "new_candidates": new_candidates,
+        "new_candidates_count": len(new_candidates),
+        "errors": errors or None,
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
 # -- Venue commands — read -------------------------------------------------
 
 def cmd_venue_list(args):
@@ -1869,6 +2210,7 @@ COMMANDS = {
     "add-paper":       cmd_add_paper,
     "update-paper":    cmd_update_paper,
     "check-duplicates": cmd_check_duplicates,
+    "papers-discover": cmd_papers_discover,
     "hide":            cmd_hide,
     "unhide":          cmd_unhide,
     "get-citations":   cmd_get_citations,

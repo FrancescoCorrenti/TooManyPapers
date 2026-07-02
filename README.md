@@ -120,6 +120,7 @@ Scores decay at **0.7x per week**. The AI logs interactions automatically; no ma
 - Author lists must be complete and verbatim. "et al." is rejected.
 - Connections between papers are marked `[inference]` when not fact-verified.
 - The AI cannot invent node types, edge types, or interaction types.
+- Paper discovery always goes through `papers_discover` (arXiv, Semantic Scholar, OpenAlex) — never general web search — so every candidate is a real, verifiable API result rather than something scraped or guessed.
 
 ---
 
@@ -149,7 +150,7 @@ too-many-papers/                     (this repo = the marketplace)
     │   ├── _graph.json              # knowledge graph (your data)
     │   └── _scripts/
     │       ├── papers_api.py        # core API (CLI + library)
-    │       └── mcp_server.py        # MCP server wrapper, exposes 39 tools
+    │       └── mcp_server.py        # MCP server wrapper, exposes 40 tools
     ├── skills/
     │   └── too-many-papers/
     │       ├── SKILL.md             # behavioral rules, onboarding, briefing prompt
@@ -173,13 +174,13 @@ A bare plugin repo can still be installed directly (`/plugin install owner/repo`
 ## MCP Tools Reference
 
 <details>
-<summary><b>Paper tools</b> (15)</summary>
+<summary><b>Paper tools</b> (16)</summary>
 
 | Tool | Description |
 |------|-------------|
 | `papers_list` | List all papers |
 | `papers_get` | Get full paper card by ID |
-| `papers_search` | Fuzzy search on title and authors |
+| `papers_search` | Fuzzy search on title and authors (local catalog only) |
 | `papers_by_concept` | Papers tagged with a concept |
 | `papers_by_author` | Papers by author surname |
 | `papers_by_venue` | Papers published in a venue |
@@ -187,11 +188,14 @@ A bare plugin repo can still be installed directly (`/plugin install owner/repo`
 | `papers_outside` | Papers outside comfort zone |
 | `papers_hidden` | Hidden papers |
 | `papers_next_id` | Next available paper ID |
+| `papers_discover` | Search arXiv/Semantic Scholar/OpenAlex for new papers, plus citation-based expansion — deduplicated across providers and against the catalog |
 | `papers_add` | Add a new paper (with validation) |
 | `papers_update` | Update paper fields (merge patch) |
 | `papers_check_duplicates` | Check candidates against existing catalog |
 | `papers_hide` | Hide a paper from default views |
 | `papers_unhide` | Restore a hidden paper |
+
+`papers_discover` is the only tool that talks to the outside world to find new papers — the AI is instructed to always use it instead of general web search, so every candidate is a real, verifiable API result, not something scraped or guessed.
 </details>
 
 <details>
@@ -236,35 +240,4 @@ Each `graph_add_*` tool is typed per node type — its MCP schema only exposes t
 | Tool | Description |
 |------|-------------|
 | `venues_list` | List all venues |
-| `venues_get` | Get venue details |
-| `venues_add` | Add a new venue |
-| `venues_update` | Update venue fields |
-</details>
-
----
-
-## FAQ
-
-**Do I need Claude specifically?**
-The system is designed for Claude and tested with Claude Code / Claude Desktop / Cowork. Any MCP-compatible client will work, but you'll need to load `skills/too-many-papers/SKILL.md` manually or adapt it to your client's conventions.
-
-**Where is my data stored?**
-Inside the installed plugin directory: `too-many-papers-plugin/server/_papers.json`, `_venues.json`, `_graph.json`. Plain JSON, version-controllable, portable.
-
-**Can I use this without an LLM?**
-Yes. `papers_api.py` works as a standalone CLI, and the Too Many Papers web UI works independently.
-
-**How do I back up?**
-It's just files. Copy `too-many-papers-plugin/server/` (inside your plugin install directory, typically under `~/.claude/plugins/cache/...`) or fork this repo and commit your own data.
-
-**Can the AI modify my files directly?**
-No. The skill instructs the AI to use MCP tools only. The tools validate everything: the AI cannot invent new node types, edge types, or bypass anti-hallucination checks.
-
-**How do I update?**
-Run `/plugin marketplace update` then `/plugin update too-many-papers@too-many-papers`.
-
----
-
-## License
-
-MIT
+| `venues_get` | Get venue detail

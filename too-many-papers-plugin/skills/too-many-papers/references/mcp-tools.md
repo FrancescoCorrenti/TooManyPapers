@@ -1,12 +1,12 @@
 # MCP Tools Reference — Full Detail
 
-## Paper tools (15)
+## Paper tools (16)
 
 | Tool | Description |
 |------|-------------|
 | `papers_list` | List all papers |
 | `papers_get` | Get full paper card by ID |
-| `papers_search` | Fuzzy search on title and authors |
+| `papers_search` | Fuzzy search on title and authors (local catalog only) |
 | `papers_by_concept` | Papers tagged with a concept |
 | `papers_by_author` | Papers by author surname |
 | `papers_by_venue` | Papers published in a venue |
@@ -14,11 +14,25 @@
 | `papers_outside` | Papers outside comfort zone |
 | `papers_hidden` | Hidden papers |
 | `papers_next_id` | Next available paper ID |
+| `papers_discover` | Search arXiv/Semantic Scholar/OpenAlex for new papers (+ citation-based expansion), deduplicated across providers and against the catalog. The only sanctioned way to find new papers — never use WebSearch/WebFetch for this. |
 | `papers_add` | Add a new paper (with validation) |
 | `papers_update` | Update paper fields (merge patch) |
 | `papers_check_duplicates` | Check candidates against existing catalog |
 | `papers_hide` | Hide a paper from default views |
 | `papers_unhide` | Restore a hidden paper |
+
+### `papers_discover` parameters
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `query` | string | Topic/keywords. Optional if `concept_id` or `seed_paper_ids` alone give enough context. |
+| `concept_id` | string | Graph concept ID (e.g. `C003`) — its name/area/description are appended to the query. |
+| `seed_paper_ids` | list of strings | Catalog paper IDs whose Semantic Scholar references are pulled in as extra candidates — this is the citation-search integration. |
+| `providers` | list of strings | Subset of `arxiv`, `semantic_scholar`, `openalex` (default: all three). |
+| `year_from` | int | Minimum publication year. |
+| `max_results` | int | Per-provider cap before merge/dedup, 1-50 (default 10). |
+
+Returns `new_candidates` (ready for `papers_add`), `already_in_catalog` (titles dropped as duplicates), and `errors` (per-provider failures — e.g. rate limits — reported plainly, never silently swallowed or papered over with invented data).
 
 ## Graph tools (17)
 
@@ -43,64 +57,4 @@
 | `graph_search` | Full-text search across nodes and papers |
 
 There is one typed `graph_add_*` tool per node type instead of a single generic
-`graph_add_node(type, payload)` — each tool's parameters are exactly that
-type's real fields (required ones as required parameters, `description` and
-other optional fields defaulting to empty). This means a field that doesn't
-exist for that node type (e.g. a made-up "goal" on a project — the right
-field is `description`) isn't just rejected by validation, it isn't part of
-the tool's schema at all.
-
-## Citation tools (3)
-
-| Tool | Description |
-|------|-------------|
-| `citations_get` | Fetch real citations from Semantic Scholar (read-only) |
-| `citations_apply` | Fetch and save citation links to paper |
-| `citations_sync` | Sync citations for all papers |
-
-## Venue tools (4)
-
-| Tool | Description |
-|------|-------------|
-| `venues_list` | List all venues |
-| `venues_get` | Get venue details |
-| `venues_add` | Add a new venue |
-| `venues_update` | Update venue fields |
-
-## Node types
-
-| Node type | What it represents |
-|-----------|-------------------|
-| `concept` | A research area you care about |
-| `project` | An active research project with goals |
-| `endpoint` | A specific milestone within a project |
-| `idea` | A concrete idea connected to a project |
-| `pool` | A transversal idea that spans projects |
-
-## Edge types
-
-| Edge type | Connects |
-|-----------|----------|
-| `connected_to` | concept <> concept |
-| `uses_concept` | project > concept |
-| `part_of` | endpoint/idea > project |
-| `inspired_by` | idea > paper |
-| `relevant_to` | paper > project |
-| `enables` | concept > concept (directional) |
-| `derived_from` | any > any |
-
-## CLI usage (without MCP)
-
-`papers_api.py` also works standalone from the terminal:
-
-```bash
-python server/_scripts/papers_api.py list
-python server/_scripts/papers_api.py search "attention mechanism"
-python server/_scripts/papers_api.py add-paper '{"title": "...", "authors": [...], ...}'
-python server/_scripts/papers_api.py graph-status
-python server/_scripts/papers_api.py graph-neighbors C001 --depth 2
-python server/_scripts/papers_api.py graph-path C003 PROJ-FCD
-python server/_scripts/papers_api.py graph-engagement --top 5
-python server/_scripts/papers_api.py graph-search "segmentation"
-python server/_scripts/papers_api.py --help
-```
+`graph_add_node(type, payload)` — each tool's parameters 

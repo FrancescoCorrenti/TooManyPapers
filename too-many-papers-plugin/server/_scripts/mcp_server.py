@@ -149,6 +149,44 @@ def papers_check_duplicates(payload: str) -> str:
 
 
 @mcp.tool()
+def papers_discover(query: str = "", concept_id: str = "", seed_paper_ids: list[str] | None = None,
+                     providers: list[str] | None = None, year_from: int = 0, max_results: int = 10) -> str:
+    """Search external providers (arXiv, Semantic Scholar, OpenAlex) for real
+    papers matching a topic, and/or expand from the citations of papers
+    already in the catalog. This is the ONLY sanctioned way to discover new
+    papers — never use WebSearch or WebFetch to find papers. Every result
+    comes from a real API response, already deduplicated across providers
+    and against your existing catalog, ready to be checked and added via
+    papers_add.
+
+    Args:
+        query: Topic/keywords to search for. Can be omitted if concept_id or
+            seed_paper_ids alone provide enough context.
+        concept_id: Optional graph concept ID (e.g. C003) — its name, area,
+            and description are appended to the query automatically.
+        seed_paper_ids: Optional list of paper IDs already in the catalog;
+            their references (via Semantic Scholar) are pulled in as
+            additional candidates — this is how citation-based discovery
+            fits into the same flow instead of being a separate step.
+        providers: Subset of "arxiv", "semantic_scholar", "openalex" to use
+            (default: all three).
+        year_from: Optional minimum publication year filter (0 = no filter).
+        max_results: Max results per provider before merging/dedup (1-50,
+            default 10).
+    """
+    payload = {"query": query, "max_results": max_results}
+    if concept_id:
+        payload["concept_id"] = concept_id
+    if seed_paper_ids:
+        payload["seed_paper_ids"] = seed_paper_ids
+    if providers:
+        payload["providers"] = providers
+    if year_from:
+        payload["year_from"] = year_from
+    return _capture(papers_api.cmd_papers_discover, [json.dumps(payload)])
+
+
+@mcp.tool()
 def papers_hide(id: str) -> str:
     """Hide a paper (sets hidden=true). Hidden papers are excluded from
     standard filters and the daily briefing."""
