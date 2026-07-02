@@ -698,7 +698,8 @@ S2_API_KEY = os.environ.get("S2_API_KEY")
 # Minimum interval (seconds) between two consecutive requests to S2, to stay
 # within the API key's rate limit (e.g. 1 request/second). Also settable via
 # env var S2_MIN_INTERVAL to change it without touching the code.
-S2_MIN_INTERVAL = float(os.environ.get("S2_MIN_INTERVAL", "1.0"))
+S2_MIN_INTERVAL = float(os.environ.get(
+    "S2_MIN_INTERVAL", "1.0" if S2_API_KEY else "3.5"))
 _last_s2_request_time = [0.0]
 
 ARXIV_ID_RE = re.compile(r"(\d{4}\.\d{4,5})(v\d+)?")
@@ -1144,12 +1145,19 @@ def cmd_sync_citations(args):
 ARXIV_API_BASE = "http://export.arxiv.org/api/query"
 OPENALEX_API_BASE = "https://api.openalex.org/works"
 DISCOVERY_CONTACT_EMAIL = os.environ.get("TOO_MANY_PAPERS_CONTACT_EMAIL", "")
+# OpenAlex requires an API key for reliable search access (their 2026 pricing
+# switch left anonymous search with a near-zero daily budget — see
+# https://developers.openalex.org/api-reference/authentication). Free to get
+# at https://openalex.org/settings/api. Without one we fall back to slow,
+# heavily-throttled anonymous requests instead of failing outright.
+OPENALEX_API_KEY = os.environ.get("OPENALEX_API_KEY", "")
 
 _ARXIV_NS = {"atom": "http://www.w3.org/2005/Atom"}
 _arxiv_bucket = [0.0]
 _openalex_bucket = [0.0]
 ARXIV_MIN_INTERVAL = float(os.environ.get("ARXIV_MIN_INTERVAL", "3.0"))
-OPENALEX_MIN_INTERVAL = float(os.environ.get("OPENALEX_MIN_INTERVAL", "0.2"))
+OPENALEX_MIN_INTERVAL = float(os.environ.get(
+    "OPENALEX_MIN_INTERVAL", "0.2" if OPENALEX_API_KEY else "2.5"))
 
 
 def _throttle(bucket: list, min_interval: float):
@@ -1237,6 +1245,11 @@ def search_semantic_scholar(query: str, max_results: int = 10, year_from: int | 
     url = f"{S2_API_BASE}/search?query={q}&fields={fields}&limit={max_results}{year_param}"
     data, err = s2_request(url)
     if err:
+        if not S2_API_KEY:
+            err = (f"{err} (no S2_API_KEY set — anonymous access is heavily "
+                   "rate-limited; get a free key at "
+                   "https://www.semanticscholar.org/product/api#api-key-form "
+                   "and set it as an environment variable for reliable access)")
         return [], f"Semantic Scholar search failed: {err}"
     out = []
     for item in (data or {}).get("data") or []:
@@ -1280,11 +1293,18 @@ def search_openalex(query: str, max_results: int = 10, year_from: int | None = N
     params = {"search": query, "per_page": str(max(1, min(max_results, 50)))}
     if year_from:
         params["filter"] = f"from_publication_date:{year_from}-01-01"
-    if DISCOVERY_CONTACT_EMAIL:
+    if OPENALEX_API_KEY:
+        params["api_key"] = OPENALEX_API_KEY
+    elif DISCOVERY_CONTACT_EMAIL:
         params["mailto"] = DISCOVERY_CONTACT_EMAIL
     url = f"{OPENALEX_API_BASE}?{urllib.parse.urlencode(params)}"
     body, err = _http_get(url)
     if err:
+        if not OPENALEX_API_KEY:
+            err = (f"{err} (no OPENALEX_API_KEY set — anonymous access has a "
+                   "near-zero daily budget since OpenAlex's 2026 pricing change; "
+                   "get a free key at https://openalex.org/settings/api and set "
+                   "it as an environment variable for reliable access)")
         return [], f"OpenAlex request failed: {err}"
     try:
         data = json.loads(body)

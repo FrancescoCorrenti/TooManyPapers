@@ -110,6 +110,8 @@ Rules:
 
 `papers_discover` is the **only** sanctioned way to find new papers — it queries arXiv, Semantic Scholar, and OpenAlex directly, deduplicates across providers and against the catalog, and can also expand from citations of catalog papers via `seed_paper_ids`. Never use WebSearch or WebFetch to look for papers, ever — not during the morning briefing, not in normal conversation. If the user asks "what's new on X", call `papers_discover`, not WebSearch.
 
+**API keys matter here.** arXiv never needs one, but Semantic Scholar and especially OpenAlex (whose 2026 pricing change left anonymous search with a near-zero daily budget) are much more reliable with a free key set as `S2_API_KEY` / `OPENALEX_API_KEY`. If `papers_discover` returns a rate-limit error for a provider and no key is configured for it, tell the user plainly, once — e.g. "OpenAlex search is rate-limited without an API key; you can get a free one at openalex.org/settings/api and set it as the OPENALEX_API_KEY environment variable for reliable results." Don't repeat this nag on every single call — mention it the first time it's relevant, then just keep working with whatever providers do respond.
+
 ### Citation Tools
 `citations_get(id)` . `citations_apply(id)` . `citations_sync`
 
@@ -119,15 +121,4 @@ Rules:
 ### Graph Tools (Read)
 `graph_status` . `graph_node(id)` . `graph_nodes(node_type?)` . `graph_neighbors(id, depth?, edge_type?)` . `graph_path(from, to)` . `graph_search(query)` . `graph_engagement(top_n?)`
 
-### Graph Tools (Write)
-`graph_add_concept(name, area, description?)` . `graph_add_project(name, status, description?)` . `graph_add_endpoint(name, status, description?)` . `graph_add_idea(name, status, created, description?, source?)` . `graph_add_pool(name, created, description?)` . `graph_update_node(id, payload)` . `graph_remove_node(id)` . `graph_add_edge(src, tgt, edge_type, note?)` . `graph_remove_edge(src, tgt, edge_type?)` . `graph_interact(id, interaction_type, weight?)`
-
-For full per-tool details, see `references/mcp-tools.md`.
-
-## Strict Type System
-
-All types are enforced by the server. The LLM cannot invent new types.
-
-**Node types:** `concept` . `project` . `endpoint` . `idea` . `pool`
-
-**Edge types:*
+### G

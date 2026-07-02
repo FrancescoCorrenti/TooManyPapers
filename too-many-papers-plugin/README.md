@@ -23,16 +23,11 @@ Requires **[uv](https://docs.astral.sh/uv/)**. The server runs via `uv run`, whi
 
 Once installed via Cowork / Claude Code, the MCP server starts automatically — no manual `claude mcp add` step needed.
 
-### Optional environment variables (paper discovery & citations)
+### Recommended environment variables (paper discovery & citations)
 
-None of these are required — `papers_discover` and the citation tools work anonymously out of the box. Setting them just raises rate limits / reliability on the respective provider:
+`papers_discover` and the citation tools work without any of these — arXiv never needs a key, and Semantic Scholar/OpenAlex fall back to slow, heavily-throttled anonymous requests. But **OpenAlex changed its pricing in 2026: anonymous search now has a near-zero daily budget**, so without a key you'll hit rate limits quickly. Both keys below are free:
 
-| Variable | Effect |
-|----------|--------|
-| `S2_API_KEY` | Semantic Scholar API key — higher rate limit for search + citations. |
-| `TOO_MANY_PAPERS_CONTACT_EMAIL` | Sent to OpenAlex as the "polite pool" contact — more reliable anonymous access. |
-| `ARXIV_MIN_INTERVAL`, `OPENALEX_MIN_INTERVAL`, `S2_MIN_INTERVAL` | Minimum seconds between requests to each provider, if you need to tune throttling. |
-
-## Usage
-
-Just talk about papers. On first use, the skill gives a brief self-introduction, then 
+| Variable | Effect | Get one at |
+|----------|--------|------------|
+| `S2_API_KEY` | Semantic Scholar API key — much higher rate limit for search + citations (anonymous falls back to ~1 request/3.5s). | [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api#api-key-form) |
+| `OPENALEX_API_KEY` | OpenAle
