@@ -1,6 +1,6 @@
 # MCP Tools Reference — Full Detail
 
-## Paper tools (16)
+## Paper tools (17)
 
 | Tool | Description |
 |------|-------------|
@@ -20,6 +20,7 @@
 | `papers_check_duplicates` | Check candidates against existing catalog |
 | `papers_hide` | Hide a paper from default views |
 | `papers_unhide` | Restore a hidden paper |
+| `papers_delete` | Permanently delete a paper (unlike `papers_hide`, the record is actually removed). Scrubs the deleted ID out of every other paper's `cites`/`cited_by`/`cites_unmatched` arrays. Cannot be undone — confirm with the user first. |
 
 ### `papers_discover` parameters
 
@@ -53,68 +54,4 @@ Returns `new_candidates` (ready for `papers_add`), `already_in_catalog` (titles 
 | `graph_neighbors` | BFS traversal from a node (configurable depth) |
 | `graph_path` | Find shortest path between two nodes |
 | `graph_interact` | Log an interaction (engagement tracking) |
-| `graph_engagement` | Compute engagement scores with decay |
-| `graph_search` | Full-text search across nodes and papers |
-
-There is one typed `graph_add_*` tool per node type instead of a single generic
-`graph_add_node(type, payload)` — each tool's parameters are exactly that
-type's real fields (required ones as required parameters, `description` and
-other optional fields defaulting to empty). This means a field that doesn't
-exist for that node type (e.g. a made-up "goal" on a project — the right
-field is `description`) isn't just rejected by validation, it isn't part of
-the tool's schema at all.
-
-## Citation tools (3)
-
-| Tool | Description |
-|------|-------------|
-| `citations_get` | Fetch real citations from Semantic Scholar (read-only) |
-| `citations_apply` | Fetch and save citation links to paper |
-| `citations_sync` | Sync citations for all papers |
-
-## Venue tools (4)
-
-| Tool | Description |
-|------|-------------|
-| `venues_list` | List all venues |
-| `venues_get` | Get venue details |
-| `venues_add` | Add a new venue |
-| `venues_update` | Update venue fields |
-
-## Node types
-
-| Node type | What it represents |
-|-----------|-------------------|
-| `concept` | A research area you care about |
-| `project` | An active research project with goals |
-| `endpoint` | A specific milestone within a project |
-| `idea` | A concrete idea connected to a project |
-| `pool` | A transversal idea that spans projects |
-
-## Edge types
-
-| Edge type | Connects |
-|-----------|----------|
-| `connected_to` | concept <> concept |
-| `uses_concept` | project > concept |
-| `part_of` | endpoint/idea > project |
-| `inspired_by` | idea > paper |
-| `relevant_to` | paper > project |
-| `enables` | concept > concept (directional) |
-| `derived_from` | any > any |
-
-## CLI usage (without MCP)
-
-`papers_api.py` also works standalone from the terminal:
-
-```bash
-python server/_scripts/papers_api.py list
-python server/_scripts/papers_api.py search "attention mechanism"
-python server/_scripts/papers_api.py add-paper '{"title": "...", "authors": [...], ...}'
-python server/_scripts/papers_api.py graph-status
-python server/_scripts/papers_api.py graph-neighbors C001 --depth 2
-python server/_scripts/papers_api.py graph-path C003 PROJ-FCD
-python server/_scripts/papers_api.py graph-engagement --top 5
-python server/_scripts/papers_api.py graph-search "segmentation"
-python server/_scripts/papers_api.py --help
-```
+| `graph_engage

@@ -679,6 +679,32 @@ def cmd_unhide(args):
     print(f"Paper {pid} restored (no longer hidden).")
     print(format_paper(pid, data["papers"][pid], verbose=True))
 
+def cmd_delete_paper(args):
+    """Permanently remove a paper from the catalog (not a soft hide).
+
+    Also scrubs the deleted ID out of every other paper's cites/cited_by/
+    cites_unmatched arrays so no dangling references are left behind.
+    """
+    if not args:
+        print("Usage: delete-paper <ID>  e.g. delete-paper P012"); return
+    pid = args[0].upper()
+    data = load_papers()
+    if pid not in data["papers"]:
+        print(f"Paper '{pid}' not found."); return
+    removed = data["papers"].pop(pid)
+    scrubbed = 0
+    for other in data["papers"].values():
+        for field in ("cites", "cited_by", "cites_unmatched"):
+            values = other.get(field)
+            if values and pid in values:
+                other[field] = [v for v in values if v != pid]
+                scrubbed += 1
+    data["_meta"]["total_papers"] = len(data["papers"])
+    data["_meta"]["last_updated"] = str(date.today())
+    save_papers(data)
+    print(f"Paper {pid} ({removed.get('title', '')}) permanently deleted. "
+          f"Scrubbed {scrubbed} cross-reference(s) in other papers.")
+
 # -- Citations (Semantic Scholar) -------------------------------------------
 #
 # Primary source: Semantic Scholar Graph API (api.semanticscholar.org).
@@ -1597,6 +1623,30 @@ def cmd_update_venue(args):
     print(f"Venue {vid} updated.")
     print(format_venue(vid, data["venues"][vid], verbose=True))
 
+def cmd_delete_venue(args):
+    """Permanently remove a venue. Blocked if papers still reference it,
+    unless 'force' is passed as an extra argument."""
+    if not args:
+        print("Usage: delete-venue <VID> [force]  e.g. delete-venue V003"); return
+    vid = args[0].upper()
+    force = len(args) > 1 and args[1].lower() == "force"
+    venues = load_venues()
+    if vid not in venues["venues"]:
+        print(f"Venue '{vid}' not found."); return
+    papers = load_papers()
+    referencing = [pid for pid, p in papers["papers"].items() if p.get("venue_id") == vid]
+    if referencing and not force:
+        print(f"ERROR: venue '{vid}' is still referenced by {len(referencing)} paper(s): "
+              f"{', '.join(sorted(referencing))}. Reassign those papers' venue_id first, "
+              f"or pass 'force' to delete anyway (leaves those papers pointing at a missing venue).")
+        sys.exit(1)
+    removed = venues["venues"].pop(vid)
+    venues["_meta"]["total_venues"] = len(venues["venues"])
+    venues["_meta"]["last_updated"] = str(date.today())
+    save_venues(venues)
+    note = f" ({len(referencing)} paper(s) now reference a missing venue)" if referencing else ""
+    print(f"Venue {vid} ({removed.get('name', '')}) permanently deleted.{note}")
+
 # -- Graph helpers ---------------------------------------------------------
 
 GRAPH_NODE_TYPES = {"concept", "project", "endpoint", "idea", "pool"}
@@ -2233,6 +2283,7 @@ COMMANDS = {
     "papers-discover": cmd_papers_discover,
     "hide":            cmd_hide,
     "unhide":          cmd_unhide,
+    "delete-paper":    cmd_delete_paper,
     "get-citations":   cmd_get_citations,
     "apply-citations": cmd_apply_citations,
     "sync-citations":  cmd_sync_citations,
@@ -2241,6 +2292,7 @@ COMMANDS = {
     "venue-get":       cmd_venue_get,
     "add-venue":       cmd_add_venue,
     "update-venue":    cmd_update_venue,
+    "delete-venue":    cmd_delete_venue,
     # graph
     "graph-status":       cmd_graph_status,
     "graph-node":         cmd_graph_node,

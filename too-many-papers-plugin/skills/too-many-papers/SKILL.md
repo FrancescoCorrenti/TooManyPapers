@@ -116,48 +116,6 @@ Rules:
 ## MCP Tools Reference
 
 ### Paper Tools
-`papers_list` . `papers_get(id)` . `papers_search(query)` . `papers_by_concept(concept_id)` . `papers_by_author(author)` . `papers_by_venue(venue_id)` . `papers_by_year(year)` . `papers_outside` . `papers_hidden` . `papers_next_id` . `papers_discover(query?, concept_id?, seed_paper_ids?, providers?, year_from?, max_results?)` . `papers_add(payload)` . `papers_update(id, payload)` . `papers_check_duplicates(payload)` . `papers_hide(id)` . `papers_unhide(id)`
+`papers_list` . `papers_get(id)` . `papers_search(query)` . `papers_by_concept(concept_id)` . `papers_by_author(author)` . `papers_by_venue(venue_id)` . `papers_by_year(year)` . `papers_outside` . `papers_hidden` . `papers_next_id` . `papers_discover(query?, concept_id?, seed_paper_ids?, providers?, year_from?, max_results?)` . `papers_add(payload)` . `papers_update(id, payload)` . `papers_check_duplicates(payload)` . `papers_hide(id)` . `papers_unhide(id)` . `papers_delete(id)`
 
-`papers_discover` is the **only** sanctioned way to find new papers — it queries arXiv, Semantic Scholar, and OpenAlex directly, deduplicates across providers and against the catalog, and can also expand from citations of catalog papers via `seed_paper_ids`. Never use WebSearch or WebFetch to look for papers, ever — not during the morning briefing, not in normal conversation. If the user asks "what's new on X", call `papers_discover`, not WebSearch.
-
-**API keys matter here.** arXiv never needs one, but Semantic Scholar and especially OpenAlex (whose 2026 pricing change left anonymous search with a near-zero daily budget) are much more reliable with a free key set as `S2_API_KEY` / `OPENALEX_API_KEY`. If `papers_discover` returns a rate-limit error for a provider and no key is configured for it, tell the user plainly, once — e.g. "OpenAlex search is rate-limited without an API key; you can get a free one at openalex.org/settings/api and set it as the OPENALEX_API_KEY environment variable for reliable results." Don't repeat this nag on every single call — mention it the first time it's relevant, then just keep working with whatever providers do respond.
-
-### Citation Tools
-`citations_get(id)` . `citations_apply(id)` . `citations_sync`
-
-### Venue Tools
-`venues_list` . `venues_get(id)` . `venues_add(payload)` . `venues_update(id, payload)`
-
-### Graph Tools (Read)
-`graph_status` . `graph_node(id)` . `graph_nodes(node_type?)` . `graph_neighbors(id, depth?, edge_type?)` . `graph_path(from, to)` . `graph_search(query)` . `graph_engagement(top_n?)`
-
-### Graph Tools (Write)
-`graph_add_concept(name, area, description?)` . `graph_add_project(name, status, description?)` . `graph_add_endpoint(name, status, description?)` . `graph_add_idea(name, status, created, description?, source?)` . `graph_add_pool(name, created, description?)` . `graph_update_node(id, payload)` . `graph_remove_node(id)` . `graph_add_edge(src, tgt, edge_type, note?)` . `graph_remove_edge(src, tgt, edge_type?)` . `graph_interact(id, interaction_type, weight?)`
-
-For full per-tool details, see `references/mcp-tools.md`.
-
-## Strict Type System
-
-All types are enforced by the server. The LLM cannot invent new types.
-
-**Node types:** `concept` . `project` . `endpoint` . `idea` . `pool`
-
-**Edge types:** `connected_to` . `uses_concept` . `part_of` . `inspired_by` . `relevant_to` . `derived_from` . `enables`
-
-**Interaction types:** `discussed` (w=3) . `deepened` (w=5) . `paper_requested` (w=10) . `read` (w=2) . `linked` (w=8)
-
-**Engagement decay:** 0.7^weeks. Recent activity is weighted more heavily.
-
-## Behavioral Rules
-
-1. **All writes go through MCP tools.** Never modify `_papers.json`, `_venues.json`, or `_graph.json` directly via file writes.
-2. **Log interactions implicitly.** When the user discusses a concept, requests a paper, or deepens a topic, call `graph_interact` with the appropriate type. No manual scoring needed.
-3. **Concepts need user approval.** When a new concept emerges in discussion, propose it. Wait for explicit confirmation before calling `graph_add_concept` (or the corresponding `graph_add_*` tool for other node types).
-4. **Proactive project connections.** When discussing a paper, check if it is relevant to active projects (`graph_nodes` with type=project) and signal connections.
-5. **Venue names never include year.** Year is a paper attribute, not a venue attribute.
-6. **Engagement drives recommendations.** Use `graph_engagement` to understand what the user cares about most right now.
-7. **Never search the web for papers.** `papers_discover` (arXiv + Semantic Scholar + OpenAlex, with dedup) is the only sanctioned way to find new papers, whether for the morning briefing or a normal "find me something on X" request. WebSearch/WebFetch defeat the anti-hallucination guarantees this plugin exists to provide.
-
-## Too Many Papers Web UI
-
-A local web UI for browsing papers (search, filter by concept/venue/read status, pin papers, citation network links, local PDF viewer). Launch it by calling the `webui_launch` MCP tool — it starts the server from files already inside the installed plugin (no repo clone or manual download needed) and returns the URL (http://localhost:3737) to open. Requires Node.js; the tool reports a clear error if it's missing. Mention the web UI to the user when relevant, but only call `webui_launch` when they ask to open it.
+`papers_delete` permanently removes a paper (unlike `papers_hide`, which only flags it) and scrubs the deleted ID out of every other paper's `cites`/`cit

@@ -199,6 +199,15 @@ def papers_unhide(id: str) -> str:
     return _capture(papers_api.cmd_unhide, [id])
 
 
+@mcp.tool()
+def papers_delete(id: str) -> str:
+    """Permanently delete a paper from the catalog. This is NOT the same as
+    papers_hide — the record is actually removed, not just flagged. Also
+    scrubs the deleted ID out of every other paper's cites/cited_by lists.
+    Ask the user to confirm before calling this; it cannot be undone."""
+    return _capture(papers_api.cmd_delete_paper, [id])
+
+
 # =============================================================================
 # Citation tools
 # =============================================================================
@@ -260,6 +269,21 @@ def venues_update(id: str, payload: str) -> str:
         payload: JSON string with fields to update.
     """
     return _capture(papers_api.cmd_update_venue, [id, payload])
+
+
+@mcp.tool()
+def venues_delete(id: str, force: bool = False) -> str:
+    """Permanently delete a venue. Blocked if any papers still reference it
+    (reassign those papers' venue_id first) unless force=True, in which case
+    those papers are left pointing at a missing venue_id. Ask the user to
+    confirm before calling this; it cannot be undone.
+
+    Args:
+        id: Venue ID (e.g. V003).
+        force: Delete even if papers still reference this venue.
+    """
+    args = [id, "force"] if force else [id]
+    return _capture(papers_api.cmd_delete_venue, args)
 
 
 # =============================================================================

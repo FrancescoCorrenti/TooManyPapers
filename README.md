@@ -150,7 +150,7 @@ too-many-papers/                     (this repo = the marketplace)
     │   ├── _graph.json              # knowledge graph (your data)
     │   └── _scripts/
     │       ├── papers_api.py        # core API (CLI + library)
-    │       └── mcp_server.py        # MCP server wrapper, exposes 40 tools
+    │       └── mcp_server.py        # MCP server wrapper, exposes 43 tools
     ├── skills/
     │   └── too-many-papers/
     │       ├── SKILL.md             # behavioral rules, onboarding, briefing prompt
@@ -174,7 +174,7 @@ A bare plugin repo can still be installed directly (`/plugin install owner/repo`
 ## MCP Tools Reference
 
 <details>
-<summary><b>Paper tools</b> (16)</summary>
+<summary><b>Paper tools</b> (17)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -194,6 +194,7 @@ A bare plugin repo can still be installed directly (`/plugin install owner/repo`
 | `papers_check_duplicates` | Check candidates against existing catalog |
 | `papers_hide` | Hide a paper from default views |
 | `papers_unhide` | Restore a hidden paper |
+| `papers_delete` | Permanently delete a paper (scrubs it from other papers' `cites`/`cited_by`) — unlike `papers_hide`, this cannot be undone |
 
 `papers_discover` is the only tool that talks to the outside world to find new papers — the AI is instructed to always use it instead of general web search, so every candidate is a real, verifiable API result, not something scraped or guessed.
 </details>
@@ -235,40 +236,4 @@ Each `graph_add_*` tool is typed per node type — its MCP schema only exposes t
 </details>
 
 <details>
-<summary><b>Venue tools</b> (4)</summary>
-
-| Tool | Description |
-|------|-------------|
-| `venues_list` | List all venues |
-| `venues_get` | Get venue details |
-| `venues_add` | Add a new venue |
-| `venues_update` | Update venue fields |
-</details>
-
----
-
-## FAQ
-
-**Do I need Claude specifically?**
-The system is designed for Claude and tested with Claude Code / Claude Desktop / Cowork. Any MCP-compatible client will work, but you'll need to load `skills/too-many-papers/SKILL.md` manually or adapt it to your client's conventions.
-
-**Where is my data stored?**
-Inside the installed plugin directory: `too-many-papers-plugin/server/_papers.json`, `_venues.json`, `_graph.json`. Plain JSON, version-controllable, portable.
-
-**Can I use this without an LLM?**
-Yes. `papers_api.py` works as a standalone CLI, and the Too Many Papers web UI works independently.
-
-**How do I back up?**
-It's just files. Copy `too-many-papers-plugin/server/` (inside your plugin install directory, typically under `~/.claude/plugins/cache/...`) or fork this repo and commit your own data.
-
-**Can the AI modify my files directly?**
-No. The skill instructs the AI to use MCP tools only. The tools validate everything: the AI cannot invent new node types, edge types, or bypass anti-hallucination checks.
-
-**How do I update?**
-Run `/plugin marketplace update` then `/plugin update too-many-papers@too-many-papers`.
-
----
-
-## License
-
-MIT
+<summary><b
