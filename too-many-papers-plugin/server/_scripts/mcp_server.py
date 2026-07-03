@@ -233,6 +233,29 @@ def citations_sync() -> str:
 
 
 # =============================================================================
+# PDF tools
+# =============================================================================
+
+@mcp.tool()
+def papers_fetch_pdf(id: str) -> str:
+    """Resolve and download an open-access PDF for a single paper (tries
+    arXiv, then Semantic Scholar, then Unpaywall, in that order — no
+    scraping, no paywall bypass). On success, sets `file`/`pdf_source` on
+    the paper. On failure, sets `pdf_status` to "unavailable" (no
+    open-access source found) or "error: <reason>" (a source was found but
+    download/validation failed) instead — never invents a `file` value."""
+    return _capture(papers_api.cmd_fetch_pdf, [id])
+
+
+@mcp.tool()
+def papers_sync_pdfs() -> str:
+    """Run fetch-pdf on every paper in the catalog. Skips papers that
+    already have a PDF on disk (idempotent). May take a while due to
+    Semantic Scholar/Unpaywall rate limits."""
+    return _capture(papers_api.cmd_sync_pdfs)
+
+
+# =============================================================================
 # Venue tools
 # =============================================================================
 

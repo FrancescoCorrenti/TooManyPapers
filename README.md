@@ -70,7 +70,11 @@ It has two main interfaces:
 
 Once installed, run `/too-many-papers:webui` (or just ask the AI to "open Too Many Papers") — it calls the `webui_launch` MCP tool, which starts the server from the files already inside the installed plugin (no separate download, no need to locate the plugin folder yourself) and gives you the link: http://localhost:3737.
 
-Features: full-text search, filter by concept/venue/read status, pin favorites to the top, citation network links (click to navigate), local PDF viewer, dark theme.
+A tab per object type (Papers, Concepts, Projects, Endpoints, Ideas, Pools, plus a force-directed Graph view) with closable detail sub-tabs — the list view shows only the essentials, opening an item shows everything (abstract/notes, connections, an inline PDF viewer) without losing your place. Every tab keeps its most-used filters in easy reach (search, status/area, read state, node-type toggles in the Graph view) with an "Advanced filters" panel one click away for deeper queries — a "linked to" cross-reference filter (any paper/concept/project/etc. connected to a chosen node) in the list tabs, and a "linked to concept" BFS filter plus per-edge-type toggles in the Graph view. Also: full-text search, filter by concept/venue/read status, pin favorites to the top, citation network links (click to navigate), a pencil button to edit every field of any paper or graph node in place, dark theme. PDFs are fetched automatically (arXiv, Semantic Scholar, Unpaywall — see below) so the viewer usually has something to show without manual downloading.
+
+<p align="center">
+  <img src="docs/screenshots/01-papers-browse.gif" width="800" alt="Browsing the Papers tab, with search, filters and citation links">
+</p>
 
 ### First run
 
@@ -78,7 +82,11 @@ The AI gives a short self-introduction, then asks a single open question: descri
 
 ### The knowledge graph
 
-Everything lives in a typed graph with **nodes** and **edges**:
+Everything lives in a typed graph with **nodes** and **edges**, browsable as a force-directed graph in the web UI — click any node to jump straight to its detail tab, hover an edge to see the relationship:
+
+<p align="center">
+  <img src="docs/screenshots/02-graph-view.gif" width="800" alt="Force-directed Graph view: hovering an edge, then clicking a concept node to open its detail tab">
+</p>
 
 | Node type | What it represents |
 |-----------|-------------------|
@@ -118,6 +126,26 @@ Scores decay at **0.7x per week**. `linked` is logged automatically by the serve
 
 Every mutation (paper added, edge created, node deleted, etc.) is written automatically to an append-only `_log.jsonl` — a mechanical "what changed, when" record the server produces as a side effect of the tool call, not something the AI has to remember to do separately. `graph_lint` complements this by health-checking the graph on request: orphan nodes with no edges, projects with no papers linked, dangling `cites`/`cited_by` references, papers pointing at a deleted venue, ideas left open and untouched for months, and concepts that have gone quiet. It only reports issues — nothing is fixed or deleted automatically.
 
+### Filtering, everywhere
+
+Every tab keeps the filters you use most (search, status, node type) always visible, with an "Advanced filters" panel one click away for a "linked to" cross-reference filter — pick any concept, project, paper, etc. and instantly see everything connected to it:
+
+<p align="center">
+  <img src="docs/screenshots/05-advanced-filters.gif" width="800" alt="Opening Advanced filters and picking a concept in the 'linked to' cross-reference filter">
+</p>
+
+### Automatic PDF fetching
+
+When a paper is added, the server tries to resolve and download an open-access PDF on its own — arXiv first (a known-stable URL pattern, no request needed), then Semantic Scholar's `openAccessPdf`, then Unpaywall's `best_oa_location` (falls through to the next source if an earlier one's link turns out not to be a real PDF). No scraping, no paywall bypass — only these three APIs. Every download is byte-validated (it must actually start with the PDF magic bytes) before being saved, so a redirect or paywall HTML page can never end up masquerading as the paper. If nothing is found, the paper is marked `pdf_status: unavailable` (paywalled, nothing to do) instead of `error: ...` (a source was found but the download failed — worth retrying with `papers_sync_pdfs`). Set `UNPAYWALL_EMAIL` (or reuse `TOO_MANY_PAPERS_CONTACT_EMAIL`) to enable the Unpaywall step — see "Recommended environment variables" in `too-many-papers-plugin/README.md`.
+
+The fetched PDF is viewable inline in the paper's detail tab (with a fullscreen toggle and page-referenced notes saved back into the JSON), and every field is editable in place via the pencil button next to the title:
+
+<p align="center">
+  <img src="docs/screenshots/03-pdf-viewer.gif" width="800" alt="Opening a paper and scrolling its automatically-fetched, inline-rendered PDF">
+  <br><br>
+  <img src="docs/screenshots/04-edit-modal.gif" width="800" alt="Editing a paper's fields through the pencil-button modal">
+</p>
+
 ### Anti-hallucination
 
 - Every paper must have a `source_verified` URL from a primary source (arXiv, DOI, PubMed, etc.)
@@ -152,9 +180,10 @@ too-many-papers/                     (this repo = the marketplace)
     │   ├── _papers.json             # paper catalog (your data)
     │   ├── _venues.json             # venue catalog (your data)
     │   ├── _graph.json              # knowledge graph (your data)
+    │   ├── pdfs/                    # automatically-fetched PDFs (your data)
     │   └── _scripts/
     │       ├── papers_api.py        # core API (CLI + library)
-    │       └── mcp_server.py        # MCP server wrapper, exposes 44 tools
+    │       └── mcp_server.py        # MCP server wrapper, exposes 46 tools
     ├── skills/
     │   └── too-many-papers/
     │       ├── SKILL.md             # behavioral rules, onboarding, briefing prompt
@@ -241,6 +270,17 @@ Each `graph_add_*` tool is typed per node type — its MCP schema only exposes t
 </details>
 
 <details>
+<summary><b>PDF tools</b> (2)</summary>
+
+| Tool | Description |
+|------|-------------|
+| `papers_fetch_pdf` | Resolve and download an open-access PDF for one paper (arXiv, then Semantic Scholar, then Unpaywall — no scraping, no paywall bypass) |
+| `papers_sync_pdfs` | Run `papers_fetch_pdf` for every paper that doesn't already have a PDF on disk |
+
+Every URL is either a known-stable pattern (arXiv) or comes from a real API response reporting an open-access location — nothing is guessed, and downloads are byte-validated (must actually look like a PDF) before being saved.
+</details>
+
+<details>
 <summary><b>Venue tools</b> (5)</summary>
 
 | Tool | Description |
@@ -260,7 +300,7 @@ Each `graph_add_*` tool is typed per node type — its MCP schema only exposes t
 The system is designed for Claude and tested with Claude Code / Claude Desktop / Cowork. Any MCP-compatible client will work, but you'll need to load `skills/too-many-papers/SKILL.md` manually or adapt it to your client's conventions.
 
 **Where is my data stored?**
-Inside the installed plugin directory: `too-many-papers-plugin/server/_papers.json`, `_venues.json`, `_graph.json`, plus an append-only `_log.jsonl` audit trail. Plain JSON, version-controllable, portable.
+Inside the installed plugin directory: `too-many-papers-plugin/server/_papers.json`, `_venues.json`, `_graph.json`, plus an append-only `_log.jsonl` audit trail and a `pdfs/` folder for automatically-fetched PDFs. Plain JSON, version-controllable, portable.
 
 **Can I use this without an LLM?**
 Yes. `papers_api.py` works as a standalone CLI, and the Too Many Papers web UI works independently.

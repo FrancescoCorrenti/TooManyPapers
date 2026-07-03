@@ -532,6 +532,592 @@
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+
+  /* ── Tabs ─────────────────────────────────────── */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    padding: 10px 40px 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    padding: 10px 18px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-dim);
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .2s ease;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── Graph view ───────────────────────────────── */
+  .graph-toolbar {
+    padding: 16px 40px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .graph-types {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .graph-types label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .graph-toolbar-2 { padding-top: 12px; padding-bottom: 12px; }
+  .filter-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .advanced-panel {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    align-items: center;
+    width: 100%;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+  }
+  #graph-wrap {
+    position: relative;
+    width: 100%;
+    height: calc(100vh - 200px);
+    overflow: hidden;
+    background: var(--bg);
+  }
+  #graph-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+  }
+  #graph-canvas.dragging { cursor: grabbing; }
+
+  #graph-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--surface2);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    color: var(--text);
+    max-width: 280px;
+    box-shadow: var(--shadow);
+    display: none;
+    z-index: 50;
+    line-height: 1.4;
+  }
+  #graph-tooltip b { color: var(--accent2); }
+
+  #graph-legend-toggle {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(28,31,38,0.92);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: var(--font-heading);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color .2s, border-color .2s;
+  }
+  #graph-legend-toggle:hover { color: var(--accent); border-color: var(--border-light); }
+
+  #graph-legend {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    background: rgba(28,31,38,0.95);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    font-size: 0.76rem;
+    color: var(--text-dim);
+    max-width: 210px;
+    max-height: min(70vh, 480px);
+    overflow-y: auto;
+    display: none;
+  }
+  #graph-legend.open { display: block; }
+  .legend-title {
+    font-family: var(--font-heading);
+    font-size: 0.88rem;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .legend-title button {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 0.9rem;
+    line-height: 1;
+    padding: 2px;
+  }
+  .legend-title button:hover { color: var(--accent); }
+  .legend-section + .legend-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .legend-subtitle { color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; font-size: 0.68rem; margin-bottom: 5px; }
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 5px;
+  }
+  .legend-row span.lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend-shape { display: inline-block; width: 11px; height: 11px; flex-shrink: 0; background: var(--accent2); }
+  .legend-shape.circle { border-radius: 50%; }
+  .legend-shape.square { border-radius: 2px; }
+  .legend-shape.triangle {
+    width: 0; height: 0; background: none;
+    border-left: 5.5px solid transparent; border-right: 5.5px solid transparent; border-bottom: 10px solid var(--accent2);
+  }
+  .legend-shape.diamond { transform: rotate(45deg); border-radius: 2px; }
+  .legend-shape.dithered {
+    opacity: 0.4;
+    background-image: radial-gradient(circle, #1c1f26 1px, transparent 1.2px);
+    background-size: 4px 4px;
+  }
+  .legend-shape.hexagon {
+    clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+  }
+  .legend-line { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--accent2); flex-shrink: 0; }
+  .legend-line.dashed { border-top-style: dashed; }
+  .legend-line.dotted { border-top-style: dotted; }
+
+  /* ── Sub-tabs (per object-type view: Library/list + closable detail tabs) ── */
+  .subtab-bar {
+    display: flex;
+    gap: 2px;
+    padding: 8px 40px 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .subtab-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+    color: var(--text-dim);
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all .15s ease;
+    max-width: 220px;
+  }
+  .subtab-btn span.subtab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .subtab-btn:hover { color: var(--text); }
+  .subtab-btn.active { color: var(--accent); background: var(--bg); border-color: var(--border); position: relative; top: 1px; }
+  .subtab-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 3px;
+    opacity: 0.6;
+    flex-shrink: 0;
+  }
+  .subtab-close:hover { opacity: 1; background: var(--border); }
+
+  /* ── Generic object-type list (concepts/projects/endpoints/ideas/pools) ── */
+  .type-grid {
+    padding: 32px 40px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+  }
+  .type-card {
+    background: var(--unread-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    cursor: pointer;
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  }
+  .type-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+    border-color: var(--border-light);
+  }
+  .type-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .type-card-id {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--accent2);
+    text-transform: uppercase;
+  }
+  .type-card-name {
+    font-family: var(--font-heading);
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .type-card-sub {
+    font-size: 0.8rem;
+    color: var(--accent2);
+    margin-bottom: 6px;
+  }
+  .type-card-desc {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .card { cursor: pointer; }
+
+  /* ── Detail pane (paper or graph-object) ─────────────────────────────── */
+  .detail-pane {
+    padding: 32px 40px;
+    max-width: 900px;
+  }
+  .detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .detail-title {
+    font-family: var(--font-heading);
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: var(--text);
+    margin: 6px 0;
+    line-height: 1.3;
+  }
+  .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .detail-section {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+  }
+  .detail-section-title {
+    font-family: var(--font-heading);
+    font-size: 1rem;
+    color: var(--accent2);
+    margin-bottom: 10px;
+  }
+  .detail-text {
+    font-size: 0.92rem;
+    color: var(--text);
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .detail-field {
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .detail-field b { color: var(--text); font-weight: 500; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .detail-chip {
+    font-size: 0.78rem;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--accent2);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .detail-chip:hover { border-color: var(--accent2); color: var(--text); background: var(--surface2); }
+  .conn-list { display: flex; flex-direction: column; gap: 8px; }
+  .conn-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: border-color .15s;
+    flex-wrap: wrap;
+  }
+  .conn-row:hover { border-color: var(--border-light); }
+  .conn-type {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    background: rgba(0,0,0,0.2);
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .conn-dir { color: var(--text-dim); }
+  .conn-name { color: var(--text); font-weight: 500; }
+  .conn-note { color: var(--text-dim); font-style: italic; font-size: 0.8rem; }
+  .pdf-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+  }
+  .pdf-viewer-wrap {
+    width: 100%;
+  }
+  .pdf-frame {
+    width: 100%;
+    height: 720px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: #fff;
+    display: block;
+  }
+  .pdf-viewer-wrap:fullscreen {
+    background: #000;
+    padding: 16px;
+  }
+  .pdf-viewer-wrap:fullscreen .pdf-frame {
+    height: 100%;
+    border: none;
+    border-radius: 0;
+  }
+
+  /* ── PDF notes ────────────────────────────────── */
+  .pdf-notes {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--border);
+  }
+  .pdf-notes-title {
+    font-family: var(--font-heading);
+    font-size: 0.95rem;
+    color: var(--accent2);
+    margin-bottom: 10px;
+  }
+  .pdf-notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .pdf-note-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .pdf-note-page-badge {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: rgba(212,175,55,0.12);
+    border: 1px solid rgba(212,175,55,0.3);
+    border-radius: 10px;
+    padding: 2px 9px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .pdf-note-page-badge:hover { background: rgba(212,175,55,0.22); }
+  .pdf-note-text {
+    flex: 1;
+    font-size: 0.86rem;
+    color: var(--text);
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  .pdf-note-delete {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    opacity: 0.6;
+    padding: 2px 6px;
+    border-radius: var(--radius);
+  }
+  .pdf-note-delete:hover { opacity: 1; color: var(--orange); background: var(--surface); }
+  .pdf-notes-add {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .pdf-note-page-input {
+    width: 90px;
+    flex-shrink: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 9px 10px;
+    font-size: 0.85rem;
+  }
+  .pdf-note-text-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 9px 12px;
+    font-size: 0.85rem;
+    font-family: var(--font-body);
+    min-height: 40px;
+    resize: vertical;
+  }
+
+  /* ── Edit button (pencil) ─────────────────────── */
+  .edit-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: var(--radius);
+    opacity: 0.6;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .2s ease;
+  }
+  .edit-btn:hover { opacity: 1; color: var(--accent); background: var(--surface2); }
+  .detail-edit-btn {
+    flex-shrink: 0;
+  }
+
+  /* ── Edit modal ───────────────────────────────── */
+  #edit-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    z-index: 1000;
+    padding: 60px 20px;
+    overflow-y: auto;
+  }
+  #edit-modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    width: 100%;
+    max-width: 560px;
+    max-height: calc(100vh - 120px);
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-header h3 {
+    font-family: var(--font-heading);
+    font-size: 1.2rem;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius);
+  }
+  .modal-close:hover { color: var(--accent); background: var(--surface2); }
+  .modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .form-field { display: flex; flex-direction: column; gap: 6px; }
+  .form-field label {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  .form-field input[type="text"],
+  .form-field input[type="number"],
+  .form-field textarea,
+  .form-field select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 9px 12px;
+    font-size: 0.9rem;
+    font-family: var(--font-body);
+    outline: none;
+  }
+  .form-field input:focus, .form-field textarea:focus, .form-field select:focus {
+    border-color: var(--accent);
+  }
+  .form-field textarea { resize: vertical; min-height: 60px; }
+  .form-field select[multiple] { min-height: 110px; }
+  .form-field-check { flex-direction: row; align-items: center; gap: 8px; }
+  .form-field-check label { text-transform: none; font-weight: 500; font-size: 0.88rem; color: var(--text); }
+  .form-hint { font-size: 0.75rem; color: var(--text-dim); }
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+  }
+  .modal-btn-save {
+    background: var(--accent);
+    color: #1a1a1a;
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .modal-btn-save:hover { background: var(--accent-hover); }
 </style>
 </head>
 <body>
@@ -547,58 +1133,198 @@
   </div>
 </header>
 
-<div class="toolbar">
-  <div class="search-wrap">
-    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-    </svg>
-    <input type="search" id="search-input" placeholder="Search title, authors, ID...">
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="paper">Papers</button>
+  <button class="tab-btn" data-tab="concept">Concepts</button>
+  <button class="tab-btn" data-tab="project">Projects</button>
+  <button class="tab-btn" data-tab="endpoint">Endpoints</button>
+  <button class="tab-btn" data-tab="idea">Ideas</button>
+  <button class="tab-btn" data-tab="pool">Pools</button>
+  <button class="tab-btn" data-tab="graph">Graph</button>
+</div>
+
+<div id="view-paper">
+  <div class="subtab-bar" id="subtabbar-paper"></div>
+  <div id="pane-paper-list">
+    <div class="toolbar">
+      <div class="search-wrap">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="search" id="search-input" placeholder="Search title, authors, ID...">
+      </div>
+
+      <div class="filter-btns">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="unread">Unread</button>
+        <button class="filter-btn" data-filter="read">Read</button>
+        <button class="filter-btn" data-filter="hidden">Hidden</button>
+      </div>
+
+      <select class="sel" id="concept-filter">
+        <option value="">All concepts</option>
+      </select>
+
+      <select class="sel" id="venue-filter">
+        <option value="">All venues</option>
+      </select>
+
+      <div class="sort-wrap">
+        <span>Sort:</span>
+        <select class="sel" id="sort-select">
+          <option value="discovered">Date discovered</option>
+          <option value="year">Year pub.</option>
+          <option value="id">ID</option>
+        </select>
+        <button id="sort-toggle" title="Toggle ascending/descending" style="
+          padding: 6px 10px;
+          border-radius: 8px;
+          border: 1px solid var(--border);
+          background: var(--surface2);
+          color: var(--text);
+          font-size: 0.9rem;
+          cursor: pointer;
+          transition: all .18s;
+          user-select: none;
+          min-width: 28px;
+          text-align: center;
+        ">↓</button>
+      </div>
+
+      <button class="filter-btn" id="paper-advanced-toggle" aria-expanded="false">Advanced filters &#9656;</button>
+    </div>
+    <div class="advanced-panel" id="paper-advanced-panel" style="display:none; padding: 0 40px 16px; background: var(--surface); border-bottom: 1px solid var(--border); margin-top: -1px;">
+      <div class="filter-inline">
+        <span>Linked to:</span>
+        <select class="sel" id="paper-linkedto-filter"><option value="">Any</option></select>
+      </div>
+    </div>
+
+    <div id="error-banner"></div>
+    <main id="grid"></main>
   </div>
+  <div id="pane-paper-detail" class="detail-pane" style="display:none;"></div>
+</div>
 
-  <div class="filter-btns">
-    <button class="filter-btn active" data-filter="all">All</button>
-    <button class="filter-btn" data-filter="unread">Unread</button>
-    <button class="filter-btn" data-filter="read">Read</button>
-    <button class="filter-btn" data-filter="hidden">Hidden</button>
+<div id="view-concept" style="display:none;">
+  <div class="subtab-bar" id="subtabbar-concept"></div>
+  <div id="pane-concept-list"></div>
+  <div id="pane-concept-detail" class="detail-pane" style="display:none;"></div>
+</div>
+
+<div id="view-project" style="display:none;">
+  <div class="subtab-bar" id="subtabbar-project"></div>
+  <div id="pane-project-list"></div>
+  <div id="pane-project-detail" class="detail-pane" style="display:none;"></div>
+</div>
+
+<div id="view-endpoint" style="display:none;">
+  <div class="subtab-bar" id="subtabbar-endpoint"></div>
+  <div id="pane-endpoint-list"></div>
+  <div id="pane-endpoint-detail" class="detail-pane" style="display:none;"></div>
+</div>
+
+<div id="view-idea" style="display:none;">
+  <div class="subtab-bar" id="subtabbar-idea"></div>
+  <div id="pane-idea-list"></div>
+  <div id="pane-idea-detail" class="detail-pane" style="display:none;"></div>
+</div>
+
+<div id="view-pool" style="display:none;">
+  <div class="subtab-bar" id="subtabbar-pool"></div>
+  <div id="pane-pool-list"></div>
+  <div id="pane-pool-detail" class="detail-pane" style="display:none;"></div>
+</div>
+
+<div id="view-graph" style="display:none;">
+  <div class="graph-toolbar">
+    <div class="search-wrap" style="max-width:320px;">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="search" id="graph-search" placeholder="Filter graph nodes...">
+    </div>
+    <div class="graph-types">
+      <label><input type="checkbox" class="gtype" value="paper" checked> Papers</label>
+      <label><input type="checkbox" class="gtype" value="concept" checked> Concepts</label>
+      <label><input type="checkbox" class="gtype" value="project" checked> Projects</label>
+      <label><input type="checkbox" class="gtype" value="endpoint" checked> Endpoints</label>
+      <label><input type="checkbox" class="gtype" value="idea" checked> Ideas</label>
+      <label><input type="checkbox" class="gtype" value="pool" checked> Pools</label>
+    </div>
+    <button id="graph-reset" class="filter-btn" title="Reset zoom/pan">Reset view</button>
   </div>
-
-  <select class="sel" id="concept-filter">
-    <option value="">All concepts</option>
-  </select>
-
-  <select class="sel" id="venue-filter">
-    <option value="">All venues</option>
-  </select>
-
-  <div class="sort-wrap">
-    <span>Sort:</span>
-    <select class="sel" id="sort-select">
-      <option value="discovered">Date discovered</option>
-      <option value="year">Year pub.</option>
-      <option value="id">ID</option>
-    </select>
-    <button id="sort-toggle" title="Toggle ascending/descending" style="
-      padding: 6px 10px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: var(--surface2);
-      color: var(--text);
-      font-size: 0.9rem;
-      cursor: pointer;
-      transition: all .18s;
-      user-select: none;
-      min-width: 28px;
-      text-align: center;
-    ">↓</button>
+  <div class="graph-toolbar graph-toolbar-2">
+    <div class="filter-inline">
+      <span>Linked to concept:</span>
+      <select class="sel" id="graph-concept-filter">
+        <option value="">Any</option>
+      </select>
+    </div>
+    <button id="graph-advanced-toggle" class="filter-btn" aria-expanded="false">Advanced filters &#9656;</button>
+    <div id="graph-advanced-panel" class="advanced-panel" style="display:none;">
+      <div class="filter-inline">
+        <span>Depth:</span>
+        <select class="sel" id="graph-link-depth">
+          <option value="1">1 hop</option>
+          <option value="2" selected>2 hops</option>
+          <option value="3">3 hops</option>
+        </select>
+      </div>
+      <div class="filter-inline">
+        <span>Edge types:</span>
+        <span id="graph-edge-type-filters" class="graph-types"></span>
+      </div>
+    </div>
+  </div>
+  <div id="graph-wrap">
+    <canvas id="graph-canvas"></canvas>
+    <div id="graph-tooltip"></div>
+    <button id="graph-legend-toggle" title="Show legend">?</button>
+    <div id="graph-legend">
+      <div class="legend-title">Legend <button id="graph-legend-close" title="Close">✕</button></div>
+      <div class="legend-section">
+        <div class="legend-subtitle">Shapes</div>
+        <div class="legend-row"><span class="legend-shape circle" style="background:#8496B0"></span> <span class="lbl">Paper (solid)</span></div>
+        <div class="legend-row"><span class="legend-shape circle dithered" style="background:#8496B0"></span> <span class="lbl">Concept (dithered)</span></div>
+        <div class="legend-row"><span class="legend-shape square"></span> <span class="lbl">Project</span></div>
+        <div class="legend-row"><span class="legend-shape triangle"></span> <span class="lbl">Endpoint</span></div>
+        <div class="legend-row"><span class="legend-shape diamond"></span> <span class="lbl">Idea</span></div>
+        <div class="legend-row"><span class="legend-shape hexagon"></span> <span class="lbl">Pool</span></div>
+      </div>
+      <div class="legend-section">
+        <div class="legend-subtitle">Edges</div>
+        <div class="legend-row"><span class="legend-line solid"></span> <span class="lbl">Graph edge</span></div>
+        <div class="legend-row"><span class="legend-line dashed"></span> <span class="lbl">Citation</span></div>
+        <div class="legend-row"><span class="legend-line dotted"></span> <span class="lbl">Concept tag</span></div>
+      </div>
+      <div class="legend-section" id="legend-concepts">
+        <div class="legend-subtitle">Concept colors</div>
+        <!-- populated dynamically once the graph loads -->
+      </div>
+    </div>
   </div>
 </div>
 
-<div id="error-banner"></div>
-<main id="grid"></main>
 <div id="toast"></div>
+
+<div id="edit-modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="edit-modal-title">Edit</h3>
+      <button class="modal-close" id="edit-modal-close" title="Close">✕</button>
+    </div>
+    <div class="modal-body" id="edit-modal-body"></div>
+    <div class="modal-footer">
+      <button class="filter-btn" id="edit-modal-cancel">Cancel</button>
+      <button class="filter-btn modal-btn-save" id="edit-modal-save">Save</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const API = 'http://localhost:3737/api';
+const PENCIL_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
 
 let allPapers   = [];
 let allVenues   = {};
@@ -607,9 +1333,68 @@ let filterMode  = 'all';
 let searchQ     = '';
 let conceptF    = '';
 let venueF      = '';
+let linkedToF   = ''; // advanced filter: paper must be linked (any edge) to this graph node id
 let sortMode    = 'discovered';
 let sortAscend  = false;
 let pinnedOrder = []; // ordered array of pinned IDs
+
+// ── Shared graph data (nodes/edges from /api/graph) ─────────────────────────
+// Used by the Graph canvas view AND by the per-type list/detail tabs below.
+let GraphNodes = {}; // id -> raw node
+let GraphEdges = []; // {from, to, type, note}
+let graphLoadPromise = null;
+
+async function loadGraphData() {
+  const res  = await fetch(`${API}/graph`);
+  const data = await res.json();
+  GraphNodes = data.nodes || {};
+  GraphEdges = data.edges || [];
+  return data;
+}
+
+function ensureGraphLoaded() {
+  if (!graphLoadPromise) graphLoadPromise = loadGraphData().catch(e => {
+    graphLoadPromise = null; // allow retry
+    throw e;
+  });
+  return graphLoadPromise;
+}
+
+// Forces the next Graph-tab visit (and the "linked to" dropdowns) to refetch
+// /api/graph instead of reusing the cached copy — called after any edit that
+// changes node/edge data, so the force-directed view and filters never show
+// stale names/fields after a save.
+function invalidateGraphCache() {
+  graphLoadPromise = null;
+  if (typeof Graph !== 'undefined') Graph.loaded = false;
+}
+
+// Forces the per-type list panes (Concepts/Projects/Endpoints/Ideas/Pools)
+// to rebuild their filter toolbars — including the "linked to" dropdown and
+// quick-filter option lists — next time they're rendered, so a rename/edit
+// is reflected there too instead of showing stale option labels.
+function resetAllTypeToolbars() {
+  ['concept', 'project', 'endpoint', 'idea', 'pool'].forEach(t => {
+    const el = document.getElementById(`pane-${t}-list`);
+    if (el) delete el.dataset.toolbarBuilt;
+  });
+}
+
+// ── Tabs: object-type views (Papers/Concepts/Projects/Endpoints/Ideas/Pools) ──
+
+const TYPE_META = {
+  paper:    { label: 'Papers' },
+  concept:  { label: 'Concepts' },
+  project:  { label: 'Projects' },
+  endpoint: { label: 'Endpoints' },
+  idea:     { label: 'Ideas' },
+  pool:     { label: 'Pools' },
+};
+const TOP_TABS = ['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'graph'];
+
+let currentTopTab = 'paper';
+let openTabs  = { paper: [], concept: [], project: [], endpoint: [], idea: [], pool: [] };
+let activeSub = { paper: 'list', concept: 'list', project: 'list', endpoint: 'list', idea: 'list', pool: 'list' };
 
 // ── Cookie helpers ────────────────────────────────────────────────────────────
 
@@ -803,6 +1588,8 @@ function render() {
     if (filterMode === 'unread' &&  p.read) return false;
     if (conceptF && !(p.concepts || []).some(c => c.id === conceptF)) return false;
     if (venueF   && p.venueId !== venueF) return false;
+    if (linkedToF && !GraphEdges.some(e =>
+        (e.from === p.id && e.to === linkedToF) || (e.to === p.id && e.from === linkedToF))) return false;
     if (q) {
       const hay = [p.id, p.titolo, p.autori, p.venueName, p.venueDetail,
                    ...(p.concepts || []).map(c => c.name)].join(' ').toLowerCase();
@@ -839,34 +1626,22 @@ function render() {
   grid.querySelectorAll('.pin-btn').forEach(btn => {
     btn.addEventListener('click', () => togglePin(btn.dataset.id));
   });
+  grid.querySelectorAll('[data-edit-paper]').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); openEditModal('paper', btn.dataset.editPaper); });
+  });
   grid.querySelectorAll('.hide-btn').forEach(btn => {
     btn.addEventListener('click', () => toggleHidden(btn.dataset.id));
   });
   grid.querySelectorAll('.cite-link').forEach(el => {
-    el.addEventListener('click', () => gotoPaper(el.dataset.goto));
+    el.addEventListener('click', e => { e.stopPropagation(); openDetail('paper', el.dataset.goto); });
+  });
+  grid.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('button, a')) return; // let action buttons/links handle their own click
+      openDetail('paper', card.dataset.id);
+    });
   });
   initDrag(grid);
-}
-
-// Navigate to a specific paper (from a Cites/Cited by link): reset filters
-// that would exclude it and put its ID in the searchbar, then scroll to the card.
-function gotoPaper(id) {
-  const target = allPapers.find(p => p.id === id);
-  if (!target) { toast(`${id} not found`); return; }
-  filterMode = target.hidden ? 'hidden' : 'all';
-  searchQ = id;
-  conceptF = '';
-  venueF = '';
-  document.getElementById('search-input').value = searchQ;
-  document.querySelectorAll('.filter-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.filter === filterMode);
-  });
-  document.getElementById('concept-filter').value = '';
-  document.getElementById('venue-filter').value = '';
-  saveUI();
-  render();
-  const card = document.querySelector(`.card[data-id="${id}"]`);
-  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // ── Card ─────────────────────────────────────────────────────────────────────
@@ -924,6 +1699,7 @@ function cardHTML(p) {
     <div class="card-header">
       <span class="paper-id ${isOut ? 'outside' : ''} ${isHidden ? 'hidden-tag' : ''}">${esc(p.id)}${isOut ? ' ↗' : ''}${isHidden ? ' (Hidden)' : ''}</span>
       <div class="card-actions">
+        <button class="edit-btn" data-edit-paper="${esc(p.id)}" title="Edit">${PENCIL_SVG}</button>
         <button class="pin-btn ${isPinnedCard ? 'pinned' : ''}" data-id="${esc(p.id)}" title="${isPinnedCard ? 'Unpin' : 'Pin to top'}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.68V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.68a2 2 0 0 1-1.11 1.87l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg></button>
         ${sourceBtn}
         <button class="hide-btn" data-id="${esc(p.id)}" title="${isHidden ? 'Restore (remove from Hidden)' : 'Hide'}">${isHidden ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'}</button>
@@ -1002,7 +1778,7 @@ function applyUIToDOM() {
   // Search
   document.getElementById('search-input').value = searchQ;
   // Filter buttons
-  document.querySelectorAll('.filter-btn').forEach(b => {
+  document.querySelectorAll('.filter-btns .filter-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.filter === filterMode);
   });
   // Sort select
@@ -1025,9 +1801,9 @@ document.getElementById('search-input').addEventListener('input', e => {
   render();
 });
 
-document.querySelectorAll('.filter-btn').forEach(btn => {
+document.querySelectorAll('.filter-btns .filter-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.filter-btns .filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     filterMode = btn.dataset.filter;
     saveUI();
@@ -1047,6 +1823,27 @@ document.getElementById('venue-filter').addEventListener('change', e => {
   render();
 });
 
+document.getElementById('paper-linkedto-filter').addEventListener('change', e => {
+  linkedToF = e.target.value;
+  render();
+});
+
+document.getElementById('paper-advanced-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('paper-advanced-panel');
+  const btn = document.getElementById('paper-advanced-toggle');
+  const open = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'flex';
+  btn.setAttribute('aria-expanded', String(!open));
+  btn.innerHTML = open ? 'Advanced filters &#9656;' : 'Advanced filters &#9662;';
+});
+
+function populatePaperLinkedToFilter() {
+  const sel = document.getElementById('paper-linkedto-filter');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">Any</option>' + allNodeOptionsHTML();
+  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+}
+
 document.getElementById('sort-select').addEventListener('change', e => {
   sortMode = e.target.value;
   saveUI();
@@ -1064,12 +1861,1191 @@ document.getElementById('sort-toggle').addEventListener('click', () => {
   render();
 });
 
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+//
+// Top-level tabs: Papers / Concepts / Projects / Endpoints / Ideas / Pools / Graph.
+// Each object-type tab (all but Graph) has its own row of sub-tabs: an
+// always-open "list" tab showing the summary grid, plus one closable
+// detail sub-tab per item the user has opened. Opening an item shows its
+// full info (abstract/notes, PDF, connections) without leaving the tab.
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTopTab(btn.dataset.tab));
+});
+
+function switchTopTab(type) {
+  currentTopTab = type;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === type));
+  TOP_TABS.forEach(t => {
+    const el = document.getElementById(`view-${t}`);
+    if (el) el.style.display = t === type ? '' : 'none';
+  });
+
+  if (type === 'graph') {
+    ensureGraphLoaded().then(() => {
+      if (!Graph.loaded) Graph.init();
+      Graph.resize();
+    });
+    return;
+  }
+
+  if (type === 'paper') {
+    renderSubTabBar('paper');
+    renderActivePane('paper');
+    return;
+  }
+
+  ensureGraphLoaded().then(() => {
+    renderSubTabBar(type);
+    renderActivePane(type);
+  });
+}
+
+// Open (or focus, if already open) a detail sub-tab for a given object and
+// switch to its top-level tab.
+function openDetail(type, id) {
+  if (!openTabs[type].includes(id)) openTabs[type].push(id);
+  activeSub[type] = id;
+  switchTopTab(type);
+}
+
+function closeDetail(type, id) {
+  openTabs[type] = openTabs[type].filter(x => x !== id);
+  if (activeSub[type] === id) activeSub[type] = 'list';
+  renderSubTabBar(type);
+  renderActivePane(type);
+}
+
+function selectSubTab(type, sub) {
+  activeSub[type] = sub;
+  renderSubTabBar(type);
+  renderActivePane(type);
+}
+
+function tabLabelFor(type, id) {
+  if (type === 'paper') {
+    const p = allPapers.find(p => p.id === id);
+    return p ? p.id : id;
+  }
+  const n = GraphNodes[id];
+  return n ? (n.name || id) : id;
+}
+
+function renderSubTabBar(type) {
+  const bar = document.getElementById(`subtabbar-${type}`);
+  if (!bar) return;
+  let html = `<button class="subtab-btn ${activeSub[type] === 'list' ? 'active' : ''}" data-sub="list"><span class="subtab-label">${esc(TYPE_META[type].label)}</span></button>`;
+  openTabs[type].forEach(id => {
+    html += `<button class="subtab-btn ${activeSub[type] === id ? 'active' : ''}" data-sub="${esc(id)}">
+      <span class="subtab-label">${esc(tabLabelFor(type, id))}</span>
+      <span class="subtab-close" data-close="${esc(id)}">✕</span>
+    </button>`;
+  });
+  bar.innerHTML = html;
+  bar.querySelectorAll('.subtab-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      if (e.target.closest('.subtab-close')) return;
+      selectSubTab(type, btn.dataset.sub);
+    });
+  });
+  bar.querySelectorAll('.subtab-close').forEach(x => {
+    x.addEventListener('click', e => { e.stopPropagation(); closeDetail(type, x.dataset.close); });
+  });
+}
+
+function renderActivePane(type) {
+  const listPane   = document.getElementById(`pane-${type}-list`);
+  const detailPane = document.getElementById(`pane-${type}-detail`);
+  if (activeSub[type] === 'list') {
+    listPane.style.display = '';
+    detailPane.style.display = 'none';
+    if (type !== 'paper') renderTypeList(type);
+  } else {
+    listPane.style.display = 'none';
+    detailPane.style.display = '';
+    if (type === 'paper') renderPaperDetail(detailPane, activeSub[type]);
+    else renderNodeDetail(detailPane, type, activeSub[type]);
+  }
+}
+
+// ── Generic object-type list (concepts/projects/endpoints/ideas/pools) ──────
+//
+// Easy-access filters (search + a type-relevant quick filter) stay visible
+// at all times; a "linked to" cross-reference filter — the same kind of
+// filter the Graph view offers via its concept-link filter — lives behind
+// an Advanced toggle since it's a more specialized, less-common query.
+
+const QUICK_FIELD = { concept: 'area', project: 'status', endpoint: 'status', idea: 'status', pool: null };
+
+let typeFilterState = {
+  concept:  { search: '', quick: '', linkedTo: '' },
+  project:  { search: '', quick: '', linkedTo: '' },
+  endpoint: { search: '', quick: '', linkedTo: '' },
+  idea:     { search: '', quick: '', linkedTo: '' },
+  pool:     { search: '', quick: '', linkedTo: '' },
+};
+
+function distinctFieldValues(type, field) {
+  const set = new Set();
+  Object.values(GraphNodes).forEach(n => { if (n.type === type && n[field]) set.add(n[field]); });
+  return [...set].sort();
+}
+
+function allNodeOptionsHTML() {
+  const byType = {};
+  Object.entries(GraphNodes).forEach(([id, n]) => {
+    (byType[n.type] = byType[n.type] || []).push([id, n]);
+  });
+  return Object.keys(byType).sort().map(t => {
+    const opts = byType[t]
+      .sort((a, b) => (a[1].name || a[1].title || '').localeCompare(b[1].name || b[1].title || ''))
+      .map(([id, n]) => `<option value="${esc(id)}">${esc(n.name || n.title || id)}</option>`)
+      .join('');
+    return `<optgroup label="${esc((TYPE_META[t] && TYPE_META[t].label) || t)}">${opts}</optgroup>`;
+  }).join('');
+}
+
+function renderTypeList(type) {
+  const container = document.getElementById(`pane-${type}-list`);
+  if (!container.dataset.toolbarBuilt) {
+    const qf = QUICK_FIELD[type];
+    const quickOptions = qf ? distinctFieldValues(type, qf) : [];
+    container.innerHTML = `
+      <div class="toolbar">
+        <div class="search-wrap" style="max-width:320px;">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="search" class="type-search" placeholder="Search ${esc(TYPE_META[type].label.toLowerCase())}...">
+        </div>
+        ${qf ? `<select class="sel type-quick">
+          <option value="">All ${esc(qf)}</option>
+          ${quickOptions.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+        </select>` : ''}
+        <button class="filter-btn type-advanced-toggle" aria-expanded="false">Advanced filters &#9656;</button>
+      </div>
+      <div class="advanced-panel" style="display:none;">
+        <div class="filter-inline">
+          <span>Linked to:</span>
+          <select class="sel type-linkedto"><option value="">Any</option>${allNodeOptionsHTML()}</select>
+        </div>
+      </div>
+      <div class="type-grid"></div>`;
+    container.dataset.toolbarBuilt = '1';
+
+    const state = typeFilterState[type];
+    container.querySelector('.type-search').addEventListener('input', e => {
+      state.search = e.target.value.toLowerCase();
+      renderTypeGrid(type);
+    });
+    const quickSel = container.querySelector('.type-quick');
+    if (quickSel) quickSel.addEventListener('change', e => {
+      state.quick = e.target.value;
+      renderTypeGrid(type);
+    });
+    container.querySelector('.type-linkedto').addEventListener('change', e => {
+      state.linkedTo = e.target.value;
+      renderTypeGrid(type);
+    });
+    const advToggle = container.querySelector('.type-advanced-toggle');
+    const advPanel = container.querySelector('.advanced-panel');
+    advToggle.addEventListener('click', () => {
+      const open = advPanel.style.display !== 'none';
+      advPanel.style.display = open ? 'none' : 'flex';
+      advToggle.setAttribute('aria-expanded', String(!open));
+      advToggle.innerHTML = open ? 'Advanced filters &#9656;' : 'Advanced filters &#9662;';
+    });
+  }
+  renderTypeGrid(type);
+}
+
+function renderTypeGrid(type) {
+  const grid = document.querySelector(`#pane-${type}-list .type-grid`);
+  if (!grid) return;
+  const state = typeFilterState[type];
+  const qf = QUICK_FIELD[type];
+
+  let items = Object.entries(GraphNodes).filter(([, n]) => n.type === type);
+  if (state.search) {
+    items = items.filter(([id, n]) =>
+      (id + ' ' + (n.name || '') + ' ' + (n.description || '')).toLowerCase().includes(state.search));
+  }
+  if (qf && state.quick) items = items.filter(([, n]) => n[qf] === state.quick);
+  if (state.linkedTo) {
+    items = items.filter(([id]) => GraphEdges.some(e =>
+      (e.from === id && e.to === state.linkedTo) || (e.to === id && e.from === state.linkedTo)));
+  }
+  items.sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''));
+
+  if (!items.length) {
+    grid.innerHTML = `<div class="empty">No ${TYPE_META[type].label.toLowerCase()} match your filters</div>`;
+    return;
+  }
+  grid.innerHTML = items.map(([id, n]) => typeCardHTML(id, n)).join('');
+  grid.querySelectorAll('.type-card').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target.closest('button')) return;
+      openDetail(type, el.dataset.id);
+    });
+  });
+  grid.querySelectorAll('[data-edit-node]').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); openEditModal('node', btn.dataset.editNode); });
+  });
+}
+
+function typeCardHTML(id, n) {
+  const sub = n.area || n.status || n.created || '';
+  return `
+  <div class="type-card" data-id="${esc(id)}">
+    <div class="type-card-header">
+      <div class="type-card-id">${esc(id)}</div>
+      <button class="edit-btn" data-edit-node="${esc(id)}" title="Edit">${PENCIL_SVG}</button>
+    </div>
+    <div class="type-card-name">${esc(n.name || id)}</div>
+    ${sub ? `<div class="type-card-sub">${esc(sub)}</div>` : ''}
+    ${n.description ? `<div class="type-card-desc">${esc(truncate(n.description, 160))}</div>` : ''}
+  </div>`;
+}
+
+// ── Detail panes ─────────────────────────────────────────────────────────────
+
+function renderPaperDetail(container, id) {
+  const p = allPapers.find(x => x.id === id);
+  if (!p) { container.innerHTML = `<div class="empty">Paper not found</div>`; return; }
+
+  const venueLabel = p.venueDetail ? `${p.venueName} · ${p.venueDetail}` : p.venueName;
+  const extLink = (typeof p.source === 'string' && p.source.trim()) ? p.source
+                : (typeof p.url === 'string' && p.url.trim()) ? p.url : '';
+
+  const conceptChips = (p.concepts || []).map(c =>
+    `<span class="detail-chip" data-open-concept="${esc(c.id)}" title="${esc(c.area)}">${esc(c.name)}</span>`
+  ).join('');
+
+  const cites = p.cites || [], citedBy = p.citedBy || [];
+  const citationsHTML = (cites.length || citedBy.length) ? `
+    <div class="detail-section">
+      <div class="detail-section-title">Citations</div>
+      ${cites.length ? `<div class="citations-row"><span class="citations-label">Cites:</span>
+        ${cites.map(c => `<span class="cite-link" data-open-paper="${esc(c.id)}">${esc(c.id)} — ${esc(truncate(c.title, 60))}</span>`).join('')}</div>` : ''}
+      ${citedBy.length ? `<div class="citations-row"><span class="citations-label">Cited by:</span>
+        ${citedBy.map(c => `<span class="cite-link cited-by-link" data-open-paper="${esc(c.id)}">${esc(c.id)} — ${esc(truncate(c.title, 60))}</span>`).join('')}</div>` : ''}
+    </div>` : '';
+
+  const hasPdf = p.file && p.fileExists;
+  const pdfHTML = hasPdf
+    ? `<div class="pdf-toolbar">
+         <button class="filter-btn pdf-fullscreen-btn" title="Fullscreen">&#10021; Fullscreen</button>
+       </div>
+       <div class="pdf-viewer-wrap" id="pdf-viewer-wrap">
+         <iframe class="pdf-frame" id="pdf-iframe" src="/pdf/${encodeURIComponent(p.file)}"></iframe>
+       </div>
+       ${pdfNotesHTML(p)}`
+    : (p.file
+        ? `<div class="empty" style="padding:30px 0;">PDF registered but not found on disk</div>`
+        : `<div class="empty" style="padding:30px 0;">No PDF on file</div>`);
+
+  container.innerHTML = `
+    <div class="detail-header">
+      <div>
+        <div class="paper-id ${p.outsideZone ? 'outside' : ''}">${esc(p.id)}${p.outsideZone ? ' ↗' : ''}${p.hidden ? ' (Hidden)' : ''}</div>
+        <h2 class="detail-title">${esc(p.titolo)}</h2>
+        <div class="paper-authors">${esc(p.autori)}</div>
+      </div>
+      <div class="detail-actions">
+        <button class="filter-btn detail-read-toggle" data-id="${esc(p.id)}">${p.read ? 'Mark unread' : 'Mark read'}</button>
+        <button class="filter-btn detail-hide-toggle" data-id="${esc(p.id)}">${p.hidden ? 'Restore' : 'Hide'}</button>
+        ${extLink ? `<a class="filter-btn" href="${esc(extLink)}" target="_blank" rel="noopener">Open source ↗</a>` : ''}
+        <button class="edit-btn detail-edit-btn" data-edit-paper="${esc(p.id)}" title="Edit">${PENCIL_SVG}</button>
+      </div>
+    </div>
+    <div class="card-meta" style="margin-top:14px;">
+      <span class="tag year">${esc(String(p.annoPub))}</span>
+      <span class="tag venue" title="${esc(venueLabel)}">${esc(venueLabel)}</span>
+      ${p.outsideZone ? '<span class="tag outside-tag">outside zone</span>' : ''}
+    </div>
+    ${conceptChips ? `<div class="detail-section"><div class="detail-section-title">Concepts</div><div class="chip-row">${conceptChips}</div></div>` : ''}
+    ${p.notes ? `<div class="detail-section"><div class="detail-section-title">Notes / Abstract</div><p class="detail-text">${esc(p.notes)}</p></div>` : ''}
+    ${citationsHTML}
+    <div class="detail-section">
+      <div class="detail-section-title">PDF</div>
+      ${pdfHTML}
+    </div>
+  `;
+
+  container.querySelectorAll('[data-open-concept]').forEach(el =>
+    el.addEventListener('click', () => openDetail('concept', el.dataset.openConcept)));
+  container.querySelectorAll('[data-open-paper]').forEach(el =>
+    el.addEventListener('click', () => openDetail('paper', el.dataset.openPaper)));
+
+  const readBtn = container.querySelector('.detail-read-toggle');
+  if (readBtn) readBtn.addEventListener('click', () => toggleRead(p.id, readBtn).then(() => renderPaperDetail(container, id)));
+  const hideBtn = container.querySelector('.detail-hide-toggle');
+  if (hideBtn) hideBtn.addEventListener('click', () => toggleHidden(p.id).then(() => renderPaperDetail(container, id)));
+  const editBtn = container.querySelector('[data-edit-paper]');
+  if (editBtn) editBtn.addEventListener('click', () => openEditModal('paper', editBtn.dataset.editPaper));
+
+  wirePdfSection(container, p);
+}
+
+// ── PDF notes + fullscreen ──────────────────────────────────────────────────
+
+function pdfNotesHTML(p) {
+  const notes = [...(p.pdfNotes || [])].sort((a, b) => {
+    if (a.page == null && b.page == null) return 0;
+    if (a.page == null) return 1;
+    if (b.page == null) return -1;
+    return a.page - b.page;
+  });
+  const rows = notes.map(n => `
+    <div class="pdf-note-row" data-note-id="${esc(n.id)}">
+      ${n.page ? `<span class="pdf-note-page-badge" data-jump-page="${esc(String(n.page))}">p.${esc(String(n.page))}</span>` : '<span class="pdf-note-page-badge" style="opacity:.5;">general</span>'}
+      <span class="pdf-note-text">${esc(n.text)}</span>
+      <button class="pdf-note-delete" data-delete-note="${esc(n.id)}" title="Delete note">✕</button>
+    </div>`).join('');
+
+  return `
+    <div class="pdf-notes">
+      <div class="pdf-notes-title">Notes on this PDF</div>
+      <div class="pdf-notes-list">${rows || '<div class="empty" style="padding:8px 0;">No notes yet</div>'}</div>
+      <div class="pdf-notes-add">
+        <input type="number" class="pdf-note-page-input" id="pdf-note-page" placeholder="Page" min="1">
+        <textarea class="pdf-note-text-input" id="pdf-note-text" placeholder="Add a note tied to this PDF..." rows="2"></textarea>
+        <button class="filter-btn" id="pdf-note-add-btn">Add note</button>
+      </div>
+    </div>`;
+}
+
+function wirePdfSection(container, p) {
+  const fsBtn = container.querySelector('.pdf-fullscreen-btn');
+  if (fsBtn) fsBtn.addEventListener('click', () => {
+    const wrap = container.querySelector('#pdf-viewer-wrap');
+    if (!wrap) return;
+    if (document.fullscreenElement) document.exitFullscreen();
+    else wrap.requestFullscreen().catch(() => toast('Fullscreen not available'));
+  });
+
+  container.querySelectorAll('[data-jump-page]').forEach(el => {
+    el.addEventListener('click', () => {
+      const iframe = container.querySelector('#pdf-iframe');
+      if (!iframe) return;
+      iframe.src = `/pdf/${encodeURIComponent(p.file)}#page=${el.dataset.jumpPage}`;
+    });
+  });
+
+  container.querySelectorAll('[data-delete-note]').forEach(el => {
+    el.addEventListener('click', async () => {
+      try {
+        const res = await fetch(`${API}/pdf-note-delete`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: p.id, noteId: el.dataset.deleteNote }),
+        });
+        const data = await res.json();
+        if (data.error) { toast(`Error: ${data.error}`); return; }
+        allPapers = data.papers || [];
+        renderPaperDetail(container, p.id);
+      } catch (e) {
+        toast('Error deleting note');
+      }
+    });
+  });
+
+  const addBtn = container.querySelector('#pdf-note-add-btn');
+  if (addBtn) addBtn.addEventListener('click', async () => {
+    const pageEl = container.querySelector('#pdf-note-page');
+    const textEl = container.querySelector('#pdf-note-text');
+    const text = textEl.value.trim();
+    if (!text) { toast('Note text cannot be empty'); return; }
+    try {
+      const res = await fetch(`${API}/pdf-note-add`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: p.id, page: pageEl.value || null, text }),
+      });
+      const data = await res.json();
+      if (data.error) { toast(`Error: ${data.error}`); return; }
+      allPapers = data.papers || [];
+      renderPaperDetail(container, p.id);
+      toast('Note added');
+    } catch (e) {
+      toast('Error adding note');
+    }
+  });
+}
+
+function renderNodeDetail(container, type, id) {
+  const n = GraphNodes[id];
+  if (!n) { container.innerHTML = `<div class="empty">Not found</div>`; return; }
+
+  const fields = [];
+  if (n.area)   fields.push(`<div class="detail-field"><b>Area:</b> ${esc(n.area)}</div>`);
+  if (n.status) fields.push(`<div class="detail-field"><b>Status:</b> ${esc(n.status)}</div>`);
+  if (n.created) fields.push(`<div class="detail-field"><b>Created:</b> ${esc(n.created)}</div>`);
+  if (n.source) fields.push(`<div class="detail-field"><b>Source:</b> ${esc(n.source)}</div>`);
+
+  const connections = GraphEdges
+    .filter(e => e.from === id || e.to === id)
+    .map(e => {
+      const otherId   = e.from === id ? e.to : e.from;
+      const otherNode = GraphNodes[otherId];
+      return {
+        otherId,
+        otherType: otherNode ? otherNode.type : 'paper',
+        otherName: otherNode ? (otherNode.name || otherNode.title || otherId) : otherId,
+        edgeType: e.type,
+        direction: e.from === id ? '→' : '←',
+        note: e.note,
+      };
+    });
+
+  const connHTML = connections.length ? connections.map(c => `
+    <div class="conn-row" data-open-type="${esc(c.otherType)}" data-open-id="${esc(c.otherId)}">
+      <span class="conn-type">${esc(c.edgeType)}</span>
+      <span class="conn-dir">${c.direction}</span>
+      <span class="conn-name">${esc(c.otherName)}</span>
+      ${c.note ? `<span class="conn-note">"${esc(c.note)}"</span>` : ''}
+    </div>`).join('') : `<div class="empty" style="padding:16px 0;">No connections yet</div>`;
+
+  container.innerHTML = `
+    <div class="detail-header">
+      <div>
+        <div class="paper-id">${esc(id)}</div>
+        <h2 class="detail-title">${esc(n.name || id)}</h2>
+      </div>
+      <div class="detail-actions">
+        <button class="edit-btn detail-edit-btn" data-edit-node="${esc(id)}" title="Edit">${PENCIL_SVG}</button>
+      </div>
+    </div>
+    ${fields.length ? `<div class="detail-section">${fields.join('')}</div>` : ''}
+    ${n.description ? `<div class="detail-section"><div class="detail-section-title">Description</div><p class="detail-text">${esc(n.description)}</p></div>` : ''}
+    <div class="detail-section">
+      <div class="detail-section-title">Connections</div>
+      <div class="conn-list">${connHTML}</div>
+    </div>
+  `;
+
+  container.querySelectorAll('[data-open-type]').forEach(el =>
+    el.addEventListener('click', () => openDetail(el.dataset.openType, el.dataset.openId)));
+  const editBtn = container.querySelector('[data-edit-node]');
+  if (editBtn) editBtn.addEventListener('click', () => openEditModal('node', editBtn.dataset.editNode));
+}
+
+// ── Edit modal ───────────────────────────────────────────────────────────────
+//
+// One generic modal reused for editing any paper or graph node (concept/
+// project/endpoint/idea/pool) — opened from the pencil button that appears
+// top-right on every card and every detail pane. Fields shown depend on the
+// item's type; system-managed fields (cites/cited_by, pdf_status/pdf_source,
+// read/hidden) are intentionally left out since they have their own
+// dedicated controls or are maintained automatically by sync commands.
+
+let editContext = null; // { kind: 'paper'|'node', id, type? }
+
+function openEditModal(kind, id) {
+  const body  = document.getElementById('edit-modal-body');
+  const title = document.getElementById('edit-modal-title');
+
+  if (kind === 'paper') {
+    const p = allPapers.find(x => x.id === id);
+    if (!p) return;
+    editContext = { kind, id };
+    title.textContent = `Edit ${id}`;
+    body.innerHTML = paperEditFormHTML(p);
+  } else {
+    const n = GraphNodes[id];
+    if (!n || n.type === 'paper') return;
+    editContext = { kind, id, type: n.type };
+    title.textContent = `Edit ${id}`;
+    body.innerHTML = nodeEditFormHTML(n);
+  }
+  document.getElementById('edit-modal-overlay').classList.add('open');
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal-overlay').classList.remove('open');
+  editContext = null;
+}
+
+function paperEditFormHTML(p) {
+  const venueOptions = Object.entries(allVenues)
+    .sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''))
+    .map(([vid, v]) => `<option value="${esc(vid)}" ${vid === p.venueId ? 'selected' : ''}>${esc(v.name || vid)}</option>`)
+    .join('');
+  const conceptIds = new Set((p.concepts || []).map(c => c.id));
+  const conceptOptions = Object.entries(allConcepts)
+    .sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''))
+    .map(([cid, c]) => `<option value="${esc(cid)}" ${conceptIds.has(cid) ? 'selected' : ''}>${esc(c.name || cid)}</option>`)
+    .join('');
+
+  return `
+    <div class="form-field"><label>Title</label><input type="text" id="ef-title" value="${esc(p.titolo)}"></div>
+    <div class="form-field"><label>Authors (one per line)</label>
+      <textarea id="ef-authors" rows="4">${esc((p.autori || '').split(',').map(s => s.trim()).filter(Boolean).join('\n'))}</textarea>
+    </div>
+    <div class="form-field"><label>Year</label><input type="number" id="ef-year" value="${esc(String(p.annoPub || ''))}"></div>
+    <div class="form-field"><label>Discovered (YYYY-MM-DD)</label><input type="text" id="ef-discovered" value="${esc(p.dataScop)}"></div>
+    <div class="form-field"><label>Venue</label><select id="ef-venue-id"><option value="">—</option>${venueOptions}</select></div>
+    <div class="form-field"><label>Venue detail</label><input type="text" id="ef-venue-detail" value="${esc(p.venueDetail)}"></div>
+    <div class="form-field"><label>Source (verified URL)</label><input type="text" id="ef-source" value="${esc(p.source)}"></div>
+    <div class="form-field"><label>URL</label><input type="text" id="ef-url" value="${esc(p.url || '')}"></div>
+    <div class="form-field"><label>Concepts</label><select id="ef-concepts" multiple>${conceptOptions}</select>
+      <div class="form-hint">Ctrl/Cmd-click to select multiple.</div></div>
+    <div class="form-field"><label>File (relative path)</label><input type="text" id="ef-file" value="${esc(p.file || '')}"></div>
+    <div class="form-field form-field-check"><input type="checkbox" id="ef-outside" ${p.outsideZone ? 'checked' : ''}><label for="ef-outside">Outside comfort zone</label></div>
+    <div class="form-field"><label>Notes</label><textarea id="ef-notes" rows="4">${esc(p.notes || '')}</textarea></div>
+  `;
+}
+
+function collectPaperFormPatch() {
+  const authors = document.getElementById('ef-authors').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const concepts = [...document.getElementById('ef-concepts').selectedOptions].map(o => o.value);
+  return {
+    title: document.getElementById('ef-title').value.trim(),
+    authors,
+    year: parseInt(document.getElementById('ef-year').value, 10) || null,
+    discovered: document.getElementById('ef-discovered').value.trim(),
+    venue_id: document.getElementById('ef-venue-id').value,
+    venue_detail: document.getElementById('ef-venue-detail').value.trim(),
+    source_verified: document.getElementById('ef-source').value.trim(),
+    url: document.getElementById('ef-url').value.trim() || null,
+    concepts,
+    file: document.getElementById('ef-file').value.trim(),
+    outside_zone: document.getElementById('ef-outside').checked,
+    notes: document.getElementById('ef-notes').value.trim(),
+  };
+}
+
+const NODE_TYPE_FIELDS = {
+  concept:  ['area'],
+  project:  ['status'],
+  endpoint: ['status'],
+  idea:     ['status', 'created', 'source'],
+  pool:     ['created'],
+};
+const FIELD_LABELS = { area: 'Area', status: 'Status', created: 'Created (YYYY-MM-DD)', source: 'Source' };
+
+function nodeEditFormHTML(n) {
+  const extra = (NODE_TYPE_FIELDS[n.type] || []).map(f => `
+    <div class="form-field"><label>${esc(FIELD_LABELS[f] || f)}</label>
+      <input type="text" id="ef-node-${f}" value="${esc(n[f] || '')}"></div>
+  `).join('');
+  return `
+    <div class="form-field"><label>Name</label><input type="text" id="ef-node-name" value="${esc(n.name || '')}"></div>
+    ${extra}
+    <div class="form-field"><label>Description</label><textarea id="ef-node-description" rows="4">${esc(n.description || '')}</textarea></div>
+  `;
+}
+
+function collectNodeFormPatch(type) {
+  const patch = { name: document.getElementById('ef-node-name').value.trim() };
+  (NODE_TYPE_FIELDS[type] || []).forEach(f => {
+    const el = document.getElementById(`ef-node-${f}`);
+    if (el) patch[f] = el.value.trim();
+  });
+  patch.description = document.getElementById('ef-node-description').value.trim();
+  return patch;
+}
+
+document.getElementById('edit-modal-close').addEventListener('click', closeEditModal);
+document.getElementById('edit-modal-cancel').addEventListener('click', closeEditModal);
+document.getElementById('edit-modal-overlay').addEventListener('click', e => {
+  if (e.target.id === 'edit-modal-overlay') closeEditModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('edit-modal-overlay').classList.contains('open')) closeEditModal();
+});
+
+document.getElementById('edit-modal-save').addEventListener('click', async () => {
+  if (!editContext) return;
+  const { kind, id, type } = editContext;
+  try {
+    if (kind === 'paper') {
+      const patch = collectPaperFormPatch();
+      if (!patch.title) { toast('Title cannot be empty'); return; }
+      if (!patch.authors.length) { toast('Authors cannot be empty'); return; }
+      const res = await fetch(`${API}/paper-update`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, patch }),
+      });
+      const data = await res.json();
+      if (data.error) { toast(`Error: ${data.error}`); return; }
+      allPapers = data.papers || []; allVenues = data.venues || {}; allConcepts = data.concepts || {};
+      closeEditModal();
+      populateFilters();
+      render();
+      if (activeSub.paper === id) renderPaperDetail(document.getElementById('pane-paper-detail'), id);
+      renderSubTabBar('paper');
+      invalidateGraphCache();
+      ensureGraphLoaded().then(() => { resetAllTypeToolbars(); populatePaperLinkedToFilter(); });
+      toast(`Saved ${id}`);
+    } else {
+      const patch = collectNodeFormPatch(type);
+      if (!patch.name) { toast('Name cannot be empty'); return; }
+      const res = await fetch(`${API}/node-update`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, patch }),
+      });
+      const data = await res.json();
+      if (data.error) { toast(`Error: ${data.error}`); return; }
+      GraphNodes = data.nodes || {}; GraphEdges = data.edges || [];
+      closeEditModal();
+      resetAllTypeToolbars();
+      if (activeSub[type] === 'list') renderTypeGrid(type);
+      else renderNodeDetail(document.getElementById(`pane-${type}-detail`), type, id);
+      renderSubTabBar(type);
+      populatePaperLinkedToFilter();
+      invalidateGraphCache();
+      graphLoadPromise = Promise.resolve({ nodes: GraphNodes, edges: GraphEdges }); // already fresh, avoid a redundant fetch
+      toast(`Saved ${id}`);
+    }
+  } catch (e) {
+    toast('Error saving changes');
+  }
+});
+
+// ── Graph view ───────────────────────────────────────────────────────────────
+
+const Graph = (function() {
+  let nodes = [];        // array of simulation nodes {id, type, name, x, y, vx, vy, ...raw}
+  let nodesById = new Map();
+  let edges = [];         // {from, to, type, note, a, b} (a/b = resolved node refs)
+  let canvas, ctx, tooltip;
+  let width = 0, height = 0;
+  let panX = 0, panY = 0, zoom = 1;
+  let alpha = 1;
+  let rafId = null;
+  let dragNode = null, dragging = false, panStart = null;
+  let dragDistance = 0, mouseDownAt = null;
+  let hoverNode = null, hoverEdge = null;
+  let typeFilter = new Set(['paper', 'concept', 'project', 'endpoint', 'idea', 'pool']);
+  let searchQ = '';
+  // "Linked to concept" filter: shows only nodes reachable from a chosen
+  // concept within `conceptLinkDepth` hops (BFS over currently-allowed edge
+  // types). Advanced panel also lets you narrow which edge types count.
+  let conceptLinkFilter = '';
+  let conceptLinkDepth = 2;
+  let conceptLinkSet = null; // Set of node ids, or null when no filter active
+  let edgeTypeFilter = null; // Set of allowed edge types, or null = all allowed
+
+  const EDGE_STYLE = {
+    cites:       { dash: [6, 4], alpha: 0.55, color: '#BA7C65' },
+    concept_tag: { dash: [1, 4], alpha: 0.35, color: '#688C6F' },
+  };
+  const DEFAULT_EDGE_STYLE = { dash: [], alpha: 0.45, color: '#8496B0' };
+
+  function hashHue(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = (h * 31 + str.charCodeAt(i)) >>> 0;
+    }
+    return h % 360;
+  }
+
+  function conceptColor(nameOrId) {
+    const hue = hashHue(String(nameOrId || ''));
+    return `hsl(${hue}, 62%, 58%)`;
+  }
+
+  async function init() {
+    canvas  = document.getElementById('graph-canvas');
+    tooltip = document.getElementById('graph-tooltip');
+    ctx     = canvas.getContext('2d');
+
+    try {
+      await ensureGraphLoaded();
+      buildSim({ nodes: GraphNodes, edges: GraphEdges });
+    } catch (e) {
+      console.error('Graph load error:', e);
+      toast('Error loading graph');
+      return;
+    }
+
+    bindEvents();
+    resize();
+    Graph.loaded = true;
+    loop();
+  }
+
+  function buildSim(data) {
+    const rawNodes = data.nodes || {};
+    const rawEdges = data.edges || [];
+
+    // Concept color lookup: id -> color, based on concept name (or area) hash.
+    const conceptColorById = {};
+    for (const [id, n] of Object.entries(rawNodes)) {
+      if (n.type === 'concept') conceptColorById[id] = conceptColor(n.name || n.area || id);
+    }
+
+    nodes = Object.entries(rawNodes).map(([id, n]) => {
+      const displayName = n.name || n.title || id;
+      let color = '#9095a0'; // neutral gray default
+      if (n.type === 'concept') {
+        color = conceptColorById[id] || conceptColor(displayName);
+      } else if (n.type === 'paper') {
+        const primary = (n.concepts || [])[0];
+        if (primary) color = conceptColorById[primary] || conceptColor(primary);
+      }
+      return {
+        id, type: n.type, name: displayName, raw: n, color,
+        x: (Math.random() - 0.5) * 600,
+        y: (Math.random() - 0.5) * 600,
+        vx: 0, vy: 0,
+      };
+    });
+    nodesById = new Map(nodes.map(n => [n.id, n]));
+
+    edges = rawEdges
+      .map(e => ({ ...e, a: nodesById.get(e.from), b: nodesById.get(e.to) }))
+      .filter(e => e.a && e.b);
+
+    populateConceptLegend(rawNodes, conceptColorById);
+    populateConceptFilter(rawNodes);
+    populateEdgeTypeFilters();
+    recomputeConceptLinkSet();
+
+    alpha = 1;
+  }
+
+  function populateConceptFilter(rawNodes) {
+    const sel = document.getElementById('graph-concept-filter');
+    const prev = sel.value;
+    const concepts = Object.entries(rawNodes)
+      .filter(([, n]) => n.type === 'concept')
+      .sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''));
+    sel.innerHTML = '<option value="">Any</option>' +
+      concepts.map(([id, n]) => `<option value="${esc(id)}">${esc(n.name || id)}</option>`).join('');
+    if (concepts.some(([id]) => id === prev)) sel.value = prev;
+  }
+
+  function populateEdgeTypeFilters() {
+    const box = document.getElementById('graph-edge-type-filters');
+    const types = [...new Set(edges.map(e => e.type))].sort();
+    box.innerHTML = types.map(t =>
+      `<label><input type="checkbox" class="etype" value="${esc(t)}" checked> ${esc(t)}</label>`
+    ).join('');
+    box.querySelectorAll('.etype').forEach(cb => {
+      cb.addEventListener('change', () => {
+        edgeTypeFilter = new Set([...box.querySelectorAll('.etype:checked')].map(c => c.value));
+        recomputeConceptLinkSet();
+      });
+    });
+  }
+
+  // BFS from the selected concept over edges whose type is currently
+  // allowed (edgeTypeFilter), up to conceptLinkDepth hops. Undirected —
+  // "linked to" reads naturally in either edge direction.
+  function recomputeConceptLinkSet() {
+    if (!conceptLinkFilter) { conceptLinkSet = null; return; }
+    const allowed = e => !edgeTypeFilter || edgeTypeFilter.has(e.type);
+    const visited = new Set([conceptLinkFilter]);
+    let frontier = [conceptLinkFilter];
+    for (let hop = 0; hop < conceptLinkDepth; hop++) {
+      const next = [];
+      for (const id of frontier) {
+        edges.forEach(e => {
+          if (!allowed(e)) return;
+          if (e.from === id && !visited.has(e.to)) { visited.add(e.to); next.push(e.to); }
+          if (e.to === id && !visited.has(e.from)) { visited.add(e.from); next.push(e.from); }
+        });
+      }
+      frontier = next;
+      if (!frontier.length) break;
+    }
+    conceptLinkSet = visited;
+  }
+
+  function populateConceptLegend(rawNodes, conceptColorById) {
+    const box = document.getElementById('legend-concepts');
+    const rows = Object.entries(rawNodes)
+      .filter(([, n]) => n.type === 'concept')
+      .sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''))
+      .map(([id, n]) => `<div class="legend-row"><span class="legend-shape circle" style="background:${conceptColorById[id]}"></span> <span class="lbl" title="${esc(n.name || id)}">${esc(n.name || id)}</span></div>`)
+      .join('');
+    box.innerHTML = `<div class="legend-subtitle">Concept colors</div>${rows || '<div class="legend-row">No concepts yet</div>'}`;
+  }
+
+  // ── Force simulation with grid-bucketed repulsion (avoids O(n^2)) ──────────
+
+  function step() {
+    if (alpha <= 0.001) return;
+    const active = nodes.filter(n => n !== dragNode);
+    const cell = 80;
+    const grid = new Map();
+    function key(cx, cy) { return cx + ',' + cy; }
+    nodes.forEach(n => {
+      const cx = Math.floor(n.x / cell), cy = Math.floor(n.y / cell);
+      const k = key(cx, cy);
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(n);
+    });
+
+    const repulsion = 1800;
+    nodes.forEach(n => {
+      if (n === dragNode) return;
+      const cx = Math.floor(n.x / cell), cy = Math.floor(n.y / cell);
+      let fx = 0, fy = 0;
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const bucket = grid.get(key(cx + dx, cy + dy));
+          if (!bucket) continue;
+          for (const other of bucket) {
+            if (other === n) continue;
+            let ddx = n.x - other.x, ddy = n.y - other.y;
+            let distSq = ddx * ddx + ddy * ddy;
+            if (distSq < 1) distSq = 1;
+            const dist = Math.sqrt(distSq);
+            const f = repulsion / distSq;
+            fx += (ddx / dist) * f;
+            fy += (ddy / dist) * f;
+          }
+        }
+      }
+      // Weak centering force to keep the graph from drifting away.
+      fx += -n.x * 0.005;
+      fy += -n.y * 0.005;
+      n.vx = (n.vx + fx * alpha) * 0.82;
+      n.vy = (n.vy + fy * alpha) * 0.82;
+    });
+
+    const linkDist = 90, linkStrength = 0.05;
+    edges.forEach(e => {
+      const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const f = (dist - linkDist) * linkStrength * alpha;
+      const ux = dx / dist, uy = dy / dist;
+      if (e.a !== dragNode) { e.a.vx += ux * f; e.a.vy += uy * f; }
+      if (e.b !== dragNode) { e.b.vx -= ux * f; e.b.vy -= uy * f; }
+    });
+
+    nodes.forEach(n => {
+      if (n === dragNode) return;
+      n.x += n.vx;
+      n.y += n.vy;
+    });
+
+    alpha *= 0.985;
+  }
+
+  function loop() {
+    step();
+    draw();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function nodeVisible(n) {
+    if (!typeFilter.has(n.type)) return false;
+    if (conceptLinkSet && !conceptLinkSet.has(n.id)) return false;
+    return true;
+  }
+
+  function edgeTypeVisible(e) {
+    return !edgeTypeFilter || edgeTypeFilter.has(e.type);
+  }
+
+  function nodeMatchesSearch(n) {
+    if (!searchQ) return true;
+    return n.name.toLowerCase().includes(searchQ) || n.id.toLowerCase().includes(searchQ);
+  }
+
+  function shapePath(ctx, type, x, y, r) {
+    ctx.beginPath();
+    if (type === 'project') {
+      ctx.rect(x - r, y - r, r * 2, r * 2);
+    } else if (type === 'idea') {
+      ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath();
+    } else if (type === 'endpoint') {
+      ctx.moveTo(x, y - r); ctx.lineTo(x + r, y + r); ctx.lineTo(x - r, y + r); ctx.closePath();
+    } else if (type === 'pool') {
+      for (let i = 0; i < 6; i++) {
+        const ang = Math.PI / 3 * i - Math.PI / 2;
+        const px = x + r * Math.cos(ang), py = y + r * Math.sin(ang);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    } else {
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+    }
+  }
+
+  // Concept nodes render as a stippled/dithered disc (light fill + a grid of
+  // solid dots) so they read as visually distinct from solid paper circles
+  // even when they share the same concept color.
+  function drawDitheredCircle(ctx, cx, cy, r, color) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    ctx.globalAlpha *= 0.3;
+    ctx.fillStyle = color;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+
+    ctx.globalAlpha /= 0.3;
+    const step = r / 2.4;
+    let row = 0;
+    for (let y = cy - r; y <= cy + r; y += step) {
+      const offset = (row % 2) * (step / 2);
+      for (let x = cx - r + offset; x <= cx + r; x += step) {
+        ctx.beginPath();
+        ctx.arc(x, y, step * 0.22, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+      row++;
+    }
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    ctx.translate(width / 2 + panX, height / 2 + panY);
+    ctx.scale(zoom, zoom);
+
+    const hasSearch = !!searchQ;
+
+    // Edges
+    edges.forEach(e => {
+      if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeTypeVisible(e)) return;
+      const style = EDGE_STYLE[e.type] || DEFAULT_EDGE_STYLE;
+      const dim = hasSearch && !(nodeMatchesSearch(e.a) && nodeMatchesSearch(e.b));
+      ctx.beginPath();
+      ctx.moveTo(e.a.x, e.a.y);
+      ctx.lineTo(e.b.x, e.b.y);
+      ctx.setLineDash(style.dash);
+      ctx.strokeStyle = style.color;
+      ctx.globalAlpha = (dim ? style.alpha * 0.15 : style.alpha) * (e === hoverEdge ? 1 : 0.9);
+      ctx.lineWidth = (e === hoverEdge ? 2.5 : 1) / zoom;
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+
+    // Nodes
+    nodes.forEach(n => {
+      if (!nodeVisible(n)) return;
+      const r = n.type === 'paper' ? 6 : (n.type === 'concept' ? 8 : 8);
+      const dim = hasSearch && !nodeMatchesSearch(n);
+      ctx.globalAlpha = dim ? 0.15 : 1;
+      if (n.type === 'concept') {
+        drawDitheredCircle(ctx, n.x, n.y, r, n.color);
+      } else {
+        shapePath(ctx, n.type, n.x, n.y, r);
+        ctx.fillStyle = n.type === 'paper' ? n.color : '#242830';
+        ctx.fill();
+      }
+      shapePath(ctx, n.type, n.x, n.y, r);
+      ctx.lineWidth = (n === hoverNode ? 2.5 : 1.2) / zoom;
+      ctx.strokeStyle = n === hoverNode ? '#f3c944' : (n.type === 'concept' || n.type === 'paper' ? 'rgba(0,0,0,0.3)' : n.color);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  // ── Coordinate transforms ───────────────────────────────────────────────
+
+  function screenToWorld(sx, sy) {
+    return {
+      x: (sx - width / 2 - panX) / zoom,
+      y: (sy - height / 2 - panY) / zoom,
+    };
+  }
+
+  function nodeAt(sx, sy) {
+    const w = screenToWorld(sx, sy);
+    let best = null, bestDist = Infinity;
+    for (const n of nodes) {
+      if (!nodeVisible(n)) continue;
+      const r = 10;
+      const dx = n.x - w.x, dy = n.y - w.y;
+      const d = dx * dx + dy * dy;
+      if (d < r * r && d < bestDist) { best = n; bestDist = d; }
+    }
+    return best;
+  }
+
+  function edgeAt(sx, sy) {
+    const w = screenToWorld(sx, sy);
+    const tol = 6 / zoom;
+    for (const e of edges) {
+      if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeTypeVisible(e)) continue;
+      const { a, b } = e;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const lenSq = dx * dx + dy * dy || 1;
+      let t = ((w.x - a.x) * dx + (w.y - a.y) * dy) / lenSq;
+      t = Math.max(0, Math.min(1, t));
+      const px = a.x + t * dx, py = a.y + t * dy;
+      const d = Math.hypot(w.x - px, w.y - py);
+      if (d < tol) return e;
+    }
+    return null;
+  }
+
+  // ── Events ───────────────────────────────────────────────────────────────
+
+  function bindEvents() {
+    canvas.addEventListener('mousedown', e => {
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      const n = nodeAt(sx, sy);
+      dragDistance = 0;
+      mouseDownAt = { x: e.clientX, y: e.clientY };
+      if (n) {
+        dragNode = n;
+        dragging = true;
+        canvas.classList.add('dragging');
+      } else {
+        panStart = { x: e.clientX - panX, y: e.clientY - panY };
+        canvas.classList.add('dragging');
+      }
+    });
+
+    window.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      if (mouseDownAt) {
+        dragDistance += Math.abs(e.movementX) + Math.abs(e.movementY);
+      }
+      if (dragNode) {
+        const w = screenToWorld(sx, sy);
+        dragNode.x = w.x; dragNode.y = w.y;
+        dragNode.vx = 0; dragNode.vy = 0;
+        alpha = Math.max(alpha, 0.3);
+      } else if (panStart) {
+        panX = e.clientX - panStart.x;
+        panY = e.clientY - panStart.y;
+      } else {
+        hoverNode = nodeAt(sx, sy);
+        hoverEdge = hoverNode ? null : edgeAt(sx, sy);
+        updateTooltip(sx, sy);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      dragNode = null;
+      panStart = null;
+      dragging = false;
+      mouseDownAt = null;
+      canvas.classList.remove('dragging');
+    });
+
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      const before = screenToWorld(sx, sy);
+      zoom = Math.min(4, Math.max(0.15, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+      const after = screenToWorld(sx, sy);
+      panX += (after.x - before.x) * zoom;
+      panY += (after.y - before.y) * zoom;
+    }, { passive: false });
+
+    canvas.addEventListener('click', e => {
+      if (dragDistance > 4) return; // was a drag, not a click
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      const n = nodeAt(sx, sy);
+      if (!n) return;
+      onNodeClick(n);
+    });
+
+    canvas.addEventListener('dblclick', e => {
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      const n = nodeAt(sx, sy);
+      if (!n) return;
+      onNodeDblClick(n);
+    });
+
+    document.getElementById('graph-search').addEventListener('input', e => {
+      searchQ = e.target.value.toLowerCase();
+    });
+
+    document.querySelectorAll('.gtype').forEach(cb => {
+      cb.addEventListener('change', () => {
+        typeFilter = new Set([...document.querySelectorAll('.gtype:checked')].map(c => c.value));
+      });
+    });
+
+    document.getElementById('graph-reset').addEventListener('click', () => {
+      panX = 0; panY = 0; zoom = 1; alpha = 0.5;
+    });
+
+    document.getElementById('graph-legend-toggle').addEventListener('click', () => {
+      document.getElementById('graph-legend').classList.add('open');
+    });
+    document.getElementById('graph-legend-close').addEventListener('click', () => {
+      document.getElementById('graph-legend').classList.remove('open');
+    });
+
+    document.getElementById('graph-concept-filter').addEventListener('change', e => {
+      conceptLinkFilter = e.target.value;
+      recomputeConceptLinkSet();
+    });
+    document.getElementById('graph-link-depth').addEventListener('change', e => {
+      conceptLinkDepth = parseInt(e.target.value, 10) || 2;
+      recomputeConceptLinkSet();
+    });
+    document.getElementById('graph-advanced-toggle').addEventListener('click', () => {
+      const panel = document.getElementById('graph-advanced-panel');
+      const btn = document.getElementById('graph-advanced-toggle');
+      const open = panel.style.display !== 'none';
+      panel.style.display = open ? 'none' : 'flex';
+      btn.setAttribute('aria-expanded', String(!open));
+      btn.innerHTML = open ? 'Advanced filters &#9656;' : 'Advanced filters &#9662;';
+    });
+
+    window.addEventListener('resize', resize);
+  }
+
+  // Clicking any node (paper, concept, project, endpoint, idea, pool) opens
+  // its detail sub-tab in the matching object-type tab — same behavior for
+  // every type, so you can jump straight from the graph to full item info.
+  function onNodeClick(n) {
+    openDetail(n.type, n.id);
+  }
+
+  function onNodeDblClick(n) {
+    openDetail(n.type, n.id);
+  }
+
+  function updateTooltip(sx, sy) {
+    if (hoverNode) {
+      tooltip.innerHTML = `<b>${esc(hoverNode.name)}</b><br>${esc(hoverNode.type)}`;
+      tooltip.style.display = 'block';
+      tooltip.style.left = (sx + 14) + 'px';
+      tooltip.style.top = (sy + 14) + 'px';
+    } else if (hoverEdge) {
+      let html = `<b>${esc(hoverEdge.type)}</b><br>${esc(hoverEdge.a.name)} → ${esc(hoverEdge.b.name)}`;
+      if (hoverEdge.note) html += `<br><i>${esc(hoverEdge.note)}</i>`;
+      tooltip.innerHTML = html;
+      tooltip.style.display = 'block';
+      tooltip.style.left = (sx + 14) + 'px';
+      tooltip.style.top = (sy + 14) + 'px';
+    } else {
+      tooltip.style.display = 'none';
+    }
+  }
+
+  function resize() {
+    if (!canvas) return;
+    const wrap = document.getElementById('graph-wrap');
+    width  = canvas.width  = wrap.clientWidth;
+    height = canvas.height = wrap.clientHeight;
+  }
+
+  return { init, resize, loaded: false };
+})();
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 loadPins();
 loadUI();
 applyUIToDOM();
 loadPapers();
+ensureGraphLoaded().then(populatePaperLinkedToFilter); // kick off early so switching tabs feels instant
+renderSubTabBar('paper');
 </script>
 </body>
 </html

@@ -60,6 +60,15 @@ CITATION COMMANDS
   apply-citations <ID>          -> like get-citations, but saves the found links.
   sync-citations                -> runs apply-citations on ALL papers in the catalog.
 
+PDF COMMANDS
+------------
+  fetch-pdf <ID>                -> resolves and downloads an open-access PDF for
+                                  paper <ID> (tries arXiv, then Semantic Scholar,
+                                  then Unpaywall). Sets file/pdf_source on success,
+                                  or pdf_status ("unavailable"/"error: ...") otherwise.
+  sync-pdfs                     -> runs fetch-pdf on every paper that doesn't
+                                  already have a PDF on disk.
+
 VENUE COMMANDS — READ
 ----------------------
   venue-list                    -> all venues (ID, name, type)
@@ -475,7 +484,8 @@ def cmd_next_id(args):
 PAPER_REQUIRED_FIELDS = {"title", "authors", "year", "discovered", "venue_id",
                          "venue_detail", "source_verified", "concepts",
                          "file", "outside_zone", "notes"}
-PAPER_OPTIONAL_FIELDS = {"url", "hidden", "cites", "cited_by", "cites_unmatched"}
+PAPER_OPTIONAL_FIELDS = {"url", "hidden", "cites", "cited_by", "cites_unmatched",
+                          "pdf_status", "pdf_source", "pdf_notes"}
 PAPER_ALLOWED_FIELDS = PAPER_REQUIRED_FIELDS | PAPER_OPTIONAL_FIELDS
 
 def validate_paper_payload(payload: dict) -> list[str]:
@@ -593,6 +603,27 @@ def cmd_add_paper(args):
     if citers:
         print(f"[LINK] {new_id} was already cited by {len(citers)} papers in the catalog "
               f"({back_new_links} new links): {', '.join(sorted(citers))}")
+
+    # -- Automatic PDF fetch (best-effort) -----------------------------------
+    # Wrapped in try/except: a PDF-fetch problem must never block or fail the
+    # papers_add call itself — the paper record is what matters here.
+    try:
+        pdf_result = _fetch_pdf_for_paper(new_id, data["papers"][new_id])
+    except Exception as e:
+        pdf_result = {"ok": False, "status": f"error: {type(e).__name__}: {e}",
+                       "reason": str(e), "source": "none"}
+    if pdf_result["ok"]:
+        data["papers"][new_id]["file"] = pdf_result["file"]
+        data["papers"][new_id]["pdf_source"] = pdf_result["source"]
+        print(f"[PDF] {new_id}: fetched from {pdf_result['source']} -> {pdf_result['file']}")
+        _log_event("pdf_fetched", id=new_id, source=pdf_result["source"])
+    else:
+        data["papers"][new_id]["pdf_status"] = pdf_result["status"]
+        if pdf_result["status"] == "unavailable":
+            print(f"[PDF] {new_id}: no open-access PDF found ({pdf_result['reason']}).")
+        else:
+            print(f"[PDF] {new_id}: {pdf_result['status']}")
+        _log_event("pdf_fetch_failed", id=new_id, status=pdf_result["status"])
 
     save_papers(data)
     _log_event("paper_added", id=new_id, title=payload.get("title"))
@@ -768,6 +799,10 @@ _last_s2_request_time = [0.0]
 
 ARXIV_ID_RE = re.compile(r"(\d{4}\.\d{4,5})(v\d+)?")
 DOI_RE = re.compile(r"10\.\d{4,9}/[^\s\"'<>]+", re.IGNORECASE)
+# Matches the 40-hex-char Semantic Scholar paper ID at the end of a
+# semanticscholar.org/paper/... URL, with or without a title slug before it
+# (e.g. .../paper/c83e6fb0... or .../paper/Some-Title/c83e6fb0...).
+S2_ID_RE = re.compile(r"semanticscholar\.org/paper/(?:[^/\s]+/)?([0-9a-f]{40})", re.IGNORECASE)
 
 
 def _as_str(value) -> str:
@@ -806,6 +841,25 @@ def extract_doi(paper: dict) -> str | None:
             m = DOI_RE.search(h)
             if m:
                 return m.group(0).rstrip(".,)")
+    return None
+
+
+def extract_s2_id(paper: dict) -> str | None:
+    """Looks for a Semantic Scholar paper ID in the paper's verbatim fields
+    — papers discovered via search_semantic_scholar() often have
+    source_verified pointing at a semanticscholar.org/paper/<id> page rather
+    than a DOI or arXiv URL, and that ID is itself a fully valid, directly
+    resolvable Semantic Scholar identifier (S2_API_BASE/{id}), not something
+    that needs a DOI/arXiv ID to be looked up. Same no-inference contract as
+    extract_arxiv_id/extract_doi: only a literal S2 paper URL yields an ID."""
+    if not isinstance(paper, dict):
+        return None
+    haystacks = [_as_str(paper.get("source_verified")), _as_str(paper.get("venue_detail")),
+                 _as_str(paper.get("url"))]
+    for h in haystacks:
+        m = S2_ID_RE.search(h)
+        if m:
+            return m.group(1)
     return None
 
 
@@ -865,15 +919,22 @@ def fetch_s2_references(paper: dict) -> tuple[list[dict] | None, str | None]:
     retrieve anything (no resolvable ID, or the API did not respond)."""
     arxiv_id = extract_arxiv_id(paper)
     doi = extract_doi(paper)
+    s2_id = extract_s2_id(paper)
 
     if arxiv_id:
         lookup_url = f"{S2_API_BASE}/arXiv:{arxiv_id}?fields=title,externalIds"
     elif doi:
         lookup_url = f"{S2_API_BASE}/DOI:{doi}?fields=title,externalIds"
+    elif s2_id:
+        # Papers discovered via search_semantic_scholar() often have
+        # source_verified pointing at a semanticscholar.org/paper/<id> page
+        # rather than a DOI/arXiv URL — that ID is a directly resolvable S2
+        # identifier on its own, no DOI/arXiv needed.
+        lookup_url = f"{S2_API_BASE}/{s2_id}?fields=title,externalIds"
     else:
-        return None, ("No verbatim arXiv ID or DOI found in venue_detail/"
-                       "source_verified/url — cannot query Semantic Scholar "
-                       "without a real identifier.")
+        return None, ("No verbatim arXiv ID, DOI, or Semantic Scholar paper URL "
+                       "found in venue_detail/source_verified/url — cannot query "
+                       "Semantic Scholar without a real identifier.")
 
     meta, err = s2_request(lookup_url)
     if err:
@@ -913,15 +974,22 @@ def fetch_s2_citing_papers(paper: dict) -> tuple[list[dict] | None, str | None]:
     possible."""
     arxiv_id = extract_arxiv_id(paper)
     doi = extract_doi(paper)
+    s2_id = extract_s2_id(paper)
 
     if arxiv_id:
         lookup_url = f"{S2_API_BASE}/arXiv:{arxiv_id}?fields=title,externalIds"
     elif doi:
         lookup_url = f"{S2_API_BASE}/DOI:{doi}?fields=title,externalIds"
+    elif s2_id:
+        # Papers discovered via search_semantic_scholar() often have
+        # source_verified pointing at a semanticscholar.org/paper/<id> page
+        # rather than a DOI/arXiv URL — that ID is a directly resolvable S2
+        # identifier on its own, no DOI/arXiv needed.
+        lookup_url = f"{S2_API_BASE}/{s2_id}?fields=title,externalIds"
     else:
-        return None, ("No verbatim arXiv ID or DOI found in venue_detail/"
-                       "source_verified/url — cannot query Semantic Scholar "
-                       "without a real identifier.")
+        return None, ("No verbatim arXiv ID, DOI, or Semantic Scholar paper URL "
+                       "found in venue_detail/source_verified/url — cannot query "
+                       "Semantic Scholar without a real identifier.")
 
     meta, err = s2_request(lookup_url)
     if err:
@@ -1557,6 +1625,302 @@ def cmd_papers_discover(args):
         "errors": errors or None,
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
+
+# -- PDF fetching (arXiv / Semantic Scholar / Unpaywall) --------------------
+#
+# Automatically resolves and downloads an open-access PDF for a paper already
+# in the catalog, using only the three named APIs below — no scraping of
+# publisher/journal sites, no paywall bypass, no WebFetch/WebSearch. Every
+# URL is either a known-stable pattern (arXiv) or comes from a real API
+# response reporting an open-access location; nothing is guessed. Downloads
+# are byte-validated (must look like an actual PDF) before the `file` field
+# is ever set, so a redirect/HTML error page can never masquerade as a saved
+# paper.
+
+UNPAYWALL_API_BASE = "https://api.unpaywall.org/v2"
+# Unpaywall needs no API key/signup, just a contact email on every request
+# (their "polite pool" convention). Reuses the same contact email as
+# OpenAlex's polite pool if a dedicated one isn't set.
+UNPAYWALL_EMAIL = os.environ.get("UNPAYWALL_EMAIL") or os.environ.get("TOO_MANY_PAPERS_CONTACT_EMAIL", "")
+
+PDF_DIR = DATA_DIR / "pdfs"
+
+
+def resolve_pdf_candidates(paper: dict) -> tuple[list[tuple[str, str]], str | None]:
+    """Builds an ORDERED list of (url, source) candidates to try for `paper`:
+      a. arXiv     — the /pdf/{id}.pdf URL pattern is stable and documented,
+                      no HTTP call needed to construct it.
+      b. Semantic Scholar — openAccessPdf field, looked up by DOI, or (if no
+                      DOI is on file) directly by Semantic Scholar paper ID
+                      when source_verified is a semanticscholar.org/paper/
+                      URL — that ID is itself a fully valid, directly
+                      resolvable S2 identifier (see extract_s2_id). If S2's
+                      response includes an externalIds.DOI we didn't already
+                      have, it's a real value from a live API response (not
+                      an inference) and gets used for the Unpaywall step too.
+      c. Unpaywall — best_oa_location, requires a DOI and a contact email.
+    Every source that reports a URL is included (not just the first one) so
+    the caller can fall through to the next candidate if an earlier one
+    turns out not to be a real PDF when actually downloaded (e.g. a host
+    reporting an "open access" link that's really a landing/redirect page).
+    Returns (candidates, reason) — `reason` explains why the list is empty
+    when it is; an empty list is a normal, expected outcome for paywalled
+    papers, not a failure to alarm about."""
+    candidates: list[tuple[str, str]] = []
+    arxiv_id = extract_arxiv_id(paper)
+    doi = extract_doi(paper)
+    s2_id = extract_s2_id(paper)
+
+    # (a) arXiv
+    if arxiv_id:
+        candidates.append((f"https://arxiv.org/pdf/{arxiv_id}.pdf", "arxiv"))
+
+    if not doi and not s2_id:
+        if candidates:
+            return candidates, None
+        return [], ("no verbatim arXiv ID, DOI, or Semantic Scholar paper URL "
+                     "found in venue_detail/source_verified/url — cannot "
+                     "resolve a PDF without a real identifier.")
+
+    # (b) Semantic Scholar — by DOI if we have one, else directly by S2 paper ID.
+    if doi:
+        lookup_url = f"{S2_API_BASE}/DOI:{doi}?fields=openAccessPdf,externalIds"
+    else:
+        lookup_url = f"{S2_API_BASE}/{s2_id}?fields=openAccessPdf,externalIds"
+    meta, err = s2_request(lookup_url)
+    if not err and meta:
+        oa = meta.get("openAccessPdf") or {}
+        if oa.get("url"):
+            candidates.append((oa["url"], "semantic_scholar"))
+        if not doi:
+            ext = meta.get("externalIds") or {}
+            if ext.get("DOI"):
+                doi = ext["DOI"]  # real DOI from a live S2 response, not invented
+
+    # (c) Unpaywall
+    if not doi:
+        if candidates:
+            return candidates, None
+        return [], "no open-access PDF reported by Semantic Scholar, and no DOI to try Unpaywall"
+    if not UNPAYWALL_EMAIL:
+        if candidates:
+            return candidates, None
+        return [], (
+            "no UNPAYWALL_EMAIL or TOO_MANY_PAPERS_CONTACT_EMAIL set — Unpaywall "
+            "requires a contact email; set one of these environment variables "
+            "(any email works, e.g. TOO_MANY_PAPERS_CONTACT_EMAIL=you@x.com) to "
+            "enable this source"
+        )
+    unpaywall_url = f"{UNPAYWALL_API_BASE}/{urllib.parse.quote(doi)}?email={urllib.parse.quote(UNPAYWALL_EMAIL)}"
+    body, err = _http_get(unpaywall_url)
+    if not err:
+        try:
+            up_data = json.loads(body)
+        except json.JSONDecodeError:
+            up_data = {}
+        best = up_data.get("best_oa_location") or {}
+        pdf_url = best.get("url_for_pdf")
+        if not pdf_url:
+            # Only fall back to `.url` if it visibly looks like a PDF —
+            # otherwise treat as unavailable rather than guess (Rule Zero).
+            candidate = best.get("url") or ""
+            if candidate.lower().split("?")[0].endswith(".pdf"):
+                pdf_url = candidate
+        if pdf_url:
+            candidates.append((pdf_url, "unpaywall"))
+
+    if candidates:
+        return candidates, None
+    return [], "no open-access PDF reported by Semantic Scholar or Unpaywall"
+
+
+def resolve_pdf_url(paper: dict) -> tuple[str | None, str, str | None]:
+    """Convenience wrapper around resolve_pdf_candidates() returning just the
+    single best (first) candidate. Kept for callers that only care about the
+    top choice; _fetch_pdf_for_paper uses resolve_pdf_candidates() directly
+    so it can fall through to the next source if the first one's download
+    fails validation. Returns (url, source, error) — source is one of
+    "arxiv", "semantic_scholar", "unpaywall", or "none"."""
+    candidates, err = resolve_pdf_candidates(paper)
+    if not candidates:
+        return None, "none", err
+    url, source = candidates[0]
+    return url, source, None
+
+
+def _http_get_bytes(url: str, timeout: int = 20, max_retries: int = 4,
+                     base_delay: float = 2.0) -> tuple[bytes | None, str | None, str | None]:
+    """Binary-safe variant of _http_get, for downloading files (PDFs) rather
+    than JSON/text — _http_get decodes the body as UTF-8 text, which would
+    corrupt binary content. Same retry/backoff behavior on 429/5xx, and
+    follows redirects (urllib's default). Returns (body_bytes, content_type,
+    None) on success or (None, None, error_string) on failure."""
+    headers = {"User-Agent": S2_USER_AGENT}
+    req = urllib.request.Request(url, headers=headers)
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read(), resp.headers.get("Content-Type", ""), None
+        except urllib.error.HTTPError as e:
+            if e.code == 429 or 500 <= e.code < 600:
+                last_err = f"HTTP {e.code}"
+                time.sleep(base_delay * (attempt + 1))
+                continue
+            return None, None, f"HTTP {e.code}: {e.reason}"
+        except urllib.error.URLError as e:
+            last_err = f"Network error: {e.reason}"
+            time.sleep(base_delay)
+            continue
+    return None, None, f"Persistent failure after {max_retries} attempts ({last_err})"
+
+
+def download_pdf(url: str, dest_path: Path) -> tuple[bool, str | None]:
+    """Downloads `url` and writes it to `dest_path` ONLY if it validates as a
+    real PDF: Content-Type contains "pdf", OR (when the header is missing or
+    wrong, which happens with some hosts) the first 5 bytes of the body are
+    the PDF magic number %PDF-. This is the guard against the most common
+    failure mode of automatic PDF fetching — a redirect or paywall HTML page
+    silently saved as if it were the actual paper. Returns (True, None) on
+    success or (False, reason) on failure; never writes an invalid file."""
+    body, content_type, err = _http_get_bytes(url)
+    if err:
+        return False, f"download failed: {err}"
+    if not body:
+        return False, "download returned an empty body"
+
+    looks_like_pdf = "pdf" in (content_type or "").lower() or body[:5] == b"%PDF-"
+    if not looks_like_pdf:
+        return False, (f"response does not look like a PDF (Content-Type: "
+                        f"'{content_type or 'missing'}', body does not start with %PDF-)")
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        dest_path.write_bytes(body)
+    except OSError as e:
+        return False, f"failed to write file: {e}"
+    return True, None
+
+
+def _fetch_pdf_for_paper(pid: str, paper: dict) -> dict:
+    """Core logic shared by fetch-pdf, sync-pdfs, and the automatic fetch in
+    add-paper: resolve PDF candidates and try downloading them IN ORDER,
+    falling through to the next source if an earlier one's URL turns out
+    not to be a real PDF when actually downloaded (e.g. a host reporting an
+    "open access" link that's really a landing/redirect page) — a resolve
+    failure is not the same as a download failure, and shouldn't stop the
+    fallback chain. Returns a result dict describing the outcome — never
+    raises, never mutates `paper` itself (the caller decides what to do with
+    the result)."""
+    candidates, err = resolve_pdf_candidates(paper)
+    if not candidates:
+        return {"ok": False, "status": "unavailable",
+                "reason": err or "no open-access source found", "source": "none"}
+
+    dest = PDF_DIR / f"{pid}.pdf"
+    last_err, last_source = None, None
+    for url, source in candidates:
+        ok, dl_err = download_pdf(url, dest)
+        if ok:
+            rel_path = str(dest.relative_to(DATA_DIR)).replace(os.sep, "/")
+            return {"ok": True, "file": rel_path, "source": source, "url": url}
+        last_err, last_source = dl_err, source
+
+    return {"ok": False, "status": f"error: {last_err}", "reason": last_err,
+            "source": last_source}
+
+
+def cmd_fetch_pdf(args):
+    """Resolve and download an open-access PDF for a single paper already in
+    the catalog. Tries arXiv, then Semantic Scholar, then Unpaywall (in that
+    order — see resolve_pdf_url). On success, sets `file`/`pdf_source` and
+    clears any previous `pdf_status`. On failure, sets `pdf_status` instead
+    ("unavailable" if no open-access source was found, "error: <reason>" if
+    a source was found but the download/validation failed) so the catalog
+    records that we tried — never invents a `file` value."""
+    if not args:
+        print("Usage: fetch-pdf <ID>  e.g. fetch-pdf P014"); return
+    pid = args[0].upper()
+    data = load_papers()
+    paper = data["papers"].get(pid)
+    if not paper:
+        print(f"Paper '{pid}' not found."); return
+
+    result = _fetch_pdf_for_paper(pid, paper)
+    if result["ok"]:
+        paper["file"] = result["file"]
+        paper["pdf_source"] = result["source"]
+        paper.pop("pdf_status", None)
+        data["_meta"]["last_updated"] = str(date.today())
+        save_papers(data)
+        _log_event("pdf_fetched", id=pid, source=result["source"])
+        print(f"[PDF] {pid}: fetched from {result['source']} -> {result['file']}")
+    else:
+        paper["pdf_status"] = result["status"]
+        data["_meta"]["last_updated"] = str(date.today())
+        save_papers(data)
+        _log_event("pdf_fetch_failed", id=pid, status=result["status"])
+        if result["status"] == "unavailable":
+            print(f"[PDF] {pid}: no open-access PDF found ({result['reason']}).")
+        else:
+            print(f"[PDF] {pid}: {result['status']}")
+
+
+def cmd_sync_pdfs(args):
+    """Run fetch-pdf logic on every paper in the catalog. Skips papers that
+    already have a `file` pointing at a file that actually exists on disk
+    (idempotent — safe to re-run, never re-downloads). Mirrors
+    cmd_sync_citations's iterate/throttle/SUMMARY pattern."""
+    data = load_papers()
+    papers = data["papers"]
+    total = len(papers)
+    fetched, already_had, unavailable, errored = 0, 0, [], []
+
+    for i, (pid, paper) in enumerate(sorted(papers.items()), start=1):
+        existing_file = paper.get("file")
+        if existing_file and (DATA_DIR / existing_file).exists():
+            already_had += 1
+            print(f"[{i}/{total}] {pid}: already has a PDF on file, skipped")
+            continue
+
+        try:
+            result = _fetch_pdf_for_paper(pid, paper)
+        except Exception as e:
+            errored.append((pid, f"{type(e).__name__}: {e}"))
+            print(f"[{i}/{total}] {pid}: unexpected ERROR — {e}")
+            continue
+
+        if result["ok"]:
+            paper["file"] = result["file"]
+            paper["pdf_source"] = result["source"]
+            paper.pop("pdf_status", None)
+            fetched += 1
+            print(f"[{i}/{total}] {pid}: fetched from {result['source']} -> {result['file']}")
+        else:
+            paper["pdf_status"] = result["status"]
+            if result["status"] == "unavailable":
+                unavailable.append(pid)
+                print(f"[{i}/{total}] {pid}: unavailable ({result['reason']})")
+            else:
+                errored.append((pid, result["status"]))
+                print(f"[{i}/{total}] {pid}: {result['status']}")
+        time.sleep(1.1)  # respect the same public rate limits as sync-citations
+
+    data["_meta"]["last_updated"] = str(date.today())
+    save_papers(data)
+    _log_event("pdfs_synced", fetched=fetched, already_had=already_had,
+               unavailable=len(unavailable), errors=len(errored))
+
+    print("\n" + SEP_HEAVY * 70)
+    print("SUMMARY sync-pdfs")
+    print(SEP_HEAVY * 70)
+    print(f"Total papers:              {total}")
+    print(f"Fetched this run:          {fetched}")
+    print(f"Already had a PDF:         {already_had}")
+    print(f"Unavailable (no OA source):{len(unavailable)}  {unavailable if unavailable else ''}")
+    print(f"Errors:                    {len(errored)}")
+    for pid, e in errored:
+        print(f"  * {pid}: {e}")
 
 # -- Venue commands — read -------------------------------------------------
 
@@ -2511,6 +2875,8 @@ COMMANDS = {
     "get-citations":   cmd_get_citations,
     "apply-citations": cmd_apply_citations,
     "sync-citations":  cmd_sync_citations,
+    "fetch-pdf":       cmd_fetch_pdf,
+    "sync-pdfs":       cmd_sync_pdfs,
     # venue
     "venue-list":      cmd_venue_list,
     "venue-get":       cmd_venue_get,
