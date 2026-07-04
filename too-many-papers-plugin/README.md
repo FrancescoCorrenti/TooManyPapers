@@ -55,7 +55,7 @@ To open the web UI, run `/too-many-papers:webui` or ask to open Too Many Papers.
 
 ## Data
 
-Everything lives in plain JSON files (`_papers.json`, `_venues.json`, `_graph.json`), plus a `pdfs/` folder and a `_log.jsonl` audit log. This lives in a folder that survives plugin updates, separate from the plugin's own files. Run `graph_status` to see the exact path, and back it up by copying that folder.
+Everything lives in plain JSON files (`_papers.json`, `_venues.json`, `_graph.json`), plus a `pdfs/` folder and a `_log.jsonl` audit log, always at `~/.too-many-papers` — a fixed path in your home directory, independent of OS, host, or plugin install location, so it survives plugin updates and never resets. Back it up by copying that folder.
 
 ## License
 

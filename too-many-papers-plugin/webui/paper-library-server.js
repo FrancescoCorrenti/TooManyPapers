@@ -13,19 +13,14 @@ const path = require('path');
 const os   = require('os');
 
 const PORT        = parseInt(process.env.PORT, 10) || 3737;
-// Data lives in the persistent plugin data directory (TOO_MANY_PAPERS_DATA_DIR,
-// set to ${CLAUDE_PLUGIN_DATA} when launched via the webui_launch MCP tool), so
-// it survives plugin updates and stays in sync with the MCP server (single
-// source of truth). When launched through webui_launch this is always an
-// already-resolved, already-created real path (mirrors papers_api.py's
-// DATA_DIR exactly). Run standalone without that env var, or on a host that
-// doesn't expand ${CLAUDE_PLUGIN_DATA} (passing it through literally instead
-// of a real path), this falls back to a fixed directory in the user's home
-// — NOT ../server (the plugin's own install tree), since a host that
-// re-provisions the plugin fresh every session would wipe that too.
+// Data always lives at ~/.too-many-papers, unconditionally — independent of
+// OS, host, or plugin install location. Some hosts re-provision the plugin's
+// own source tree fresh every session (wiping anything under it) and some
+// don't expand placeholder env vars like ${CLAUDE_PLUGIN_DATA} at all, so any
+// data dir derived from the plugin's environment can silently reset between
+// sessions. A fixed path under the user's home directory is the only
+// location guaranteed to survive across sessions, hosts, and plugin updates.
 function resolveDataDir() {
-  const envVal = (process.env.TOO_MANY_PAPERS_DATA_DIR || '').trim();
-  if (envVal && !envVal.startsWith('${')) return envVal;
   return path.join(os.homedir(), '.too-many-papers');
 }
 const DATA_DIR    = resolveDataDir();

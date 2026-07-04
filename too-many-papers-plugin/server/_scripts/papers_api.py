@@ -135,25 +135,15 @@ ROOT_DIR = SCRIPT_DIR.parent
 # Bundled empty seed files, shipped with the plugin and version-controlled.
 TEMPLATES_DIR = ROOT_DIR / "_templates"
 
-# Where the user's actual data lives. When running as an installed Claude
-# Code plugin, .mcp.json sets TOO_MANY_PAPERS_DATA_DIR to ${CLAUDE_PLUGIN_DATA}
-# — a directory that persists across plugin updates (unlike the plugin's own
-# source tree, which gets wiped and replaced on every update/reinstall).
-#
-# Not every MCP host expands that placeholder, though — some pass the env
-# value through unexpanded (a literal "${CLAUDE_PLUGIN_DATA}" string) or
-# don't set it at all. And on hosts that re-provision the plugin from
-# scratch each session (some sandboxed environments do this), even ROOT_DIR
-# itself doesn't survive between sessions, since it's inside that
-# re-provisioned tree. So the fallback below is NOT ROOT_DIR — it's a fixed
-# directory in the user's home, independent of the plugin's lifecycle and
-# of whether the host supports ${CLAUDE_PLUGIN_DATA} at all. This is the
-# difference between the graph surviving across sessions and silently
-# resetting every time.
+# Where the user's actual data lives. Always a fixed directory under the
+# user's home, unconditionally — independent of OS, host, or plugin install
+# location. Some MCP hosts re-provision the plugin's own source tree fresh
+# every session (wiping ROOT_DIR and anything under it) and some don't
+# expand placeholder env vars like ${CLAUDE_PLUGIN_DATA} at all, so any data
+# dir derived from the plugin's environment can silently reset between
+# sessions. A fixed home-directory path is the only location guaranteed to
+# survive across sessions, hosts, and plugin updates.
 def _resolve_data_dir() -> Path:
-    env_val = (os.environ.get("TOO_MANY_PAPERS_DATA_DIR") or "").strip()
-    if env_val and not env_val.startswith("${"):
-        return Path(env_val)
     return Path.home() / ".too-many-papers"
 
 

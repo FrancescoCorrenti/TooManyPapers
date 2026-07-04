@@ -617,7 +617,6 @@ def webui_launch() -> str:
         env={
             **os.environ,
             "PORT": str(WEBUI_PORT),
-            "TOO_MANY_PAPERS_DATA_DIR": str(papers_api.DATA_DIR),
         },
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
