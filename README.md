@@ -55,13 +55,7 @@ PDFs are fetched automatically from arXiv, Semantic Scholar, and Unpaywall when 
 ## FAQ
 
 **Where is my data stored?**
-Always at `~/.too-many-papers`, a fixed path in your home directory. Same on every OS and host (including Cowork), independent of the plugin's install location, so it survives plugin updates, reinstalls, and session resets.
-
-**Can I use this without an LLM?**
-Yes, the web UI and the underlying CLI both work on their own.
-
-**How do I back up my data?**
-Copy the data folder shown by `graph_status`, or just keep a copy of the JSON files.
+Always at `~/.too-many-papers`, a fixed path in your home directory. 
 
 **How do I update?**
 `/plugin marketplace update` then `/plugin update too-many-papers@too-many-papers`.
