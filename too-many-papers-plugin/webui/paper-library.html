@@ -3199,6 +3199,16 @@ const Graph = (function() {
   let panX = 0, panY = 0, zoom = 1;
   let alpha = 1;
   let rafId = null;
+  // Grid-bucketed spatial index, cell size matches step()'s repulsion grid.
+  // Rebuilt whenever node positions change (every physics step, or right
+  // after a drag); nodeAt()/edgeAt() use it instead of scanning every node,
+  // so hover/click hit-testing stays fast with thousands of nodes.
+  let spatialGrid = null;
+  const SPATIAL_CELL = 80;
+  // node id -> incident edges, rebuilt whenever edges change (buildSim only
+  // — never per frame). Lets edgeAt() check only edges near the cursor
+  // instead of scanning every edge in the graph.
+  let edgesByNode = new Map();
   let dragNode = null, dragging = false, panStart = null;
   let dragDistance = 0, mouseDownAt = null;
   let hoverNode = null, hoverEdge = null;
@@ -3240,6 +3250,7 @@ const Graph = (function() {
     try {
       await ensureGraphLoaded();
       buildSim({ nodes: GraphNodes, edges: GraphEdges });
+      warmStart();
     } catch (e) {
       console.error('Graph load error:', e);
       toast('Error loading graph');
@@ -3249,7 +3260,7 @@ const Graph = (function() {
     bindEvents();
     resize();
     Graph.loaded = true;
-    loop();
+    requestFrame();
   }
 
   function buildSim(data) {
@@ -3290,6 +3301,27 @@ const Graph = (function() {
     recomputeConceptLinkSet();
 
     alpha = 1;
+    spatialGrid = buildSpatialGrid();
+    buildEdgeIndex();
+  }
+
+  // Runs the physics simulation forward synchronously, with nothing drawn,
+  // before the first paint. Without this, a large graph starts from random
+  // scattered positions and visibly, janky-ly unscrambles itself over
+  // hundreds of full-speed animation frames. Fast-forwarding to
+  // near-convergence up front means the graph appears already-settled on
+  // first paint instead. Bounded by both an iteration cap and a wall-clock
+  // budget so a huge graph degrades to "still somewhat scrambled, finishes
+  // settling visibly" rather than freezing the tab.
+  function warmStart() {
+    const start = performance.now();
+    const maxMs = 400;
+    const maxIters = 400;
+    let iters = 0;
+    while (alpha > 0.05 && iters < maxIters && (performance.now() - start) < maxMs) {
+      step();
+      iters++;
+    }
   }
 
   // "Linked to" filter: any node or paper, not just concepts — grouped by
@@ -3381,27 +3413,40 @@ const Graph = (function() {
 
   // ── Force simulation with grid-bucketed repulsion (avoids O(n^2)) ──────────
 
-  function step() {
-    if (alpha <= 0.001) return;
-    const active = nodes.filter(n => n !== dragNode);
-    const cell = 80;
+  function buildSpatialGrid() {
     const grid = new Map();
-    function key(cx, cy) { return cx + ',' + cy; }
     nodes.forEach(n => {
-      const cx = Math.floor(n.x / cell), cy = Math.floor(n.y / cell);
-      const k = key(cx, cy);
+      const cx = Math.floor(n.x / SPATIAL_CELL), cy = Math.floor(n.y / SPATIAL_CELL);
+      const k = cx + ',' + cy;
       if (!grid.has(k)) grid.set(k, []);
       grid.get(k).push(n);
     });
+    return grid;
+  }
+
+  function buildEdgeIndex() {
+    edgesByNode = new Map();
+    edges.forEach(e => {
+      if (!edgesByNode.has(e.a.id)) edgesByNode.set(e.a.id, []);
+      if (!edgesByNode.has(e.b.id)) edgesByNode.set(e.b.id, []);
+      edgesByNode.get(e.a.id).push(e);
+      edgesByNode.get(e.b.id).push(e);
+    });
+  }
+
+  function step() {
+    if (alpha <= 0.001) return;
+    const grid = buildSpatialGrid();
+    spatialGrid = grid; // reused by nodeAt()/edgeAt() for hit-testing
 
     const repulsion = 1800;
     nodes.forEach(n => {
       if (n === dragNode) return;
-      const cx = Math.floor(n.x / cell), cy = Math.floor(n.y / cell);
+      const cx = Math.floor(n.x / SPATIAL_CELL), cy = Math.floor(n.y / SPATIAL_CELL);
       let fx = 0, fy = 0;
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
-          const bucket = grid.get(key(cx + dx, cy + dy));
+          const bucket = grid.get((cx + dx) + ',' + (cy + dy));
           if (!bucket) continue;
           for (const other of bucket) {
             if (other === n) continue;
@@ -3441,10 +3486,23 @@ const Graph = (function() {
     alpha *= 0.985;
   }
 
-  function loop() {
+  // On-demand redraw: the old loop ran step()+draw() forever at 60fps, even
+  // once the layout had fully settled and nothing on screen was changing —
+  // with a large graph that's a continuous, pointless cost. Now a frame
+  // only gets scheduled when something could actually change (physics still
+  // settling, or an active drag/pan), and every other interaction
+  // (search, filters, zoom, hover) explicitly asks for the one frame it
+  // needs via requestFrame().
+  function requestFrame() {
+    if (rafId != null) return;
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function tick() {
+    rafId = null;
     step();
     draw();
-    rafId = requestAnimationFrame(loop);
+    if (alpha > 0.001 || dragNode || panStart) requestFrame();
   }
 
   function nodeVisible(n) {
@@ -3531,41 +3589,96 @@ const Graph = (function() {
 
     const hasSearch = !!searchQ;
 
-    // Edges
+    // Viewport + margin culling: skip nodes/edges well outside the visible
+    // area. The margin (constant in screen pixels, so it shrinks/grows in
+    // world space with zoom) means panning brings things into view a beat
+    // before they're actually on screen, instead of them popping in right
+    // at the edge — worth it for a large graph, not worth the same trick
+    // without a margin (which WOULD look janky).
+    const marginWorld = 200 / zoom;
+    const viewLeft   = (-width / 2 - panX) / zoom - marginWorld;
+    const viewRight  = ( width / 2 - panX) / zoom + marginWorld;
+    const viewTop    = (-height / 2 - panY) / zoom - marginWorld;
+    const viewBottom = ( height / 2 - panY) / zoom + marginWorld;
+    function inView(n) {
+      return n.x >= viewLeft && n.x <= viewRight && n.y >= viewTop && n.y <= viewBottom;
+    }
+
+    // Edges — batched by (type, dim-state) into one path + one stroke()
+    // call per group instead of one per edge. At thousands of edges, the
+    // per-edge state changes (setLineDash/strokeStyle/stroke) are the real
+    // cost, not the line math — batching turns O(edges) stroke calls into
+    // O(distinct styles). The hover edge is drawn separately on top so it
+    // can use its own width/alpha without breaking a group.
+    const edgeGroups = new Map();
     edges.forEach(e => {
+      if (e === hoverEdge) return;
       if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeTypeVisible(e)) return;
-      const style = EDGE_STYLE[e.type] || DEFAULT_EDGE_STYLE;
+      if (!inView(e.a) && !inView(e.b)) return;
       const dim = hasSearch && !(nodeMatchesSearch(e.a) && nodeMatchesSearch(e.b));
+      const key = e.type + '|' + dim;
+      if (!edgeGroups.has(key)) {
+        edgeGroups.set(key, { style: EDGE_STYLE[e.type] || DEFAULT_EDGE_STYLE, dim, list: [] });
+      }
+      edgeGroups.get(key).list.push(e);
+    });
+    edgeGroups.forEach(g => {
       ctx.beginPath();
-      ctx.moveTo(e.a.x, e.a.y);
-      ctx.lineTo(e.b.x, e.b.y);
-      ctx.setLineDash(style.dash);
-      ctx.strokeStyle = style.color;
-      ctx.globalAlpha = (dim ? style.alpha * 0.15 : style.alpha) * (e === hoverEdge ? 1 : 0.9);
-      ctx.lineWidth = (e === hoverEdge ? 2.5 : 1) / zoom;
+      g.list.forEach(e => { ctx.moveTo(e.a.x, e.a.y); ctx.lineTo(e.b.x, e.b.y); });
+      ctx.setLineDash(g.style.dash);
+      ctx.strokeStyle = g.style.color;
+      ctx.globalAlpha = (g.dim ? g.style.alpha * 0.15 : g.style.alpha) * 0.9;
+      ctx.lineWidth = 1 / zoom;
       ctx.stroke();
     });
+    if (hoverEdge && nodeVisible(hoverEdge.a) && nodeVisible(hoverEdge.b) && edgeTypeVisible(hoverEdge)) {
+      const style = EDGE_STYLE[hoverEdge.type] || DEFAULT_EDGE_STYLE;
+      const dim = hasSearch && !(nodeMatchesSearch(hoverEdge.a) && nodeMatchesSearch(hoverEdge.b));
+      ctx.beginPath();
+      ctx.moveTo(hoverEdge.a.x, hoverEdge.a.y);
+      ctx.lineTo(hoverEdge.b.x, hoverEdge.b.y);
+      ctx.setLineDash(style.dash);
+      ctx.strokeStyle = style.color;
+      ctx.globalAlpha = dim ? style.alpha * 0.15 : style.alpha;
+      ctx.lineWidth = 2.5 / zoom;
+      ctx.stroke();
+    }
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
 
     // Nodes
     nodes.forEach(n => {
       if (!nodeVisible(n)) return;
+      if (!inView(n)) return;
       const r = n.type === 'paper' ? 6 : (n.type === 'concept' ? 8 : 8);
       const dim = hasSearch && !nodeMatchesSearch(n);
       ctx.globalAlpha = dim ? 0.15 : 1;
       if (n.type === 'concept') {
-        drawDitheredCircle(ctx, n.x, n.y, r, n.color);
+        // The stipple pattern is imperceptible once the node is only a few
+        // screen pixels across — skip straight to a flat fill there rather
+        // than running drawDitheredCircle's full grid of individual
+        // arc+fill calls, which is the single most expensive thing drawn
+        // per node and the first thing to matter at thousands of concepts.
+        if (r * zoom < 5) {
+          shapePath(ctx, n.type, n.x, n.y, r);
+          ctx.fillStyle = n.color;
+          ctx.fill();
+        } else {
+          drawDitheredCircle(ctx, n.x, n.y, r, n.color);
+          shapePath(ctx, n.type, n.x, n.y, r); // outline only; fill path above isn't reusable (drawn via clip+arcs)
+        }
       } else if (n.type === 'ghost') {
         // Hollow dashed circle — referenced by something in the library,
         // but with no record of its own (see cites_unmatched).
         ctx.setLineDash([2, 2]);
+        shapePath(ctx, n.type, n.x, n.y, r);
       } else {
         shapePath(ctx, n.type, n.x, n.y, r);
         ctx.fillStyle = n.type === 'paper' ? n.color : '#242830';
         ctx.fill();
+        // Path is still current — the stroke below reuses it instead of
+        // rebuilding the same shape a second time.
       }
-      shapePath(ctx, n.type, n.x, n.y, r);
       ctx.lineWidth = (n === hoverNode ? 2.5 : 1.2) / zoom;
       ctx.strokeStyle = n === hoverNode ? '#f3c944'
         : n.type === 'ghost' ? '#888'
@@ -3587,24 +3700,49 @@ const Graph = (function() {
     };
   }
 
+  // Only checks nodes in the cursor's own spatial-grid cell and its 8
+  // neighbors instead of every node — with the hit radius (10) well inside
+  // one cell (80), that's guaranteed to cover every node that could match.
+  // Falls back to a full scan if the grid isn't built yet (e.g. before the
+  // very first frame).
   function nodeAt(sx, sy) {
     const w = screenToWorld(sx, sy);
+    const r = 10;
     let best = null, bestDist = Infinity;
-    for (const n of nodes) {
-      if (!nodeVisible(n)) continue;
-      const r = 10;
+
+    function consider(n) {
+      if (!nodeVisible(n)) return;
       const dx = n.x - w.x, dy = n.y - w.y;
       const d = dx * dx + dy * dy;
       if (d < r * r && d < bestDist) { best = n; bestDist = d; }
     }
+
+    if (spatialGrid) {
+      const cx = Math.floor(w.x / SPATIAL_CELL), cy = Math.floor(w.y / SPATIAL_CELL);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const bucket = spatialGrid.get((cx + dx) + ',' + (cy + dy));
+          if (bucket) bucket.forEach(consider);
+        }
+      }
+    } else {
+      nodes.forEach(consider);
+    }
     return best;
   }
 
+  // Only tests edges incident to nodes near the cursor (via the spatial
+  // grid + edgesByNode index) instead of every edge in the graph. Force
+  // layout keeps connected nodes close together (linkDist ~90, well inside
+  // one grid cell), so this misses only the rare very-long edge passing
+  // near the cursor without either endpoint being nearby — an acceptable
+  // trade for not scanning thousands of edges on every mousemove.
   function edgeAt(sx, sy) {
     const w = screenToWorld(sx, sy);
     const tol = 6 / zoom;
-    for (const e of edges) {
-      if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeTypeVisible(e)) continue;
+
+    function test(e) {
+      if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeTypeVisible(e)) return null;
       const { a, b } = e;
       const dx = b.x - a.x, dy = b.y - a.y;
       const lenSq = dx * dx + dy * dy || 1;
@@ -3612,7 +3750,31 @@ const Graph = (function() {
       t = Math.max(0, Math.min(1, t));
       const px = a.x + t * dx, py = a.y + t * dy;
       const d = Math.hypot(w.x - px, w.y - py);
-      if (d < tol) return e;
+      return d < tol ? e : null;
+    }
+
+    if (!spatialGrid) {
+      for (const e of edges) { const hit = test(e); if (hit) return hit; }
+      return null;
+    }
+
+    const cx = Math.floor(w.x / SPATIAL_CELL), cy = Math.floor(w.y / SPATIAL_CELL);
+    const seen = new Set();
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const bucket = spatialGrid.get((cx + dx) + ',' + (cy + dy));
+        if (!bucket) continue;
+        for (const n of bucket) {
+          const es = edgesByNode.get(n.id);
+          if (!es) continue;
+          for (const e of es) {
+            if (seen.has(e)) continue;
+            seen.add(e);
+            const hit = test(e);
+            if (hit) return hit;
+          }
+        }
+      }
     }
     return null;
   }
@@ -3634,6 +3796,7 @@ const Graph = (function() {
         panStart = { x: e.clientX - panX, y: e.clientY - panY };
         canvas.classList.add('dragging');
       }
+      requestFrame();
     });
 
     window.addEventListener('mousemove', e => {
@@ -3647,13 +3810,20 @@ const Graph = (function() {
         dragNode.x = w.x; dragNode.y = w.y;
         dragNode.vx = 0; dragNode.vy = 0;
         alpha = Math.max(alpha, 0.3);
+        requestFrame();
       } else if (panStart) {
         panX = e.clientX - panStart.x;
         panY = e.clientY - panStart.y;
+        requestFrame();
       } else {
+        const prevNode = hoverNode, prevEdge = hoverEdge;
         hoverNode = nodeAt(sx, sy);
         hoverEdge = hoverNode ? null : edgeAt(sx, sy);
         updateTooltip(sx, sy);
+        // Only the hover highlight changes the canvas — skip redrawing on
+        // every pixel of mouse movement when the hovered node/edge is the
+        // same as last time.
+        if (hoverNode !== prevNode || hoverEdge !== prevEdge) requestFrame();
       }
     });
 
@@ -3674,6 +3844,7 @@ const Graph = (function() {
       const after = screenToWorld(sx, sy);
       panX += (after.x - before.x) * zoom;
       panY += (after.y - before.y) * zoom;
+      requestFrame();
     }, { passive: false });
 
     canvas.addEventListener('click', e => {
@@ -3704,6 +3875,7 @@ const Graph = (function() {
 
     document.getElementById('graph-search').addEventListener('input', e => {
       searchQ = e.target.value.toLowerCase();
+      requestFrame();
     });
 
     document.querySelectorAll('.gtype').forEach(cb => {
@@ -3718,6 +3890,7 @@ const Graph = (function() {
 
     document.getElementById('graph-reset').addEventListener('click', () => {
       panX = 0; panY = 0; zoom = 1; alpha = 0.5;
+      requestFrame();
     });
 
     document.getElementById('graph-legend-toggle').addEventListener('click', () => {
@@ -3898,6 +4071,7 @@ const Graph = (function() {
     const wrap = document.getElementById('graph-wrap');
     width  = canvas.width  = wrap.clientWidth;
     height = canvas.height = wrap.clientHeight;
+    requestFrame();
   }
 
   return { init, resize, loaded: false };
