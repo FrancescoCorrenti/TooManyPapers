@@ -10,17 +10,49 @@
 const http = require('http');
 const fs   = require('fs');
 const path = require('path');
+const os   = require('os');
 
 const PORT        = parseInt(process.env.PORT, 10) || 3737;
 // Data lives in the persistent plugin data directory (TOO_MANY_PAPERS_DATA_DIR,
 // set to ${CLAUDE_PLUGIN_DATA} when launched via the webui_launch MCP tool), so
 // it survives plugin updates and stays in sync with the MCP server (single
-// source of truth). Falls back to ../server for manual/dev use.
-const DATA_DIR    = process.env.TOO_MANY_PAPERS_DATA_DIR || path.join(__dirname, '..', 'server');
+// source of truth). When launched through webui_launch this is always an
+// already-resolved, already-created real path (mirrors papers_api.py's
+// DATA_DIR exactly). Run standalone without that env var, or on a host that
+// doesn't expand ${CLAUDE_PLUGIN_DATA} (passing it through literally instead
+// of a real path), this falls back to a fixed directory in the user's home
+// — NOT ../server (the plugin's own install tree), since a host that
+// re-provisions the plugin fresh every session would wipe that too.
+function resolveDataDir() {
+  const envVal = (process.env.TOO_MANY_PAPERS_DATA_DIR || '').trim();
+  if (envVal && !envVal.startsWith('${')) return envVal;
+  return path.join(os.homedir(), '.too-many-papers');
+}
+const DATA_DIR    = resolveDataDir();
 const PAPERS_FILE = path.join(DATA_DIR, '_papers.json');
 const VENUES_FILE = path.join(DATA_DIR, '_venues.json');
 const GRAPH_FILE  = path.join(DATA_DIR, '_graph.json');
 const HTML_FILE   = path.join(__dirname, 'paper-library.html');
+
+// Mirrors papers_api.py's _ensure_data_files(): create DATA_DIR and seed it
+// from the bundled templates the first time it's used. Never overwrites
+// existing data.
+function ensureDataFiles() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const templatesDir = path.join(__dirname, '..', 'server', '_templates');
+  for (const name of ['_papers.json', '_venues.json', '_graph.json']) {
+    const target = path.join(DATA_DIR, name);
+    if (!fs.existsSync(target)) {
+      const template = path.join(templatesDir, name);
+      fs.writeFileSync(target, fs.existsSync(template) ? fs.readFileSync(template) : '{}');
+    }
+  }
+  const logFile = path.join(DATA_DIR, '_log.jsonl');
+  if (!fs.existsSync(logFile)) fs.writeFileSync(logFile, '');
+  const pdfsDir = path.join(DATA_DIR, 'pdfs');
+  fs.mkdirSync(pdfsDir, { recursive: true });
+}
+ensureDataFiles();
 
 // Directories to exclude from file search
 const SKIP_DIRS = new Set(['node_modules', '.git', '_scripts']);
@@ -202,40 +234,77 @@ const PAPER_EDITABLE_FIELDS = new Set([
   'source_verified', 'concepts', 'file', 'outside_zone', 'notes', 'url',
 ]);
 
-// PDF notes (`pdf_notes`) are edited through their own add/delete endpoints
-// below rather than through updatePaperFields' generic patch — each note is
-// a small structured record (page + text + timestamp), and going through
-// dedicated read-modify-write functions avoids a client having to round-trip
-// the entire notes array (and risk clobbering a concurrent addition) just to
-// append or remove one note.
-function addPdfNote(paperId, page, text) {
-  const raw    = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
-  const papers = raw.papers || {};
-  if (!papers[paperId]) return { error: `Paper '${paperId}' not found.` };
-  if (!text || !String(text).trim()) return { error: 'Note text cannot be empty.' };
+// PDF notes are first-class graph citizens: each one is a `note` node
+// (mirrors papers_api.py's NODE_REQUIRED_FIELDS/NODE_OPTIONAL_FIELDS for
+// that type), linked to its paper via an `annotates` edge — so notes show
+// up in the Graph view, the Notes tab, and "linked to" filters like any
+// other node, not as a dead-end field buried inside the paper JSON.
+// `pdf_notes` on the paper is kept as a small read-through cache (same IDs
+// as the graph nodes) purely so the inline PDF reader can render its notes
+// list without a second round trip to /api/graph.
+function nextNoteId(nodes) {
+  let max = 0;
+  for (const id of Object.keys(nodes)) {
+    const m = /^NOTE-(\d+)$/.exec(id);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return 'NOTE-' + String(max + 1).padStart(3, '0');
+}
 
-  const note = {
-    id: 'N' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    page: page ? parseInt(page, 10) || null : null,
-    text: String(text).trim(),
-    created: new Date().toISOString(),
-  };
+function addPdfNote(paperId, page, quote, text) {
+  const papersRaw = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
+  const papers    = papersRaw.papers || {};
+  if (!papers[paperId]) return { error: `Paper '${paperId}' not found.` };
+
+  quote = quote ? String(quote).trim() : '';
+  text  = text  ? String(text).trim()  : '';
+  if (!quote && !text) return { error: 'Note must have a quote or text.' };
+
+  const graphRaw = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
+  const nodes    = graphRaw.nodes || {};
+  const edges    = graphRaw.edges || (graphRaw.edges = []);
+
+  const noteId = nextNoteId(nodes);
+  const created = new Date().toISOString();
+  const nameSource = quote || text;
+  const name = nameSource.length > 60 ? nameSource.slice(0, 60) + '…' : nameSource;
+  const pageNum = page ? (parseInt(page, 10) || null) : null;
+
+  const nodePayload = { name, created, type: 'note' };
+  if (quote) nodePayload.quote = quote;
+  if (text) nodePayload.text = text;
+  if (pageNum) nodePayload.page = pageNum;
+  nodes[noteId] = nodePayload;
+  edges.push({ src: noteId, tgt: paperId, type: 'annotates' });
+  graphRaw.nodes = nodes;
+  fs.writeFileSync(GRAPH_FILE, JSON.stringify(graphRaw, null, 2), 'utf8');
+
   papers[paperId].pdf_notes = papers[paperId].pdf_notes || [];
-  papers[paperId].pdf_notes.push(note);
-  raw.papers = papers;
-  fs.writeFileSync(PAPERS_FILE, JSON.stringify(raw, null, 2), 'utf8');
-  return { ok: true };
+  papers[paperId].pdf_notes.push({ id: noteId, page: pageNum, quote, text, created });
+  papersRaw.papers = papers;
+  fs.writeFileSync(PAPERS_FILE, JSON.stringify(papersRaw, null, 2), 'utf8');
+
+  return { ok: true, noteId };
 }
 
 function deletePdfNote(paperId, noteId) {
-  const raw    = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
-  const papers = raw.papers || {};
+  const papersRaw = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
+  const papers    = papersRaw.papers || {};
   if (!papers[paperId]) return { error: `Paper '${paperId}' not found.` };
   const before = (papers[paperId].pdf_notes || []).length;
   papers[paperId].pdf_notes = (papers[paperId].pdf_notes || []).filter(n => n.id !== noteId);
   if (papers[paperId].pdf_notes.length === before) return { error: `Note '${noteId}' not found.` };
-  raw.papers = papers;
-  fs.writeFileSync(PAPERS_FILE, JSON.stringify(raw, null, 2), 'utf8');
+  papersRaw.papers = papers;
+  fs.writeFileSync(PAPERS_FILE, JSON.stringify(papersRaw, null, 2), 'utf8');
+
+  const graphRaw = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
+  const nodes    = graphRaw.nodes || {};
+  if (nodes[noteId]) {
+    delete nodes[noteId];
+    graphRaw.nodes = nodes;
+    graphRaw.edges = (graphRaw.edges || []).filter(e => e.src !== noteId && e.tgt !== noteId);
+    fs.writeFileSync(GRAPH_FILE, JSON.stringify(graphRaw, null, 2), 'utf8');
+  }
   return { ok: true };
 }
 
@@ -272,6 +341,7 @@ const NODE_REQUIRED_FIELDS = {
   endpoint: ['name', 'status'],
   idea:     ['name', 'status', 'created'],
   pool:     ['name', 'created'],
+  note:     ['name', 'created'],
 };
 const NODE_OPTIONAL_FIELDS = {
   concept:  ['description'],
@@ -279,6 +349,7 @@ const NODE_OPTIONAL_FIELDS = {
   endpoint: ['description'],
   idea:     ['description', 'source'],
   pool:     ['description'],
+  note:     ['quote', 'text', 'page'],
 };
 
 function updateGraphNodeFields(nodeId, patch) {
@@ -301,6 +372,50 @@ function updateGraphNodeFields(nodeId, patch) {
 
   Object.assign(nodes[nodeId], patch);
   raw.nodes = nodes;
+  fs.writeFileSync(GRAPH_FILE, JSON.stringify(raw, null, 2), 'utf8');
+  return { ok: true };
+}
+
+// Mirrors papers_api.py's GRAPH_EDGE_TYPES.
+const GRAPH_EDGE_TYPES = new Set([
+  'connected_to', 'uses_concept', 'part_of', 'inspired_by',
+  'relevant_to', 'derived_from', 'enables', 'annotates',
+]);
+
+// Connections (edges) are editable directly from the edit modal for any
+// node — including papers, which can be an edge endpoint too (e.g. an idea
+// `inspired_by` a paper) even though they live in a separate JSON file.
+// `src`/`tgt` may reference either a graph node or a paper ID; we don't
+// validate that the ID exists here since either file could contain it and
+// the modal's own node/paper picker already only offers real IDs.
+function addEdge(src, tgt, type, note) {
+  src = String(src || '').trim().toUpperCase();
+  tgt = String(tgt || '').trim().toUpperCase();
+  if (!src || !tgt) return { error: 'Both ends of the connection are required.' };
+  if (src === tgt) return { error: 'A node cannot connect to itself.' };
+  if (!GRAPH_EDGE_TYPES.has(type)) {
+    return { error: `Unrecognized edge type '${type}'. Allowed: ${[...GRAPH_EDGE_TYPES].join(', ')}.` };
+  }
+  const raw = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
+  const edges = raw.edges || (raw.edges = []);
+  if (edges.some(e => e.src === src && e.tgt === tgt && e.type === type)) {
+    return { error: 'That connection already exists.' };
+  }
+  const edge = { src, tgt, type };
+  if (note && String(note).trim()) edge.note = String(note).trim();
+  edges.push(edge);
+  fs.writeFileSync(GRAPH_FILE, JSON.stringify(raw, null, 2), 'utf8');
+  return { ok: true };
+}
+
+function deleteEdge(src, tgt, type) {
+  src = String(src || '').trim().toUpperCase();
+  tgt = String(tgt || '').trim().toUpperCase();
+  const raw = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
+  const edges = raw.edges || [];
+  const before = edges.length;
+  raw.edges = edges.filter(e => !(e.src === src && e.tgt === tgt && e.type === type));
+  if (raw.edges.length === before) return { error: 'Connection not found.' };
   fs.writeFileSync(GRAPH_FILE, JSON.stringify(raw, null, 2), 'utf8');
   return { ok: true };
 }
@@ -435,13 +550,57 @@ const server = http.createServer(function(req, res) {
     return;
   }
 
+  if (req.method === 'POST' && req.url === '/api/edge-add') {
+    let body = '';
+    req.on('data', function(d) { body += d; });
+    req.on('end', function() {
+      try {
+        const payload = JSON.parse(body);
+        const result  = addEdge(payload.src, payload.tgt, payload.type, payload.note);
+        if (result.error) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: result.error }));
+          return;
+        }
+        const data = loadGraph();
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(data));
+      } catch(e) {
+        res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/edge-delete') {
+    let body = '';
+    req.on('data', function(d) { body += d; });
+    req.on('end', function() {
+      try {
+        const payload = JSON.parse(body);
+        const result  = deleteEdge(payload.src, payload.tgt, payload.type);
+        if (result.error) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: result.error }));
+          return;
+        }
+        const data = loadGraph();
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(data));
+      } catch(e) {
+        res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (req.method === 'POST' && req.url === '/api/pdf-note-add') {
     let body = '';
     req.on('data', function(d) { body += d; });
     req.on('end', function() {
       try {
         const payload = JSON.parse(body);
-        const result  = addPdfNote(payload.id, payload.page, payload.text);
+        const result  = addPdfNote(payload.id, payload.page, payload.quote, payload.text);
         if (result.error) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ error: result.error }));
@@ -479,6 +638,25 @@ const server = http.createServer(function(req, res) {
     return;
   }
 
+  if (req.method === 'GET' && req.url.startsWith('/vendor/')) {
+    // Vendored client-side libraries (e.g. pdf.js), served as static files —
+    // no CDN dependency at runtime, everything ships inside the plugin.
+    const name = decodeURIComponent(req.url.slice('/vendor/'.length));
+    if (name.includes('..') || name.includes('/') || name.includes('\\')) {
+      res.writeHead(400); res.end('Bad request'); return;
+    }
+    const filepath = path.join(__dirname, 'vendor', name);
+    fs.readFile(filepath, function(err, data) {
+      if (err) { res.writeHead(404); res.end('Not found'); return; }
+      const contentType = name.endsWith('.mjs') ? 'text/javascript; charset=utf-8'
+                         : name.endsWith('.js')  ? 'text/javascript; charset=utf-8'
+                         : 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(data);
+    });
+    return;
+  }
+
   if (req.method === 'GET' && req.url.startsWith('/pdf/')) {
     // The frontend sends the paper's `file` field verbatim (encodeURIComponent'd),
     // e.g. "pdfs/P001.pdf" for automatically-fetched PDFs — resolve it the
@@ -500,6 +678,6 @@ const server = http.createServer(function(req, res) {
 
 server.listen(PORT, function() {
   console.log('\nToo Many Papers listening on http://localhost:' + PORT);
-  console.log('   Sources: _papers.json, _venues.json, _graph.json');
+  console.log('   Data directory: ' + DATA_DIR);
   console.log('   Press Ctrl+C to stop the server.\n');
 });

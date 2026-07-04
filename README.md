@@ -95,6 +95,7 @@ Everything lives in a typed graph with **nodes** and **edges**, browsable as a f
 | `endpoint` | A specific milestone within a project |
 | `idea` | A concrete idea connected to a project |
 | `pool` | A transversal idea that spans projects |
+| `note` | A reading annotation — a quoted excerpt and/or comment, usually tied to a paper page |
 
 | Edge type | Connects |
 |-----------|----------|
@@ -105,6 +106,7 @@ Everything lives in a typed graph with **nodes** and **edges**, browsable as a f
 | `relevant_to` | paper > project |
 | `enables` | concept > concept (directional) |
 | `derived_from` | any > any |
+| `annotates` | note > paper |
 
 All types are **hardcoded and validated** by the MCP server. The LLM cannot invent new types.
 
@@ -138,7 +140,7 @@ Every tab keeps the filters you use most (search, status, node type) always visi
 
 When a paper is added, the server tries to resolve and download an open-access PDF on its own — arXiv first (a known-stable URL pattern, no request needed), then Semantic Scholar's `openAccessPdf`, then Unpaywall's `best_oa_location` (falls through to the next source if an earlier one's link turns out not to be a real PDF). No scraping, no paywall bypass — only these three APIs. Every download is byte-validated (it must actually start with the PDF magic bytes) before being saved, so a redirect or paywall HTML page can never end up masquerading as the paper. If nothing is found, the paper is marked `pdf_status: unavailable` (paywalled, nothing to do) instead of `error: ...` (a source was found but the download failed — worth retrying with `papers_sync_pdfs`). Set `UNPAYWALL_EMAIL` (or reuse `TOO_MANY_PAPERS_CONTACT_EMAIL`) to enable the Unpaywall step — see "Recommended environment variables" in `too-many-papers-plugin/README.md`.
 
-The fetched PDF is viewable inline in the paper's detail tab (with a fullscreen toggle and page-referenced notes saved back into the JSON), and every field is editable in place via the pencil button next to the title:
+The fetched PDF is rendered inline in the paper's detail tab with a real, selectable text layer (via a locally-vendored pdf.js — no CDN, no native-viewer iframe), so you can select a passage while reading and get an inline "Add note" popup on the spot; the page is detected automatically and the excerpt is pre-filled. Saving creates a `note` graph node (quote + comment + page) linked to the paper via an `annotates` edge, so it's a first-class part of the graph — browsable in its own tab, filterable, and connected in the Graph view — not a dead field buried in the paper's JSON. Every field of every paper or node is also editable in place via the pencil button next to its title:
 
 <p align="center">
   <img src="docs/screenshots/03-pdf-viewer.gif" width="800" alt="Opening a paper and scrolling its automatically-fetched, inline-rendered PDF">
@@ -183,7 +185,7 @@ too-many-papers/                     (this repo = the marketplace)
     │   ├── pdfs/                    # automatically-fetched PDFs (your data)
     │   └── _scripts/
     │       ├── papers_api.py        # core API (CLI + library)
-    │       └── mcp_server.py        # MCP server wrapper, exposes 46 tools
+    │       └── mcp_server.py        # MCP server wrapper, exposes 47 tools
     ├── skills/
     │   └── too-many-papers/
     │       ├── SKILL.md             # behavioral rules, onboarding, briefing prompt
@@ -233,7 +235,7 @@ A bare plugin repo can still be installed directly (`/plugin install owner/repo`
 </details>
 
 <details>
-<summary><b>Graph tools</b> (18)</summary>
+<summary><b>Graph tools</b> (19)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -245,6 +247,7 @@ A bare plugin repo can still be installed directly (`/plugin install owner/repo`
 | `graph_add_endpoint` | Add an endpoint node (name, status, description?) |
 | `graph_add_idea` | Add an idea node (name, status, created, description?, source?) |
 | `graph_add_pool` | Add a pool node (name, created, description?) |
+| `graph_add_note` | Add a note node — a reading annotation (quote?, text?, page?), usually linked to a paper via an `annotates` edge |
 | `graph_update_node` | Update node fields (rejects unrecognized fields for the node's type) |
 | `graph_remove_node` | Remove a node and all its edges |
 | `graph_add_edge` | Add a typed edge between nodes — auto-logs a "linked" interaction for relevant_to/uses_concept edges |
@@ -300,7 +303,7 @@ Every URL is either a known-stable pattern (arXiv) or comes from a real API resp
 The system is designed for Claude and tested with Claude Code / Claude Desktop / Cowork. Any MCP-compatible client will work, but you'll need to load `skills/too-many-papers/SKILL.md` manually or adapt it to your client's conventions.
 
 **Where is my data stored?**
-Inside the installed plugin directory: `too-many-papers-plugin/server/_papers.json`, `_venues.json`, `_graph.json`, plus an append-only `_log.jsonl` audit trail and a `pdfs/` folder for automatically-fetched PDFs. Plain JSON, version-controllable, portable.
+In a directory outside the plugin's own install tree, so it survives plugin updates/reinstalls: `_papers.json`, `_venues.json`, `_graph.json`, an append-only `_log.jsonl` audit trail, and a `pdfs/` folder. On hosts that support it, that's `${CLAUDE_PLUGIN_DATA}`; otherwise it falls back to `~/.too-many-papers`. Either way, `graph_status` and `webui_launch` both print the exact path being used, so you can always check where your data actually lives on a given host. Plain JSON, version-controllable, portable.
 
 **Can I use this without an LLM?**
 Yes. `papers_api.py` works as a standalone CLI, and the Too Many Papers web UI works independently.

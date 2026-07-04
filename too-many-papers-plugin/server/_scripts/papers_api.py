@@ -136,13 +136,28 @@ ROOT_DIR = SCRIPT_DIR.parent
 TEMPLATES_DIR = ROOT_DIR / "_templates"
 
 # Where the user's actual data lives. When running as an installed Claude
-# Code / Cowork plugin, .mcp.json sets TOO_MANY_PAPERS_DATA_DIR to
-# ${CLAUDE_PLUGIN_DATA} — a directory that persists across plugin updates
-# (unlike the plugin's own source tree, which gets wiped and replaced on
-# every update/reinstall). Falling back to ROOT_DIR keeps local/dev usage
-# (running the script directly, without the plugin's env var) working the
-# same as before.
-DATA_DIR = Path(os.environ.get("TOO_MANY_PAPERS_DATA_DIR") or ROOT_DIR)
+# Code plugin, .mcp.json sets TOO_MANY_PAPERS_DATA_DIR to ${CLAUDE_PLUGIN_DATA}
+# — a directory that persists across plugin updates (unlike the plugin's own
+# source tree, which gets wiped and replaced on every update/reinstall).
+#
+# Not every MCP host expands that placeholder, though — some pass the env
+# value through unexpanded (a literal "${CLAUDE_PLUGIN_DATA}" string) or
+# don't set it at all. And on hosts that re-provision the plugin from
+# scratch each session (some sandboxed environments do this), even ROOT_DIR
+# itself doesn't survive between sessions, since it's inside that
+# re-provisioned tree. So the fallback below is NOT ROOT_DIR — it's a fixed
+# directory in the user's home, independent of the plugin's lifecycle and
+# of whether the host supports ${CLAUDE_PLUGIN_DATA} at all. This is the
+# difference between the graph surviving across sessions and silently
+# resetting every time.
+def _resolve_data_dir() -> Path:
+    env_val = (os.environ.get("TOO_MANY_PAPERS_DATA_DIR") or "").strip()
+    if env_val and not env_val.startswith("${"):
+        return Path(env_val)
+    return Path.home() / ".too-many-papers"
+
+
+DATA_DIR = _resolve_data_dir()
 
 PAPERS_FILE = DATA_DIR / "_papers.json"
 VENUES_FILE = DATA_DIR / "_venues.json"
@@ -2058,9 +2073,9 @@ def cmd_delete_venue(args):
 
 # -- Graph helpers ---------------------------------------------------------
 
-GRAPH_NODE_TYPES = {"concept", "project", "endpoint", "idea", "pool"}
+GRAPH_NODE_TYPES = {"concept", "project", "endpoint", "idea", "pool", "note"}
 GRAPH_EDGE_TYPES = {"connected_to", "uses_concept", "part_of", "inspired_by",
-                    "relevant_to", "derived_from", "enables"}
+                    "relevant_to", "derived_from", "enables", "annotates"}
 INTERACTION_TYPES = {
     "discussed": 3,
     "deepened": 5,
@@ -2075,6 +2090,7 @@ NODE_REQUIRED_FIELDS = {
     "endpoint": {"name", "status"},
     "idea": {"name", "status", "created"},
     "pool": {"name", "created"},
+    "note": {"name", "created"},
 }
 
 NODE_OPTIONAL_FIELDS = {
@@ -2083,6 +2099,13 @@ NODE_OPTIONAL_FIELDS = {
     "endpoint": {"description"},
     "idea": {"description", "source"},
     "pool": {"description"},
+    # `note` = a reading annotation captured from a PDF (via the web UI's
+    # select-to-note flow, or graph_add_note). `quote` is the verbatim
+    # excerpt the user selected; `text` is their own comment on it; `page`
+    # is where in the PDF it was selected. Linked to its paper via an
+    # `annotates` edge (note -> paper), not a field, so it shows up like any
+    # other graph relationship (BFS, "linked to" filters, etc.).
+    "note": {"quote", "text", "page"},
 }
 
 
@@ -2179,6 +2202,7 @@ def cmd_graph_status(args):
     if interactions:
         latest = max(i.get("date", "") for i in interactions)
         print(f"Latest interaction: {latest}")
+    print(f"Data directory: {DATA_DIR}")
 
 
 def cmd_graph_node(args):

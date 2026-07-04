@@ -429,6 +429,30 @@ def graph_add_pool(name: str, created: str, description: str = "") -> str:
 
 
 @mcp.tool()
+def graph_add_note(name: str, created: str, quote: str = "", text: str = "", page: int = 0) -> str:
+    """Add a note node — a reading annotation, typically tied to a paper via
+    an `annotates` edge (use graph_add_edge with type "annotates"). Usually
+    created from the web UI's select-to-note flow, but the AI can add one
+    too when the user dictates a note during conversation.
+
+    Args:
+        name: Short label for the note (e.g. a truncated excerpt).
+        created: Creation date, e.g. "2026-07-02".
+        quote: Optional verbatim excerpt the note is about.
+        text: Optional free-text comment on the excerpt.
+        page: Optional PDF page number the note refers to (0 = none).
+    """
+    payload = {"name": name, "created": created}
+    if quote:
+        payload["quote"] = quote
+    if text:
+        payload["text"] = text
+    if page:
+        payload["page"] = page
+    return _add_node("note", payload)
+
+
+@mcp.tool()
 def graph_update_node(id: str, payload: str) -> str:
     """Update fields on an existing graph node (merge patch).
 
@@ -602,7 +626,8 @@ def webui_launch() -> str:
 
     return (
         f"Too Many Papers starting at http://localhost:{WEBUI_PORT} "
-        "— open that URL in your browser."
+        "— open that URL in your browser. "
+        f"Data directory: {papers_api.DATA_DIR}"
     )
 
 

@@ -711,6 +711,9 @@
   .legend-shape.hexagon {
     clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
   }
+  .legend-shape.star {
+    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  }
   .legend-line { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--accent2); flex-shrink: 0; }
   .legend-line.dashed { border-top-style: dashed; }
   .legend-line.dotted { border-top-style: dotted; }
@@ -890,30 +893,134 @@
   .conn-dir { color: var(--text-dim); }
   .conn-name { color: var(--text); font-weight: 500; }
   .conn-note { color: var(--text-dim); font-style: italic; font-size: 0.8rem; }
-  .pdf-toolbar {
+  .conn-edit-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .conn-edit-row {
     display: flex;
-    justify-content: flex-end;
-    margin-bottom: 8px;
-  }
-  .pdf-viewer-wrap {
-    width: 100%;
-  }
-  .pdf-frame {
-    width: 100%;
-    height: 720px;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    background: var(--surface2);
     border: 1px solid var(--border);
     border-radius: var(--radius);
+    font-size: 0.82rem;
+  }
+  .conn-edit-row .conn-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .conn-edit-add {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .conn-edit-add select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 7px 8px;
+    font-size: 0.82rem;
+  }
+  .conn-edit-add #ce-target { flex: 1; min-width: 140px; }
+  .pdf-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .pdf-toolbar-hint { font-size: 0.78rem; color: var(--text-dim); }
+  .pdf-toolbar-actions { display: flex; gap: 6px; align-items: center; }
+  .pdf-zoom-level { font-size: 0.78rem; color: var(--text-dim); min-width: 40px; text-align: center; }
+  .pdf-viewer-wrap {
+    width: 100%;
+    max-height: 760px;
+    overflow-y: auto;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: #37393d;
+    padding: 16px 0;
+    position: relative;
+  }
+  .pdf-viewer-wrap:fullscreen {
+    background: #202124;
+    max-height: none;
+    height: 100%;
+    padding: 24px 0;
+  }
+  .pdf-page {
+    position: relative;
+    margin: 0 auto 14px auto;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
     background: #fff;
     display: block;
   }
-  .pdf-viewer-wrap:fullscreen {
-    background: #000;
-    padding: 16px;
+  .pdf-page canvas { display: block; }
+  .pdf-text-layer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    line-height: 1;
+    opacity: 1;
+    text-align: initial;
+    transform-origin: 0 0;
   }
-  .pdf-viewer-wrap:fullscreen .pdf-frame {
-    height: 100%;
+  .pdf-text-layer span, .pdf-text-layer br {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+  }
+  .pdf-text-layer ::selection { background: rgba(212,175,55,0.35); }
+  .pdf-loading { padding: 60px 0; text-align: center; color: var(--text-dim); }
+  .pdf-note-popup {
+    position: fixed;
+    z-index: 500;
+    background: var(--surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+    padding: 6px;
+  }
+  .pdf-note-popup-btn {
+    background: var(--accent);
+    color: #1a1a1a;
     border: none;
-    border-radius: 0;
+    border-radius: var(--radius);
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .pdf-note-popup-form { width: 280px; }
+  .pdf-note-popup-quote {
+    font-size: 0.76rem;
+    color: var(--text-dim);
+    font-style: italic;
+    border-left: 2px solid var(--accent);
+    padding: 4px 8px;
+    margin-bottom: 6px;
+    max-height: 60px;
+    overflow-y: auto;
+  }
+  .pdf-note-popup-text {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 8px;
+    font-size: 0.83rem;
+    font-family: var(--font-body);
+    min-height: 50px;
+    resize: vertical;
+    box-sizing: border-box;
+  }
+  .pdf-note-popup-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 6px;
   }
 
   /* ── PDF notes ────────────────────────────────── */
@@ -1134,13 +1241,15 @@
 </header>
 
 <div class="tab-bar">
-  <button class="tab-btn active" data-tab="paper">Papers</button>
-  <button class="tab-btn" data-tab="concept">Concepts</button>
-  <button class="tab-btn" data-tab="project">Projects</button>
-  <button class="tab-btn" data-tab="endpoint">Endpoints</button>
-  <button class="tab-btn" data-tab="idea">Ideas</button>
-  <button class="tab-btn" data-tab="pool">Pools</button>
-  <button class="tab-btn" data-tab="graph">Graph</button>
+  <button class="tab-btn active" data-tab="paper" title="A paper in your library.">Papers</button>
+  <button class="tab-btn" data-tab="concept" title="A research area you care about.">Concepts</button>
+  <button class="tab-btn" data-tab="project" title="An active research project with goals.">Projects</button>
+  <button class="tab-btn" data-tab="endpoint" title="A specific milestone within a project.">Endpoints</button>
+  <button class="tab-btn" data-tab="idea" title="A concrete idea connected to a project.">Ideas</button>
+  <button class="tab-btn" data-tab="pool" title="A transversal idea that spans multiple projects.">Pools</button>
+  <button class="tab-btn" data-tab="note" title="A reading annotation — a quoted excerpt and/or comment, usually tied to a paper page.">Notes</button>
+  <button class="tab-btn" data-tab="venue" title="Where a paper was published (journal, conference, preprint server). Not part of the knowledge graph — usable only as a filter.">Venues</button>
+  <button class="tab-btn" data-tab="graph" title="Force-directed view of the whole knowledge graph.">Graph</button>
 </div>
 
 <div id="view-paper">
@@ -1192,6 +1301,7 @@
       </div>
 
       <button class="filter-btn" id="paper-advanced-toggle" aria-expanded="false">Advanced filters &#9656;</button>
+      <button class="filter-btn" id="paper-reset-filters">Reset filters</button>
     </div>
     <div class="advanced-panel" id="paper-advanced-panel" style="display:none; padding: 0 40px 16px; background: var(--surface); border-bottom: 1px solid var(--border); margin-top: -1px;">
       <div class="filter-inline">
@@ -1236,6 +1346,18 @@
   <div id="pane-pool-detail" class="detail-pane" style="display:none;"></div>
 </div>
 
+<div id="view-note" style="display:none;">
+  <div class="subtab-bar" id="subtabbar-note"></div>
+  <div id="pane-note-list"></div>
+  <div id="pane-note-detail" class="detail-pane" style="display:none;"></div>
+</div>
+
+<div id="view-venue" style="display:none;">
+  <div class="subtab-bar" id="subtabbar-venue"></div>
+  <div id="pane-venue-list"></div>
+  <div id="pane-venue-detail" class="detail-pane" style="display:none;"></div>
+</div>
+
 <div id="view-graph" style="display:none;">
   <div class="graph-toolbar">
     <div class="search-wrap" style="max-width:320px;">
@@ -1251,17 +1373,20 @@
       <label><input type="checkbox" class="gtype" value="endpoint" checked> Endpoints</label>
       <label><input type="checkbox" class="gtype" value="idea" checked> Ideas</label>
       <label><input type="checkbox" class="gtype" value="pool" checked> Pools</label>
+      <label><input type="checkbox" class="gtype" value="note" checked> Notes</label>
     </div>
     <button id="graph-reset" class="filter-btn" title="Reset zoom/pan">Reset view</button>
   </div>
   <div class="graph-toolbar graph-toolbar-2">
     <div class="filter-inline">
-      <span>Linked to concept:</span>
+      <span>Linked to:</span>
       <select class="sel" id="graph-concept-filter">
         <option value="">Any</option>
       </select>
+      <span class="form-hint" style="margin-left:4px;">or right-click a node to isolate it</span>
     </div>
     <button id="graph-advanced-toggle" class="filter-btn" aria-expanded="false">Advanced filters &#9656;</button>
+    <button id="graph-reset-filters" class="filter-btn">Reset filters</button>
     <div id="graph-advanced-panel" class="advanced-panel" style="display:none;">
       <div class="filter-inline">
         <span>Depth:</span>
@@ -1291,6 +1416,7 @@
         <div class="legend-row"><span class="legend-shape triangle"></span> <span class="lbl">Endpoint</span></div>
         <div class="legend-row"><span class="legend-shape diamond"></span> <span class="lbl">Idea</span></div>
         <div class="legend-row"><span class="legend-shape hexagon"></span> <span class="lbl">Pool</span></div>
+        <div class="legend-row"><span class="legend-shape star"></span> <span class="lbl">Note</span></div>
       </div>
       <div class="legend-section">
         <div class="legend-subtitle">Edges</div>
@@ -1374,7 +1500,7 @@ function invalidateGraphCache() {
 // quick-filter option lists — next time they're rendered, so a rename/edit
 // is reflected there too instead of showing stale option labels.
 function resetAllTypeToolbars() {
-  ['concept', 'project', 'endpoint', 'idea', 'pool'].forEach(t => {
+  ['concept', 'project', 'endpoint', 'idea', 'pool', 'note', 'venue'].forEach(t => {
     const el = document.getElementById(`pane-${t}-list`);
     if (el) delete el.dataset.toolbarBuilt;
   });
@@ -1383,18 +1509,20 @@ function resetAllTypeToolbars() {
 // ── Tabs: object-type views (Papers/Concepts/Projects/Endpoints/Ideas/Pools) ──
 
 const TYPE_META = {
-  paper:    { label: 'Papers' },
-  concept:  { label: 'Concepts' },
-  project:  { label: 'Projects' },
-  endpoint: { label: 'Endpoints' },
-  idea:     { label: 'Ideas' },
-  pool:     { label: 'Pools' },
+  paper:    { label: 'Papers',    description: 'A paper in your library.' },
+  concept:  { label: 'Concepts',  description: 'A research area you care about.' },
+  project:  { label: 'Projects',  description: 'An active research project with goals.' },
+  endpoint: { label: 'Endpoints', description: 'A specific milestone within a project.' },
+  idea:     { label: 'Ideas',     description: 'A concrete idea connected to a project.' },
+  pool:     { label: 'Pools',     description: 'A transversal idea that spans multiple projects.' },
+  note:     { label: 'Notes',     description: 'A reading annotation — a quoted excerpt and/or comment, usually tied to a paper page.' },
+  venue:    { label: 'Venues',    description: 'Where a paper was published (journal, conference, preprint server). Not part of the knowledge graph — usable only as a filter.' },
 };
-const TOP_TABS = ['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'graph'];
+const TOP_TABS = ['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note', 'venue', 'graph'];
 
 let currentTopTab = 'paper';
-let openTabs  = { paper: [], concept: [], project: [], endpoint: [], idea: [], pool: [] };
-let activeSub = { paper: 'list', concept: 'list', project: 'list', endpoint: 'list', idea: 'list', pool: 'list' };
+let openTabs  = { paper: [], concept: [], project: [], endpoint: [], idea: [], pool: [], note: [], venue: [] };
+let activeSub = { paper: 'list', concept: 'list', project: 'list', endpoint: 'list', idea: 'list', pool: 'list', note: 'list', venue: 'list' };
 
 // ── Cookie helpers ────────────────────────────────────────────────────────────
 
@@ -1837,6 +1965,22 @@ document.getElementById('paper-advanced-toggle').addEventListener('click', () =>
   btn.innerHTML = open ? 'Advanced filters &#9656;' : 'Advanced filters &#9662;';
 });
 
+document.getElementById('paper-reset-filters').addEventListener('click', () => {
+  searchQ = ''; filterMode = 'all'; conceptF = ''; venueF = ''; linkedToF = '';
+  sortMode = 'discovered'; sortAscend = false;
+  document.getElementById('concept-filter').value = '';
+  document.getElementById('venue-filter').value = '';
+  document.getElementById('paper-linkedto-filter').value = '';
+  applyUIToDOM();
+  const panel = document.getElementById('paper-advanced-panel');
+  const advBtn = document.getElementById('paper-advanced-toggle');
+  panel.style.display = 'none';
+  advBtn.setAttribute('aria-expanded', 'false');
+  advBtn.innerHTML = 'Advanced filters &#9656;';
+  saveUI();
+  render();
+});
+
 function populatePaperLinkedToFilter() {
   const sel = document.getElementById('paper-linkedto-filter');
   const prev = sel.value;
@@ -1907,6 +2051,7 @@ function openDetail(type, id) {
   if (!openTabs[type].includes(id)) openTabs[type].push(id);
   activeSub[type] = id;
   switchTopTab(type);
+  window.scrollTo(0, 0); // the page keeps whatever scroll position the list view was at otherwise
 }
 
 function closeDetail(type, id) {
@@ -1920,12 +2065,17 @@ function selectSubTab(type, sub) {
   activeSub[type] = sub;
   renderSubTabBar(type);
   renderActivePane(type);
+  if (sub !== 'list') window.scrollTo(0, 0);
 }
 
 function tabLabelFor(type, id) {
   if (type === 'paper') {
     const p = allPapers.find(p => p.id === id);
     return p ? p.id : id;
+  }
+  if (type === 'venue') {
+    const v = allVenues[id];
+    return v ? (v.name || id) : id;
   }
   const n = GraphNodes[id];
   return n ? (n.name || id) : id;
@@ -1959,11 +2109,13 @@ function renderActivePane(type) {
   if (activeSub[type] === 'list') {
     listPane.style.display = '';
     detailPane.style.display = 'none';
-    if (type !== 'paper') renderTypeList(type);
+    if (type === 'venue') renderVenueList(listPane);
+    else if (type !== 'paper') renderTypeList(type);
   } else {
     listPane.style.display = 'none';
     detailPane.style.display = '';
     if (type === 'paper') renderPaperDetail(detailPane, activeSub[type]);
+    else if (type === 'venue') renderVenueDetail(detailPane, activeSub[type]);
     else renderNodeDetail(detailPane, type, activeSub[type]);
   }
 }
@@ -1975,7 +2127,7 @@ function renderActivePane(type) {
 // filter the Graph view offers via its concept-link filter — lives behind
 // an Advanced toggle since it's a more specialized, less-common query.
 
-const QUICK_FIELD = { concept: 'area', project: 'status', endpoint: 'status', idea: 'status', pool: null };
+const QUICK_FIELD = { concept: 'area', project: 'status', endpoint: 'status', idea: 'status', pool: null, note: null };
 
 let typeFilterState = {
   concept:  { search: '', quick: '', linkedTo: '' },
@@ -1983,6 +2135,7 @@ let typeFilterState = {
   endpoint: { search: '', quick: '', linkedTo: '' },
   idea:     { search: '', quick: '', linkedTo: '' },
   pool:     { search: '', quick: '', linkedTo: '' },
+  note:     { search: '', quick: '', linkedTo: '' },
 };
 
 function distinctFieldValues(type, field) {
@@ -2023,6 +2176,7 @@ function renderTypeList(type) {
           ${quickOptions.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
         </select>` : ''}
         <button class="filter-btn type-advanced-toggle" aria-expanded="false">Advanced filters &#9656;</button>
+        <button class="filter-btn type-reset-filters">Reset filters</button>
       </div>
       <div class="advanced-panel" style="display:none;">
         <div class="filter-inline">
@@ -2049,6 +2203,16 @@ function renderTypeList(type) {
     });
     const advToggle = container.querySelector('.type-advanced-toggle');
     const advPanel = container.querySelector('.advanced-panel');
+    container.querySelector('.type-reset-filters').addEventListener('click', () => {
+      state.search = ''; state.quick = ''; state.linkedTo = '';
+      container.querySelector('.type-search').value = '';
+      if (quickSel) quickSel.value = '';
+      container.querySelector('.type-linkedto').value = '';
+      advPanel.style.display = 'none';
+      advToggle.setAttribute('aria-expanded', 'false');
+      advToggle.innerHTML = 'Advanced filters &#9656;';
+      renderTypeGrid(type);
+    });
     advToggle.addEventListener('click', () => {
       const open = advPanel.style.display !== 'none';
       advPanel.style.display = open ? 'none' : 'flex';
@@ -2094,7 +2258,8 @@ function renderTypeGrid(type) {
 }
 
 function typeCardHTML(id, n) {
-  const sub = n.area || n.status || n.created || '';
+  const sub = n.area || n.status || (n.type === 'note' && n.page ? `p.${n.page}` : n.created) || '';
+  const desc = n.description || n.text || n.quote || '';
   return `
   <div class="type-card" data-id="${esc(id)}">
     <div class="type-card-header">
@@ -2103,8 +2268,129 @@ function typeCardHTML(id, n) {
     </div>
     <div class="type-card-name">${esc(n.name || id)}</div>
     ${sub ? `<div class="type-card-sub">${esc(sub)}</div>` : ''}
-    ${n.description ? `<div class="type-card-desc">${esc(truncate(n.description, 160))}</div>` : ''}
+    ${desc ? `<div class="type-card-desc">${esc(truncate(desc, 160))}</div>` : ''}
   </div>`;
+}
+
+// ── Venues (filter-only — never graph nodes) ────────────────────────────────
+//
+// Venues live only in _venues.json, same as before this tab existed; this is
+// purely a browsable directory + jump-to-filtered-Papers UI on top of that
+// existing data, not a new kind of graph-connected entity.
+
+function venueCardHTML(id, v) {
+  const paperCount = allPapers.filter(p => p.venueId === id).length;
+  const badges = [];
+  if (v.peer_reviewed) badges.push('peer-reviewed');
+  if (v.open_access) badges.push('open access');
+  const sub = [v.type, v.publisher].filter(Boolean).join(' · ');
+  return `
+  <div class="type-card" data-id="${esc(id)}">
+    <div class="type-card-header">
+      <div class="type-card-id">${esc(id)}</div>
+    </div>
+    <div class="type-card-name">${esc(v.name || id)}</div>
+    ${sub ? `<div class="type-card-sub">${esc(sub)}</div>` : ''}
+    <div class="type-card-desc">${paperCount} paper${paperCount === 1 ? '' : 's'}${badges.length ? ' · ' + esc(badges.join(', ')) : ''}</div>
+  </div>`;
+}
+
+let venueFilterState = { search: '', type: '' };
+
+function renderVenueList(container) {
+  if (!container.dataset.toolbarBuilt) {
+    const types = [...new Set(Object.values(allVenues).map(v => v.type).filter(Boolean))].sort();
+    container.innerHTML = `
+      <div class="toolbar">
+        <div class="search-wrap" style="max-width:320px;">
+          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="search" class="venue-search" placeholder="Search venues...">
+        </div>
+        <select class="sel venue-type-filter">
+          <option value="">All types</option>
+          ${types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="type-grid"></div>`;
+    container.dataset.toolbarBuilt = '1';
+    container.querySelector('.venue-search').addEventListener('input', e => {
+      venueFilterState.search = e.target.value.toLowerCase();
+      renderVenueGrid(container);
+    });
+    container.querySelector('.venue-type-filter').addEventListener('change', e => {
+      venueFilterState.type = e.target.value;
+      renderVenueGrid(container);
+    });
+  }
+  renderVenueGrid(container);
+}
+
+function renderVenueGrid(container) {
+  const grid = container.querySelector('.type-grid');
+  let entries = Object.entries(allVenues);
+  if (venueFilterState.search) {
+    entries = entries.filter(([id, v]) => (v.name || id).toLowerCase().includes(venueFilterState.search));
+  }
+  if (venueFilterState.type) {
+    entries = entries.filter(([, v]) => v.type === venueFilterState.type);
+  }
+  entries.sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''));
+  grid.innerHTML = entries.map(([id, v]) => venueCardHTML(id, v)).join('') ||
+    '<div class="empty">No venues found</div>';
+  grid.querySelectorAll('.type-card').forEach(el => {
+    el.addEventListener('click', () => openDetail('venue', el.dataset.id));
+  });
+}
+
+function renderVenueDetail(container, id) {
+  const v = allVenues[id];
+  if (!v) { container.innerHTML = `<div class="empty">Venue not found</div>`; return; }
+
+  const fields = [];
+  if (v.type) fields.push(`<div class="detail-field"><b>Type:</b> ${esc(v.type)}</div>`);
+  if (v.publisher) fields.push(`<div class="detail-field"><b>Publisher:</b> ${esc(v.publisher)}</div>`);
+  fields.push(`<div class="detail-field"><b>Peer reviewed:</b> ${v.peer_reviewed ? 'Yes' : 'No'}</div>`);
+  fields.push(`<div class="detail-field"><b>Open access:</b> ${v.open_access ? 'Yes' : 'No'}</div>`);
+
+  const papers = allPapers.filter(p => p.venueId === id)
+    .sort((a, b) => (b.annoPub || 0) - (a.annoPub || 0));
+
+  const papersHTML = papers.length ? papers.map(p => `
+    <div class="conn-row" data-open-paper="${esc(p.id)}">
+      <span class="conn-type">${esc(String(p.annoPub || ''))}</span>
+      <span class="conn-name">${esc(p.titolo)}</span>
+    </div>`).join('') : `<div class="empty" style="padding:16px 0;">No papers from this venue yet</div>`;
+
+  container.innerHTML = `
+    <div class="detail-header">
+      <div>
+        <div class="paper-id">${esc(id)}</div>
+        <h2 class="detail-title">${esc(v.name || id)}</h2>
+      </div>
+      <div class="detail-actions">
+        ${v.url ? `<a class="filter-btn" href="${esc(v.url)}" target="_blank" rel="noopener">Open ↗</a>` : ''}
+        <button class="filter-btn" id="venue-filter-papers-btn">Filter Papers by this venue</button>
+      </div>
+    </div>
+    <div class="detail-section">${fields.join('')}</div>
+    <div class="detail-section">
+      <div class="detail-section-title">Papers (${papers.length})</div>
+      <div class="conn-list">${papersHTML}</div>
+    </div>
+  `;
+
+  container.querySelectorAll('[data-open-paper]').forEach(el =>
+    el.addEventListener('click', () => openDetail('paper', el.dataset.openPaper)));
+
+  const filterBtn = container.querySelector('#venue-filter-papers-btn');
+  if (filterBtn) filterBtn.addEventListener('click', () => {
+    switchTopTab('paper');
+    selectSubTab('paper', 'list');
+    const sel = document.getElementById('venue-filter');
+    if (sel) { sel.value = id; sel.dispatchEvent(new Event('change')); }
+  });
 }
 
 // ── Detail panes ─────────────────────────────────────────────────────────────
@@ -2134,11 +2420,15 @@ function renderPaperDetail(container, id) {
   const hasPdf = p.file && p.fileExists;
   const pdfHTML = hasPdf
     ? `<div class="pdf-toolbar">
-         <button class="filter-btn pdf-fullscreen-btn" title="Fullscreen">&#10021; Fullscreen</button>
+         <span class="pdf-toolbar-hint">Select text while reading to add a note</span>
+         <div class="pdf-toolbar-actions">
+           <button class="filter-btn pdf-zoom-out-btn" title="Zoom out">&minus;</button>
+           <span class="pdf-zoom-level" id="pdf-zoom-level">100%</span>
+           <button class="filter-btn pdf-zoom-in-btn" title="Zoom in">+</button>
+           <button class="filter-btn pdf-fullscreen-btn" title="Fullscreen">&#10021; Fullscreen</button>
+         </div>
        </div>
-       <div class="pdf-viewer-wrap" id="pdf-viewer-wrap">
-         <iframe class="pdf-frame" id="pdf-iframe" src="/pdf/${encodeURIComponent(p.file)}"></iframe>
-       </div>
+       <div class="pdf-viewer-wrap" id="pdf-viewer-wrap"><div class="pdf-loading">Loading PDF…</div></div>
        ${pdfNotesHTML(p)}`
     : (p.file
         ? `<div class="empty" style="padding:30px 0;">PDF registered but not found on disk</div>`
@@ -2187,7 +2477,7 @@ function renderPaperDetail(container, id) {
   wirePdfSection(container, p);
 }
 
-// ── PDF notes + fullscreen ──────────────────────────────────────────────────
+// ── PDF notes list (below the reader) ───────────────────────────────────────
 
 function pdfNotesHTML(p) {
   const notes = [...(p.pdfNotes || [])].sort((a, b) => {
@@ -2199,36 +2489,133 @@ function pdfNotesHTML(p) {
   const rows = notes.map(n => `
     <div class="pdf-note-row" data-note-id="${esc(n.id)}">
       ${n.page ? `<span class="pdf-note-page-badge" data-jump-page="${esc(String(n.page))}">p.${esc(String(n.page))}</span>` : '<span class="pdf-note-page-badge" style="opacity:.5;">general</span>'}
-      <span class="pdf-note-text">${esc(n.text)}</span>
+      <span class="pdf-note-text">${n.quote ? `<em>"${esc(n.quote)}"</em>${n.text ? ' — ' : ''}` : ''}${esc(n.text || '')}</span>
       <button class="pdf-note-delete" data-delete-note="${esc(n.id)}" title="Delete note">✕</button>
     </div>`).join('');
 
   return `
     <div class="pdf-notes">
       <div class="pdf-notes-title">Notes on this PDF</div>
-      <div class="pdf-notes-list">${rows || '<div class="empty" style="padding:8px 0;">No notes yet</div>'}</div>
+      <div class="pdf-notes-list">${rows || '<div class="empty" style="padding:8px 0;">No notes yet — select text above to add one</div>'}</div>
       <div class="pdf-notes-add">
         <input type="number" class="pdf-note-page-input" id="pdf-note-page" placeholder="Page" min="1">
-        <textarea class="pdf-note-text-input" id="pdf-note-text" placeholder="Add a note tied to this PDF..." rows="2"></textarea>
+        <textarea class="pdf-note-text-input" id="pdf-note-text" placeholder="...or add a general note not tied to a selection" rows="2"></textarea>
         <button class="filter-btn" id="pdf-note-add-btn">Add note</button>
       </div>
     </div>`;
 }
 
+// ── PDF reader: pdf.js canvas + selectable text layer + select-to-note ─────
+//
+// The native <iframe>/PDFium viewer can't be scripted for text selection, so
+// the PDF is rendered ourselves with pdf.js (vendored locally under
+// webui/vendor/, no CDN) onto one <canvas> per page plus an invisible,
+// selectable text layer on top. Selecting text while reading pops up an
+// inline "Add note" button near the selection; the note is pre-filled with
+// the quoted excerpt and the page is detected automatically from which
+// .pdf-page the selection landed in.
+
+let pdfjsLibPromise = null;
+function loadPdfjs() {
+  if (!pdfjsLibPromise) {
+    pdfjsLibPromise = import('/vendor/pdf.min.mjs').then(lib => {
+      lib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.mjs';
+      return lib;
+    });
+  }
+  return pdfjsLibPromise;
+}
+
+async function renderPdfDocument(wrap, p, scale) {
+  wrap.innerHTML = '<div class="pdf-loading">Loading PDF…</div>';
+  let pdfjsLib, doc;
+  try {
+    pdfjsLib = await loadPdfjs();
+    doc = await pdfjsLib.getDocument({ url: `/pdf/${encodeURIComponent(p.file)}` }).promise;
+  } catch (e) {
+    wrap.innerHTML = `<div class="pdf-loading">Could not load PDF (${esc(e.message || 'unknown error')})</div>`;
+    return;
+  }
+  wrap.innerHTML = '';
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    const viewport = page.getViewport({ scale });
+
+    const pageEl = document.createElement('div');
+    pageEl.className = 'pdf-page';
+    pageEl.dataset.page = String(n);
+    pageEl.style.width = viewport.width + 'px';
+    pageEl.style.height = viewport.height + 'px';
+
+    const canvas = document.createElement('canvas');
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(viewport.width * dpr);
+    canvas.height = Math.floor(viewport.height * dpr);
+    canvas.style.width = viewport.width + 'px';
+    canvas.style.height = viewport.height + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    pageEl.appendChild(canvas);
+
+    const textLayerDiv = document.createElement('div');
+    textLayerDiv.className = 'pdf-text-layer';
+    textLayerDiv.style.setProperty('--scale-factor', String(scale));
+    pageEl.appendChild(textLayerDiv);
+
+    wrap.appendChild(pageEl);
+
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    try {
+      const textLayer = new pdfjsLib.TextLayer({
+        textContentSource: page.streamTextContent(),
+        container: textLayerDiv,
+        viewport,
+      });
+      await textLayer.render();
+    } catch (e) { /* text layer is best-effort; canvas already shows the page */ }
+  }
+}
+
 function wirePdfSection(container, p) {
+  const wrap = container.querySelector('#pdf-viewer-wrap');
   const fsBtn = container.querySelector('.pdf-fullscreen-btn');
+  const zoomInBtn = container.querySelector('.pdf-zoom-in-btn');
+  const zoomOutBtn = container.querySelector('.pdf-zoom-out-btn');
+  const zoomLevelEl = container.querySelector('#pdf-zoom-level');
+  let scale = 1.15;
+
+  if (wrap) renderPdfDocument(wrap, p, scale);
+
   if (fsBtn) fsBtn.addEventListener('click', () => {
-    const wrap = container.querySelector('#pdf-viewer-wrap');
     if (!wrap) return;
     if (document.fullscreenElement) document.exitFullscreen();
     else wrap.requestFullscreen().catch(() => toast('Fullscreen not available'));
   });
 
+  const rezoom = (delta) => {
+    scale = Math.max(0.5, Math.min(3, scale + delta));
+    if (zoomLevelEl) zoomLevelEl.textContent = Math.round(scale / 1.15 * 100) + '%';
+    if (wrap) renderPdfDocument(wrap, p, scale);
+  };
+  if (zoomInBtn) zoomInBtn.addEventListener('click', () => rezoom(0.15));
+  if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => rezoom(-0.15));
+
+  if (wrap) wireSelectToNote(wrap, p, container);
+
+  wireNotesSection(container, p, wrap);
+}
+
+// Split out from wirePdfSection so adding/deleting a note only has to
+// refresh the "Notes on this PDF" list — not renderPaperDetail() the whole
+// pane, which would tear down and rebuild #pdf-viewer-wrap from scratch
+// (losing scroll position, re-rendering every PDF page again, and kicking
+// the viewer out of fullscreen since the fullscreen element itself would
+// get replaced).
+function wireNotesSection(container, p, wrap) {
   container.querySelectorAll('[data-jump-page]').forEach(el => {
     el.addEventListener('click', () => {
-      const iframe = container.querySelector('#pdf-iframe');
-      if (!iframe) return;
-      iframe.src = `/pdf/${encodeURIComponent(p.file)}#page=${el.dataset.jumpPage}`;
+      const pageEl = wrap && wrap.querySelector(`.pdf-page[data-page="${el.dataset.jumpPage}"]`);
+      if (pageEl) pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
 
@@ -2242,7 +2629,8 @@ function wirePdfSection(container, p) {
         const data = await res.json();
         if (data.error) { toast(`Error: ${data.error}`); return; }
         allPapers = data.papers || [];
-        renderPaperDetail(container, p.id);
+        invalidateGraphCache(); // deleting a note also removes its graph node
+        refreshNotesSection(container, p.id, wrap);
       } catch (e) {
         toast('Error deleting note');
       }
@@ -2255,20 +2643,120 @@ function wirePdfSection(container, p) {
     const textEl = container.querySelector('#pdf-note-text');
     const text = textEl.value.trim();
     if (!text) { toast('Note text cannot be empty'); return; }
-    try {
-      const res = await fetch(`${API}/pdf-note-add`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: p.id, page: pageEl.value || null, text }),
-      });
-      const data = await res.json();
-      if (data.error) { toast(`Error: ${data.error}`); return; }
-      allPapers = data.papers || [];
-      renderPaperDetail(container, p.id);
-      toast('Note added');
-    } catch (e) {
-      toast('Error adding note');
-    }
+    await savePdfNote(container, p, pageEl.value || null, '', text, wrap);
   });
+}
+
+function refreshNotesSection(container, paperId, wrap) {
+  const p = allPapers.find(x => x.id === paperId);
+  const notesEl = container.querySelector('.pdf-notes');
+  if (!notesEl || !p) return;
+  notesEl.outerHTML = pdfNotesHTML(p);
+  wireNotesSection(container, p, wrap);
+}
+
+async function savePdfNote(container, p, page, quote, text, wrap) {
+  try {
+    const res = await fetch(`${API}/pdf-note-add`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: p.id, page, quote, text }),
+    });
+    const data = await res.json();
+    if (data.error) { toast(`Error: ${data.error}`); return; }
+    allPapers = data.papers || [];
+    invalidateGraphCache(); // the note is now also a graph node (linked via `annotates`)
+    refreshNotesSection(container, p.id, wrap);
+    toast('Note added');
+  } catch (e) {
+    toast('Error adding note');
+  }
+}
+
+// Selection -> floating "Add note" button -> inline form.
+//
+// wirePdfSection() (and therefore this) reruns on every render of the paper
+// detail pane — including after every note add/delete, since that re-renders
+// the whole pane. To avoid piling up duplicate document-level listeners on
+// each rerun, the scroll/mousedown listeners are installed exactly once
+// (module-level singleton) and dispatch to whichever reader is currently
+// active via `activeSelectToNote`.
+let activeSelectToNote = null;
+let selectToNoteGlobalWired = false;
+
+function wireSelectToNote(wrap, p, container) {
+  let popupEl = null;
+  const removePopup = () => { if (popupEl) { popupEl.remove(); popupEl = null; state.popupEl = null; } };
+
+  const state = { removePopup, popupEl: null };
+  activeSelectToNote = state;
+
+  wrap.addEventListener('mouseup', (ev) => {
+    // In fullscreen, popupEl is appended inside `wrap` itself (see below —
+    // fullscreen only renders descendants of the fullscreen element, and
+    // `wrap` *is* that element), so clicking the popup's own buttons also
+    // bubbles a mouseup here. Without this guard that immediately nukes the
+    // popup out from under the click, breaking "Add note" specifically in
+    // fullscreen mode.
+    if (popupEl && popupEl.contains(ev.target)) return;
+    removePopup();
+    const sel = window.getSelection();
+    const text = sel && sel.toString().trim();
+    if (!text || !sel.rangeCount) return;
+
+    const range = sel.getRangeAt(0);
+    let node = range.commonAncestorContainer;
+    if (node.nodeType !== 1) node = node.parentElement;
+    const pageEl = node && node.closest ? node.closest('.pdf-page') : null;
+    if (!pageEl) return;
+    const page = parseInt(pageEl.dataset.page, 10);
+
+    const rect = range.getBoundingClientRect();
+    popupEl = document.createElement('div');
+    popupEl.className = 'pdf-note-popup';
+    popupEl.style.left = Math.max(8, rect.left) + 'px';
+    popupEl.style.top = (rect.bottom + 8) + 'px';
+    popupEl.innerHTML = `<button class="pdf-note-popup-btn" type="button">+ Add note (p.${page})</button>`;
+    // Appending to document.body wouldn't render while the PDF wrap is in
+    // fullscreen — the fullscreen element and document.body are disjoint
+    // parts of the render tree in that mode. Append inside whichever is
+    // actually showing.
+    (document.fullscreenElement || document.body).appendChild(popupEl);
+    state.popupEl = popupEl;
+
+    popupEl.querySelector('button').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const quote = text.length > 300 ? text.slice(0, 300) + '…' : text;
+      popupEl.innerHTML = `
+        <div class="pdf-note-popup-form">
+          <div class="pdf-note-popup-quote">"${esc(quote)}"</div>
+          <textarea class="pdf-note-popup-text" placeholder="Your note..." autofocus></textarea>
+          <div class="pdf-note-popup-actions">
+            <button class="filter-btn pdf-note-popup-cancel" type="button">Cancel</button>
+            <button class="pdf-note-popup-btn pdf-note-popup-save" type="button">Save</button>
+          </div>
+        </div>`;
+      const textarea = popupEl.querySelector('textarea');
+      textarea.focus();
+      popupEl.querySelector('.pdf-note-popup-cancel').addEventListener('click', removePopup);
+      popupEl.querySelector('.pdf-note-popup-save').addEventListener('click', async () => {
+        const extra = textarea.value.trim();
+        removePopup();
+        await savePdfNote(container, p, page, quote, extra, wrap);
+      });
+    });
+  });
+
+  if (!selectToNoteGlobalWired) {
+    selectToNoteGlobalWired = true;
+    document.addEventListener('scroll', () => {
+      if (activeSelectToNote) activeSelectToNote.removePopup();
+    }, true);
+    document.addEventListener('mousedown', (ev) => {
+      if (activeSelectToNote && activeSelectToNote.popupEl && !activeSelectToNote.popupEl.contains(ev.target)) {
+        activeSelectToNote.removePopup();
+      }
+    });
+  }
 }
 
 function renderNodeDetail(container, type, id) {
@@ -2280,6 +2768,7 @@ function renderNodeDetail(container, type, id) {
   if (n.status) fields.push(`<div class="detail-field"><b>Status:</b> ${esc(n.status)}</div>`);
   if (n.created) fields.push(`<div class="detail-field"><b>Created:</b> ${esc(n.created)}</div>`);
   if (n.source) fields.push(`<div class="detail-field"><b>Source:</b> ${esc(n.source)}</div>`);
+  if (n.type === 'note' && n.page) fields.push(`<div class="detail-field"><b>Page:</b> ${esc(String(n.page))}</div>`);
 
   const connections = GraphEdges
     .filter(e => e.from === id || e.to === id)
@@ -2316,6 +2805,8 @@ function renderNodeDetail(container, type, id) {
     </div>
     ${fields.length ? `<div class="detail-section">${fields.join('')}</div>` : ''}
     ${n.description ? `<div class="detail-section"><div class="detail-section-title">Description</div><p class="detail-text">${esc(n.description)}</p></div>` : ''}
+    ${n.quote ? `<div class="detail-section"><div class="detail-section-title">Quoted excerpt</div><p class="detail-text" style="font-style:italic;">"${esc(n.quote)}"</p></div>` : ''}
+    ${n.text ? `<div class="detail-section"><div class="detail-section-title">Note</div><p class="detail-text">${esc(n.text)}</p></div>` : ''}
     <div class="detail-section">
       <div class="detail-section-title">Connections</div>
       <div class="conn-list">${connHTML}</div>
@@ -2339,9 +2830,11 @@ function renderNodeDetail(container, type, id) {
 
 let editContext = null; // { kind: 'paper'|'node', id, type? }
 
-function openEditModal(kind, id) {
+async function openEditModal(kind, id) {
   const body  = document.getElementById('edit-modal-body');
   const title = document.getElementById('edit-modal-title');
+
+  await ensureGraphLoaded(); // connectionsSectionHTML()/allNodeOptionsHTML() need GraphNodes/GraphEdges populated
 
   if (kind === 'paper') {
     const p = allPapers.find(x => x.id === id);
@@ -2356,12 +2849,121 @@ function openEditModal(kind, id) {
     title.textContent = `Edit ${id}`;
     body.innerHTML = nodeEditFormHTML(n);
   }
+  wireConnectionsSection(body, id);
   document.getElementById('edit-modal-overlay').classList.add('open');
 }
 
 function closeEditModal() {
   document.getElementById('edit-modal-overlay').classList.remove('open');
   editContext = null;
+}
+
+// ── Connections editor (shared by the paper and node edit forms) ───────────
+//
+// Edges live in _graph.json, not on the node/paper itself, so — unlike the
+// rest of the edit form — add/delete here fire immediately against their
+// own endpoints instead of being bundled into the modal's "Save" patch.
+// Any node type can be a connection endpoint (e.g. a paper can be the
+// target of an idea's `inspired_by` edge), so this is wired into both
+// paperEditFormHTML() and nodeEditFormHTML().
+
+const EDGE_TYPES = ['connected_to', 'uses_concept', 'part_of', 'inspired_by',
+                     'relevant_to', 'derived_from', 'enables', 'annotates'];
+
+// cites/concept_tag are synthesized by loadGraph() from a paper's own
+// cites/concepts fields — they're not entries in _graph.json's edges array,
+// so they can't be deleted through /api/edge-delete. Show them read-only
+// with a pointer to where they're actually edited instead of a dead delete
+// button.
+const SYNTHETIC_EDGE_TYPES = new Set(['cites', 'concept_tag']);
+
+function connectionsSectionHTML(id) {
+  const rows = GraphEdges
+    .filter(e => e.from === id || e.to === id)
+    .map(e => {
+      const outgoing = e.from === id;
+      const otherId = outgoing ? e.to : e.from;
+      const otherNode = GraphNodes[otherId];
+      const otherName = otherNode ? (otherNode.name || otherNode.title || otherId) : otherId;
+      const synthetic = SYNTHETIC_EDGE_TYPES.has(e.type);
+      return `
+        <div class="conn-edit-row" data-src="${esc(outgoing ? id : otherId)}" data-tgt="${esc(outgoing ? otherId : id)}" data-type="${esc(e.type)}">
+          <span class="conn-type">${esc(e.type)}</span>
+          <span class="conn-dir">${outgoing ? '→' : '←'}</span>
+          <span class="conn-name">${esc(otherName)}</span>
+          ${synthetic
+            ? `<span class="conn-note" title="Derived automatically from the paper's own fields (cites / concepts) — edit those instead.">auto</span>`
+            : `<button type="button" class="pdf-note-delete conn-edit-delete" title="Remove connection">✕</button>`}
+        </div>`;
+    }).join('');
+
+  return `
+    <div class="form-field">
+      <label>Connections</label>
+      <div class="conn-edit-list">${rows || '<div class="empty" style="padding:6px 0;">No connections yet</div>'}</div>
+      <div class="conn-edit-add">
+        <select id="ce-direction">
+          <option value="out">This →</option>
+          <option value="in">← This</option>
+        </select>
+        <select id="ce-type">${EDGE_TYPES.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
+        <select id="ce-target"><option value="">Select node/paper…</option>${allNodeOptionsHTML()}</select>
+        <button type="button" class="filter-btn" id="ce-add-btn">Add</button>
+      </div>
+    </div>`;
+}
+
+function wireConnectionsSection(container, id) {
+  container.querySelectorAll('.conn-edit-delete').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const row = btn.closest('.conn-edit-row');
+      try {
+        const res = await fetch(`${API}/edge-delete`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ src: row.dataset.src, tgt: row.dataset.tgt, type: row.dataset.type }),
+        });
+        const data = await res.json();
+        if (data.error) { toast(`Error: ${data.error}`); return; }
+        GraphNodes = data.nodes || {}; GraphEdges = data.edges || [];
+        invalidateGraphCache();
+        graphLoadPromise = Promise.resolve({ nodes: GraphNodes, edges: GraphEdges });
+        refreshConnectionsSection(container, id);
+      } catch (e) {
+        toast('Error removing connection');
+      }
+    });
+  });
+
+  const addBtn = container.querySelector('#ce-add-btn');
+  if (addBtn) addBtn.addEventListener('click', async () => {
+    const target = container.querySelector('#ce-target').value;
+    if (!target) { toast('Pick a target node/paper'); return; }
+    const type = container.querySelector('#ce-type').value;
+    const outgoing = container.querySelector('#ce-direction').value === 'out';
+    const src = outgoing ? id : target;
+    const tgt = outgoing ? target : id;
+    try {
+      const res = await fetch(`${API}/edge-add`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ src, tgt, type }),
+      });
+      const data = await res.json();
+      if (data.error) { toast(`Error: ${data.error}`); return; }
+      GraphNodes = data.nodes || {}; GraphEdges = data.edges || [];
+      invalidateGraphCache();
+      graphLoadPromise = Promise.resolve({ nodes: GraphNodes, edges: GraphEdges });
+      refreshConnectionsSection(container, id);
+      toast('Connection added');
+    } catch (e) {
+      toast('Error adding connection');
+    }
+  });
+}
+
+function refreshConnectionsSection(container, id) {
+  const field = container.querySelector('#ce-add-btn').closest('.form-field');
+  field.outerHTML = connectionsSectionHTML(id);
+  wireConnectionsSection(container, id);
 }
 
 function paperEditFormHTML(p) {
@@ -2391,6 +2993,7 @@ function paperEditFormHTML(p) {
     <div class="form-field"><label>File (relative path)</label><input type="text" id="ef-file" value="${esc(p.file || '')}"></div>
     <div class="form-field form-field-check"><input type="checkbox" id="ef-outside" ${p.outsideZone ? 'checked' : ''}><label for="ef-outside">Outside comfort zone</label></div>
     <div class="form-field"><label>Notes</label><textarea id="ef-notes" rows="4">${esc(p.notes || '')}</textarea></div>
+    ${connectionsSectionHTML(p.id)}
   `;
 }
 
@@ -2419,18 +3022,29 @@ const NODE_TYPE_FIELDS = {
   endpoint: ['status'],
   idea:     ['status', 'created', 'source'],
   pool:     ['created'],
+  note:     ['created', 'page'],
 };
-const FIELD_LABELS = { area: 'Area', status: 'Status', created: 'Created (YYYY-MM-DD)', source: 'Source' };
+const FIELD_LABELS = { area: 'Area', status: 'Status', created: 'Created (YYYY-MM-DD)', source: 'Source', page: 'Page' };
 
 function nodeEditFormHTML(n) {
   const extra = (NODE_TYPE_FIELDS[n.type] || []).map(f => `
     <div class="form-field"><label>${esc(FIELD_LABELS[f] || f)}</label>
       <input type="text" id="ef-node-${f}" value="${esc(n[f] || '')}"></div>
   `).join('');
+  if (n.type === 'note') {
+    return `
+      <div class="form-field"><label>Name</label><input type="text" id="ef-node-name" value="${esc(n.name || '')}"></div>
+      ${extra}
+      <div class="form-field"><label>Quoted excerpt</label><textarea id="ef-node-quote" rows="3">${esc(n.quote || '')}</textarea></div>
+      <div class="form-field"><label>Note</label><textarea id="ef-node-text" rows="4">${esc(n.text || '')}</textarea></div>
+      ${connectionsSectionHTML(n.id)}
+    `;
+  }
   return `
     <div class="form-field"><label>Name</label><input type="text" id="ef-node-name" value="${esc(n.name || '')}"></div>
     ${extra}
     <div class="form-field"><label>Description</label><textarea id="ef-node-description" rows="4">${esc(n.description || '')}</textarea></div>
+    ${connectionsSectionHTML(n.id)}
   `;
 }
 
@@ -2440,7 +3054,12 @@ function collectNodeFormPatch(type) {
     const el = document.getElementById(`ef-node-${f}`);
     if (el) patch[f] = el.value.trim();
   });
-  patch.description = document.getElementById('ef-node-description').value.trim();
+  if (type === 'note') {
+    patch.quote = document.getElementById('ef-node-quote').value.trim();
+    patch.text = document.getElementById('ef-node-text').value.trim();
+  } else {
+    patch.description = document.getElementById('ef-node-description').value.trim();
+  }
   return patch;
 }
 
@@ -2515,7 +3134,7 @@ const Graph = (function() {
   let dragNode = null, dragging = false, panStart = null;
   let dragDistance = 0, mouseDownAt = null;
   let hoverNode = null, hoverEdge = null;
-  let typeFilter = new Set(['paper', 'concept', 'project', 'endpoint', 'idea', 'pool']);
+  let typeFilter = new Set(['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
   let searchQ = '';
   // "Linked to concept" filter: shows only nodes reachable from a chosen
   // concept within `conceptLinkDepth` hops (BFS over currently-allowed edge
@@ -2528,6 +3147,7 @@ const Graph = (function() {
   const EDGE_STYLE = {
     cites:       { dash: [6, 4], alpha: 0.55, color: '#BA7C65' },
     concept_tag: { dash: [1, 4], alpha: 0.35, color: '#688C6F' },
+    annotates:   { dash: [2, 3], alpha: 0.5,  color: '#D4AF37' },
   };
   const DEFAULT_EDGE_STYLE = { dash: [], alpha: 0.45, color: '#8496B0' };
 
@@ -2597,22 +3217,40 @@ const Graph = (function() {
       .filter(e => e.a && e.b);
 
     populateConceptLegend(rawNodes, conceptColorById);
-    populateConceptFilter(rawNodes);
+    populateConceptFilter();
     populateEdgeTypeFilters();
     recomputeConceptLinkSet();
 
     alpha = 1;
   }
 
-  function populateConceptFilter(rawNodes) {
+  // "Linked to" filter: any node or paper, not just concepts — grouped by
+  // type the same way the per-type tabs' "linked to" filter is, via the
+  // shared allNodeOptionsHTML() helper.
+  function populateConceptFilter() {
     const sel = document.getElementById('graph-concept-filter');
     const prev = sel.value;
-    const concepts = Object.entries(rawNodes)
-      .filter(([, n]) => n.type === 'concept')
-      .sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''));
-    sel.innerHTML = '<option value="">Any</option>' +
-      concepts.map(([id, n]) => `<option value="${esc(id)}">${esc(n.name || id)}</option>`).join('');
-    if (concepts.some(([id]) => id === prev)) sel.value = prev;
+    sel.innerHTML = '<option value="">Any</option>' + allNodeOptionsHTML();
+    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  }
+
+  // Right-click (or programmatic call) isolation: jump straight to "linked
+  // to <this node>" at depth 1, opening the Advanced panel so depth/edge
+  // types are immediately visible and adjustable — the panel doesn't stay
+  // hidden with an invisible filter active.
+  function isolateNode(nodeId) {
+    conceptLinkFilter = nodeId;
+    conceptLinkDepth = 1;
+    const sel = document.getElementById('graph-concept-filter');
+    if ([...sel.options].some(o => o.value === nodeId)) sel.value = nodeId;
+    document.getElementById('graph-link-depth').value = '1';
+    const panel = document.getElementById('graph-advanced-panel');
+    const toggle = document.getElementById('graph-advanced-toggle');
+    panel.style.display = 'flex';
+    toggle.setAttribute('aria-expanded', 'true');
+    toggle.innerHTML = 'Advanced filters &#9662;';
+    recomputeConceptLinkSet();
+    draw();
   }
 
   function populateEdgeTypeFilters() {
@@ -2757,6 +3395,17 @@ const Graph = (function() {
       for (let i = 0; i < 6; i++) {
         const ang = Math.PI / 3 * i - Math.PI / 2;
         const px = x + r * Math.cos(ang), py = y + r * Math.sin(ang);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    } else if (type === 'note') {
+      // 5-point star — reads as an annotation/pin marker, distinct from the
+      // other node shapes.
+      const spikes = 5, outerR = r, innerR = r * 0.45;
+      for (let i = 0; i < spikes * 2; i++) {
+        const rad = i % 2 === 0 ? outerR : innerR;
+        const ang = Math.PI / spikes * i - Math.PI / 2;
+        const px = x + rad * Math.cos(ang), py = y + rad * Math.sin(ang);
         if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
       }
       ctx.closePath();
@@ -2958,6 +3607,15 @@ const Graph = (function() {
       onNodeDblClick(n);
     });
 
+    canvas.addEventListener('contextmenu', e => {
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      const n = nodeAt(sx, sy);
+      if (!n) return;
+      e.preventDefault();
+      isolateNode(n.id);
+    });
+
     document.getElementById('graph-search').addEventListener('input', e => {
       searchQ = e.target.value.toLowerCase();
     });
@@ -2994,6 +3652,26 @@ const Graph = (function() {
       panel.style.display = open ? 'none' : 'flex';
       btn.setAttribute('aria-expanded', String(!open));
       btn.innerHTML = open ? 'Advanced filters &#9656;' : 'Advanced filters &#9662;';
+    });
+
+    document.getElementById('graph-reset-filters').addEventListener('click', () => {
+      document.getElementById('graph-search').value = '';
+      searchQ = '';
+      document.querySelectorAll('.gtype').forEach(cb => { cb.checked = true; });
+      typeFilter = new Set(['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
+      conceptLinkFilter = '';
+      conceptLinkDepth = 2;
+      document.getElementById('graph-concept-filter').value = '';
+      document.getElementById('graph-link-depth').value = '2';
+      edgeTypeFilter = null;
+      populateEdgeTypeFilters(); // rebuilds edge-type checkboxes, all checked
+      const panel = document.getElementById('graph-advanced-panel');
+      const advBtn = document.getElementById('graph-advanced-toggle');
+      panel.style.display = 'none';
+      advBtn.setAttribute('aria-expanded', 'false');
+      advBtn.innerHTML = 'Advanced filters &#9656;';
+      recomputeConceptLinkSet();
+      draw();
     });
 
     window.addEventListener('resize', resize);
