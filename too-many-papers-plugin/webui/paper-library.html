@@ -317,11 +317,19 @@
     transform: scale(1.02); 
   }
 
-  .card.hidden-card { 
-    opacity: .5; 
+  .card.hidden-card {
+    opacity: .5;
     filter: grayscale(100%);
   }
   .paper-id.hidden-tag { color: var(--text-dim); }
+
+  /* A reference found in someone else's citation list, with no record of
+     its own in the library — dashed border marks it as "not one of yours". */
+  .card.ghost-card {
+    border-style: dashed;
+    opacity: .75;
+  }
+  .paper-id.ghost-tag { color: var(--text-dim); }
 
   .source-link {
     display: inline-flex;
@@ -580,7 +588,6 @@
     cursor: pointer;
     user-select: none;
   }
-  .graph-toolbar-2 { padding-top: 12px; padding-bottom: 12px; }
   .filter-inline {
     display: flex;
     align-items: center;
@@ -1308,6 +1315,12 @@
         <span>Linked to:</span>
         <select class="sel" id="paper-linkedto-filter"><option value="">Any</option></select>
       </div>
+      <div class="filter-inline">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="paper-show-ghosts">
+          Show papers cited by others but not in your library
+        </label>
+      </div>
     </div>
 
     <div id="error-banner"></div>
@@ -1360,7 +1373,7 @@
 
 <div id="view-graph" style="display:none;">
   <div class="graph-toolbar">
-    <div class="search-wrap" style="max-width:320px;">
+    <div class="search-wrap" style="max-width:260px;">
       <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
@@ -1374,10 +1387,13 @@
       <label><input type="checkbox" class="gtype" value="idea" checked> Ideas</label>
       <label><input type="checkbox" class="gtype" value="pool" checked> Pools</label>
       <label><input type="checkbox" class="gtype" value="note" checked> Notes</label>
+      <label title="Papers referenced by something in your library but not in it themselves"><input type="checkbox" class="gtype" value="ghost"> Missing</label>
     </div>
+    <button id="graph-filters-toggle" class="filter-btn" aria-expanded="false">Filters &#9656;</button>
+    <button id="graph-reset-filters" class="filter-btn">Reset filters</button>
     <button id="graph-reset" class="filter-btn" title="Reset zoom/pan">Reset view</button>
   </div>
-  <div class="graph-toolbar graph-toolbar-2">
+  <div id="graph-filters-panel" class="advanced-panel" style="display:none; padding: 0 40px 16px; background: var(--surface); border-bottom: 1px solid var(--border); margin-top: -1px;">
     <div class="filter-inline">
       <span>Linked to:</span>
       <select class="sel" id="graph-concept-filter">
@@ -1385,21 +1401,26 @@
       </select>
       <span class="form-hint" style="margin-left:4px;">or right-click a node to isolate it</span>
     </div>
-    <button id="graph-advanced-toggle" class="filter-btn" aria-expanded="false">Advanced filters &#9656;</button>
-    <button id="graph-reset-filters" class="filter-btn">Reset filters</button>
-    <div id="graph-advanced-panel" class="advanced-panel" style="display:none;">
-      <div class="filter-inline">
-        <span>Depth:</span>
-        <select class="sel" id="graph-link-depth">
-          <option value="1">1 hop</option>
-          <option value="2" selected>2 hops</option>
-          <option value="3">3 hops</option>
-        </select>
-      </div>
-      <div class="filter-inline">
-        <span>Edge types:</span>
-        <span id="graph-edge-type-filters" class="graph-types"></span>
-      </div>
+    <div class="filter-inline">
+      <span>Depth:</span>
+      <select class="sel" id="graph-link-depth">
+        <option value="1">1 hop</option>
+        <option value="2" selected>2 hops</option>
+        <option value="3">3 hops</option>
+      </select>
+    </div>
+    <div class="filter-inline">
+      <span>Edge types:</span>
+      <span id="graph-edge-type-filters" class="graph-types"></span>
+    </div>
+    <div class="filter-inline" id="graph-preset-row">
+      <span>Preset:</span>
+      <select class="sel" id="graph-preset-select">
+        <option value="">— none —</option>
+      </select>
+      <input type="text" id="graph-preset-name" placeholder="Name..." style="width:110px;">
+      <button class="filter-btn" id="graph-preset-save" title="Save the current filters under this name">Save</button>
+      <button class="filter-btn" id="graph-preset-delete" title="Delete the selected preset">Delete</button>
     </div>
   </div>
   <div id="graph-wrap">
@@ -1417,6 +1438,7 @@
         <div class="legend-row"><span class="legend-shape diamond"></span> <span class="lbl">Idea</span></div>
         <div class="legend-row"><span class="legend-shape hexagon"></span> <span class="lbl">Pool</span></div>
         <div class="legend-row"><span class="legend-shape star"></span> <span class="lbl">Note</span></div>
+        <div class="legend-row"><span class="legend-shape circle" style="background:transparent;border:1px dashed #888;"></span> <span class="lbl">Missing (cited, not in library)</span></div>
       </div>
       <div class="legend-section">
         <div class="legend-subtitle">Edges</div>
@@ -1455,6 +1477,8 @@ const PENCIL_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" 
 let allPapers   = [];
 let allVenues   = {};
 let allConcepts = {};
+let allGhosts   = []; // papers cited by others but absent from the library
+let showGhosts  = false;
 let filterMode  = 'all';
 let searchQ     = '';
 let conceptF    = '';
@@ -1598,6 +1622,7 @@ async function loadPapers() {
     allPapers   = data.papers   || [];
     allVenues   = data.venues   || {};
     allConcepts = data.concepts || {};
+    allGhosts   = data.ghosts   || [];
     populateFilters();
     render();
   } catch (e) {
@@ -1741,12 +1766,26 @@ function render() {
   document.getElementById('stat-read').textContent   = read;
   document.getElementById('stat-unread').textContent = total - read;
 
-  if (filtered.length === 0) {
+  // Ghost papers: referenced by something in the library (cites_unmatched)
+  // but with no record of their own — opt-in via the "Show..." checkbox,
+  // filtered by the same search box as regular papers.
+  let ghosts = [];
+  if (showGhosts) {
+    ghosts = allGhosts.filter(g => !q || g.title.toLowerCase().includes(q));
+  }
+
+  if (filtered.length === 0 && ghosts.length === 0) {
     grid.innerHTML = `<div class="empty">No papers found</div>`;
     return;
   }
 
-  grid.innerHTML = filtered.map(cardHTML).join('');
+  grid.innerHTML = filtered.map(cardHTML).join('') + ghosts.map(ghostCardHTML).join('');
+
+  grid.querySelectorAll('.ghost-card').forEach(card => {
+    card.addEventListener('click', () => {
+      window.open(googleSearchUrl(card.dataset.ghostTitle), '_blank', 'noopener');
+    });
+  });
 
   grid.querySelectorAll('.read-toggle').forEach(btn => {
     btn.addEventListener('click', () => toggleRead(btn.dataset.id, btn));
@@ -1763,7 +1802,7 @@ function render() {
   grid.querySelectorAll('.cite-link').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); openDetail('paper', el.dataset.goto); });
   });
-  grid.querySelectorAll('.card').forEach(card => {
+  grid.querySelectorAll('.card:not(.ghost-card)').forEach(card => {
     card.addEventListener('click', e => {
       if (e.target.closest('button, a')) return; // let action buttons/links handle their own click
       openDetail('paper', card.dataset.id);
@@ -1857,6 +1896,22 @@ function cardHTML(p) {
   </div>`;
 }
 
+function ghostCardHTML(g) {
+  const citedByHTML = (g.citedBy || []).map(c =>
+    `<span class="cite-link" data-goto="${esc(c.id)}" title="${esc(c.title)}">${esc(c.id)} — ${esc(truncate(c.title, 28))}</span>`
+  ).join('');
+  return `
+  <div class="card ghost-card" data-ghost-title="${esc(g.title)}" title="Not in your library — click to search this title on Google">
+    <div class="card-header">
+      <span class="paper-id ghost-tag">Not in library ↗</span>
+    </div>
+    <div class="paper-title">${esc(g.title)}</div>
+    ${g.year ? `<div class="card-meta"><span class="tag year">${esc(String(g.year))}</span></div>` : ''}
+    ${citedByHTML ? `<div class="citations"><div class="citations-row"><span class="citations-label">Cited by:</span>${citedByHTML}</div></div>` : ''}
+    <div class="card-footer"><span class="form-hint">Click to search on Google</span></div>
+  </div>`;
+}
+
 // ── Utils ─────────────────────────────────────────────────────────────────────
 
 function esc(s) {
@@ -1865,6 +1920,13 @@ function esc(s) {
     .replace(/"/g,'&quot;');
 }
 function truncate(s, n) { return s && s.length > n ? s.slice(0, n) + '…' : (s || ''); }
+
+// Ghost papers (cited by something in the library but not in it themselves)
+// have no record to open, so both the Papers grid and the Graph view send a
+// click through here instead of openDetail.
+function googleSearchUrl(title) {
+  return 'https://www.google.com/search?q=' + encodeURIComponent(title || '');
+}
 
 let toastTimer;
 function toast(msg) {
@@ -1956,6 +2018,11 @@ document.getElementById('paper-linkedto-filter').addEventListener('change', e =>
   render();
 });
 
+document.getElementById('paper-show-ghosts').addEventListener('change', e => {
+  showGhosts = e.target.checked;
+  render();
+});
+
 document.getElementById('paper-advanced-toggle').addEventListener('click', () => {
   const panel = document.getElementById('paper-advanced-panel');
   const btn = document.getElementById('paper-advanced-toggle');
@@ -1967,10 +2034,11 @@ document.getElementById('paper-advanced-toggle').addEventListener('click', () =>
 
 document.getElementById('paper-reset-filters').addEventListener('click', () => {
   searchQ = ''; filterMode = 'all'; conceptF = ''; venueF = ''; linkedToF = '';
-  sortMode = 'discovered'; sortAscend = false;
+  sortMode = 'discovered'; sortAscend = false; showGhosts = false;
   document.getElementById('concept-filter').value = '';
   document.getElementById('venue-filter').value = '';
   document.getElementById('paper-linkedto-filter').value = '';
+  document.getElementById('paper-show-ghosts').checked = false;
   applyUIToDOM();
   const panel = document.getElementById('paper-advanced-panel');
   const advBtn = document.getElementById('paper-advanced-toggle');
@@ -3235,7 +3303,7 @@ const Graph = (function() {
   }
 
   // Right-click (or programmatic call) isolation: jump straight to "linked
-  // to <this node>" at depth 1, opening the Advanced panel so depth/edge
+  // to <this node>" at depth 1, opening the filters panel so depth/edge
   // types are immediately visible and adjustable — the panel doesn't stay
   // hidden with an invisible filter active.
   function isolateNode(nodeId) {
@@ -3244,11 +3312,11 @@ const Graph = (function() {
     const sel = document.getElementById('graph-concept-filter');
     if ([...sel.options].some(o => o.value === nodeId)) sel.value = nodeId;
     document.getElementById('graph-link-depth').value = '1';
-    const panel = document.getElementById('graph-advanced-panel');
-    const toggle = document.getElementById('graph-advanced-toggle');
+    const panel = document.getElementById('graph-filters-panel');
+    const toggle = document.getElementById('graph-filters-toggle');
     panel.style.display = 'flex';
     toggle.setAttribute('aria-expanded', 'true');
-    toggle.innerHTML = 'Advanced filters &#9662;';
+    toggle.innerHTML = 'Filters &#9662;';
     recomputeConceptLinkSet();
     draw();
   }
@@ -3270,9 +3338,18 @@ const Graph = (function() {
   // BFS from the selected concept over edges whose type is currently
   // allowed (edgeTypeFilter), up to conceptLinkDepth hops. Undirected —
   // "linked to" reads naturally in either edge direction.
+  //
+  // Nodes whose type is currently unchecked (typeFilter) are treated as if
+  // they didn't exist at all — not just hidden after the fact. Otherwise a
+  // path like paper -> concept -> paper would still count as "linked" with
+  // Concepts unchecked, when what should remain is only the edges that
+  // directly connect the types still shown (e.g. paper-to-paper citations
+  // when only Papers is checked).
   function recomputeConceptLinkSet() {
     if (!conceptLinkFilter) { conceptLinkSet = null; return; }
     const allowed = e => !edgeTypeFilter || edgeTypeFilter.has(e.type);
+    const typeOk = id => { const n = nodesById.get(id); return n && typeFilter.has(n.type); };
+    if (!typeOk(conceptLinkFilter)) { conceptLinkSet = new Set(); return; }
     const visited = new Set([conceptLinkFilter]);
     let frontier = [conceptLinkFilter];
     for (let hop = 0; hop < conceptLinkDepth; hop++) {
@@ -3280,8 +3357,10 @@ const Graph = (function() {
       for (const id of frontier) {
         edges.forEach(e => {
           if (!allowed(e)) return;
-          if (e.from === id && !visited.has(e.to)) { visited.add(e.to); next.push(e.to); }
-          if (e.to === id && !visited.has(e.from)) { visited.add(e.from); next.push(e.from); }
+          const other = e.from === id ? e.to : (e.to === id ? e.from : null);
+          if (!other || visited.has(other) || !typeOk(other)) return;
+          visited.add(other);
+          next.push(other);
         });
       }
       frontier = next;
@@ -3477,6 +3556,10 @@ const Graph = (function() {
       ctx.globalAlpha = dim ? 0.15 : 1;
       if (n.type === 'concept') {
         drawDitheredCircle(ctx, n.x, n.y, r, n.color);
+      } else if (n.type === 'ghost') {
+        // Hollow dashed circle — referenced by something in the library,
+        // but with no record of its own (see cites_unmatched).
+        ctx.setLineDash([2, 2]);
       } else {
         shapePath(ctx, n.type, n.x, n.y, r);
         ctx.fillStyle = n.type === 'paper' ? n.color : '#242830';
@@ -3484,8 +3567,11 @@ const Graph = (function() {
       }
       shapePath(ctx, n.type, n.x, n.y, r);
       ctx.lineWidth = (n === hoverNode ? 2.5 : 1.2) / zoom;
-      ctx.strokeStyle = n === hoverNode ? '#f3c944' : (n.type === 'concept' || n.type === 'paper' ? 'rgba(0,0,0,0.3)' : n.color);
+      ctx.strokeStyle = n === hoverNode ? '#f3c944'
+        : n.type === 'ghost' ? '#888'
+        : (n.type === 'concept' || n.type === 'paper' ? 'rgba(0,0,0,0.3)' : n.color);
       ctx.stroke();
+      ctx.setLineDash([]);
     });
     ctx.globalAlpha = 1;
 
@@ -3623,6 +3709,10 @@ const Graph = (function() {
     document.querySelectorAll('.gtype').forEach(cb => {
       cb.addEventListener('change', () => {
         typeFilter = new Set([...document.querySelectorAll('.gtype:checked')].map(c => c.value));
+        // The "linked to" subgraph (if any) depends on which types are
+        // currently visible — recompute it, not just the rendering.
+        recomputeConceptLinkSet();
+        draw();
       });
     });
 
@@ -3645,19 +3735,21 @@ const Graph = (function() {
       conceptLinkDepth = parseInt(e.target.value, 10) || 2;
       recomputeConceptLinkSet();
     });
-    document.getElementById('graph-advanced-toggle').addEventListener('click', () => {
-      const panel = document.getElementById('graph-advanced-panel');
-      const btn = document.getElementById('graph-advanced-toggle');
+    document.getElementById('graph-filters-toggle').addEventListener('click', () => {
+      const panel = document.getElementById('graph-filters-panel');
+      const btn = document.getElementById('graph-filters-toggle');
       const open = panel.style.display !== 'none';
       panel.style.display = open ? 'none' : 'flex';
       btn.setAttribute('aria-expanded', String(!open));
-      btn.innerHTML = open ? 'Advanced filters &#9656;' : 'Advanced filters &#9662;';
+      btn.innerHTML = open ? 'Filters &#9656;' : 'Filters &#9662;';
     });
 
     document.getElementById('graph-reset-filters').addEventListener('click', () => {
       document.getElementById('graph-search').value = '';
       searchQ = '';
-      document.querySelectorAll('.gtype').forEach(cb => { cb.checked = true; });
+      // "Missing" (ghost) nodes stay opt-in even after a reset — every other
+      // type defaults to visible.
+      document.querySelectorAll('.gtype').forEach(cb => { cb.checked = cb.value !== 'ghost'; });
       typeFilter = new Set(['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
       conceptLinkFilter = '';
       conceptLinkDepth = 2;
@@ -3665,32 +3757,127 @@ const Graph = (function() {
       document.getElementById('graph-link-depth').value = '2';
       edgeTypeFilter = null;
       populateEdgeTypeFilters(); // rebuilds edge-type checkboxes, all checked
-      const panel = document.getElementById('graph-advanced-panel');
-      const advBtn = document.getElementById('graph-advanced-toggle');
+      document.getElementById('graph-preset-select').value = '';
+      const panel = document.getElementById('graph-filters-panel');
+      const toggleBtn = document.getElementById('graph-filters-toggle');
       panel.style.display = 'none';
-      advBtn.setAttribute('aria-expanded', 'false');
-      advBtn.innerHTML = 'Advanced filters &#9656;';
+      toggleBtn.setAttribute('aria-expanded', 'false');
+      toggleBtn.innerHTML = 'Filters &#9656;';
       recomputeConceptLinkSet();
       draw();
     });
 
+    initPresets();
+
     window.addEventListener('resize', resize);
+  }
+
+  // ── Saved filter presets ─────────────────────────────────────────────────
+  // Stored in localStorage as a name -> state map. A "state" captures every
+  // graph filter control (types, linked-to, depth, edge types) so recalling
+  // a preset reproduces the exact same view without re-clicking through the
+  // panel every time.
+  const PRESETS_KEY = 'tmp_graph_filter_presets';
+
+  function loadPresets() {
+    try { return JSON.parse(localStorage.getItem(PRESETS_KEY)) || {}; }
+    catch { return {}; }
+  }
+
+  function savePresets(presets) {
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+  }
+
+  function currentFilterState() {
+    return {
+      types: [...typeFilter],
+      linkedTo: conceptLinkFilter,
+      depth: conceptLinkDepth,
+      edgeTypes: edgeTypeFilter ? [...edgeTypeFilter] : null,
+    };
+  }
+
+  function applyFilterState(state) {
+    typeFilter = new Set(state.types || ['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
+    document.querySelectorAll('.gtype').forEach(cb => { cb.checked = typeFilter.has(cb.value); });
+
+    conceptLinkFilter = state.linkedTo || '';
+    const linkSel = document.getElementById('graph-concept-filter');
+    if ([...linkSel.options].some(o => o.value === conceptLinkFilter)) linkSel.value = conceptLinkFilter;
+
+    conceptLinkDepth = state.depth || 2;
+    document.getElementById('graph-link-depth').value = String(conceptLinkDepth);
+
+    edgeTypeFilter = state.edgeTypes ? new Set(state.edgeTypes) : null;
+    document.querySelectorAll('#graph-edge-type-filters .etype').forEach(cb => {
+      cb.checked = !edgeTypeFilter || edgeTypeFilter.has(cb.value);
+    });
+
+    recomputeConceptLinkSet();
+    draw();
+  }
+
+  function populatePresetSelect() {
+    const sel = document.getElementById('graph-preset-select');
+    const prev = sel.value;
+    const presets = loadPresets();
+    sel.innerHTML = '<option value="">— none —</option>' +
+      Object.keys(presets).sort().map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
+    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  }
+
+  function initPresets() {
+    populatePresetSelect();
+
+    document.getElementById('graph-preset-select').addEventListener('change', e => {
+      const presets = loadPresets();
+      const state = presets[e.target.value];
+      if (state) applyFilterState(state);
+    });
+
+    document.getElementById('graph-preset-save').addEventListener('click', () => {
+      const nameInput = document.getElementById('graph-preset-name');
+      const name = nameInput.value.trim();
+      if (!name) { toast('Name the preset first'); return; }
+      const presets = loadPresets();
+      presets[name] = currentFilterState();
+      savePresets(presets);
+      nameInput.value = '';
+      populatePresetSelect();
+      document.getElementById('graph-preset-select').value = name;
+      toast(`Preset saved: ${name}`);
+    });
+
+    document.getElementById('graph-preset-delete').addEventListener('click', () => {
+      const sel = document.getElementById('graph-preset-select');
+      if (!sel.value) return;
+      const presets = loadPresets();
+      delete presets[sel.value];
+      savePresets(presets);
+      populatePresetSelect();
+      toast('Preset deleted');
+    });
   }
 
   // Clicking any node (paper, concept, project, endpoint, idea, pool) opens
   // its detail sub-tab in the matching object-type tab — same behavior for
   // every type, so you can jump straight from the graph to full item info.
+  // Ghost nodes have no record of their own to open, so they go to a Google
+  // search on their title instead.
   function onNodeClick(n) {
+    if (n.type === 'ghost') { window.open(googleSearchUrl(n.name), '_blank', 'noopener'); return; }
     openDetail(n.type, n.id);
   }
 
   function onNodeDblClick(n) {
+    if (n.type === 'ghost') { window.open(googleSearchUrl(n.name), '_blank', 'noopener'); return; }
     openDetail(n.type, n.id);
   }
 
   function updateTooltip(sx, sy) {
     if (hoverNode) {
-      tooltip.innerHTML = `<b>${esc(hoverNode.name)}</b><br>${esc(hoverNode.type)}`;
+      const hint = hoverNode.type === 'ghost' ? ' (not in library — click to search)' : '';
+      tooltip.innerHTML = `<b>${esc(hoverNode.name)}</b><br>${esc(hoverNode.type)}${esc(hint)}`;
       tooltip.style.display = 'block';
       tooltip.style.left = (sx + 14) + 'px';
       tooltip.style.top = (sy + 14) + 'px';

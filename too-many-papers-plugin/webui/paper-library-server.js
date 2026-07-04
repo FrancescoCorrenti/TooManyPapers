@@ -86,6 +86,31 @@ function resolvePdfPath(file) {
   return findFileSync(DATA_DIR, basename) || findFileSync(path.join(__dirname, '..'), basename);
 }
 
+// "Ghost" papers: titles that show up in cites_unmatched (real references
+// Semantic Scholar found for a paper, but that aren't themselves in the
+// local catalog) — see papers_api.py's compute_citation_links/_apply_links.
+// Deduped by normalized title so the same missing paper cited by several
+// local papers collapses into one entry instead of one per citer.
+function normalizeTitle(t) {
+  return (t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function computeGhostPapers(papers) {
+  const ghosts = new Map(); // normalized title -> {key, title, year, citedBy}
+  for (const [id, p] of Object.entries(papers)) {
+    (p.cites_unmatched || []).forEach(u => {
+      const title = (u.title || '').trim();
+      if (!title) return;
+      const key = normalizeTitle(title);
+      if (!ghosts.has(key)) ghosts.set(key, { key, title, year: u.year || null, citedBy: [] });
+      const g = ghosts.get(key);
+      if (!g.year && u.year) g.year = u.year;
+      if (!g.citedBy.some(c => c.id === id)) g.citedBy.push({ id, title: p.title || id });
+    });
+  }
+  return [...ghosts.values()].sort((a, b) => a.title.localeCompare(b.title));
+}
+
 function loadData() {
   const papersDb = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
   const venuesDb = JSON.parse(fs.readFileSync(VENUES_FILE, 'utf8'));
@@ -158,7 +183,7 @@ function loadData() {
     return a.id.localeCompare(b.id);
   });
 
-  return { papers: result, venues: venues, concepts: concepts };
+  return { papers: result, venues: venues, concepts: concepts, ghosts: computeGhostPapers(papers) };
 }
 
 function loadGraph() {
@@ -187,12 +212,29 @@ function loadGraph() {
     from: e.src, to: e.tgt, type: e.type, note: e.note || '',
   }));
 
+  // Ghost nodes: papers cited by something in the library but absent from
+  // it, deduped by normalized title so the same missing paper cited by
+  // several local papers becomes one node, not one per citer. Excluded from
+  // the graph's default type filter client-side (opt-in "Missing" toggle).
+  const ghostIdByKey = new Map();
+  function ghostNodeId(key) {
+    if (!ghostIdByKey.has(key)) ghostIdByKey.set(key, 'GHOST-' + String(ghostIdByKey.size + 1).padStart(3, '0'));
+    return ghostIdByKey.get(key);
+  }
+
   for (const [id, p] of Object.entries(papers)) {
     (p.cites || []).forEach(cid => {
       if (papers[cid]) edges.push({ from: id, to: cid, type: 'cites' });
     });
     (p.concepts || []).forEach(cid => {
       if (nodes[cid]) edges.push({ from: id, to: cid, type: 'concept_tag' });
+    });
+    (p.cites_unmatched || []).forEach(u => {
+      const title = (u.title || '').trim();
+      if (!title) return;
+      const gid = ghostNodeId(normalizeTitle(title));
+      if (!nodes[gid]) nodes[gid] = { id: gid, type: 'ghost', title, year: u.year || '' };
+      edges.push({ from: id, to: gid, type: 'cites' });
     });
   }
 
