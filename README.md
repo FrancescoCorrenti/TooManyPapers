@@ -45,16 +45,10 @@ On first use, the AI asks what you're currently working on and drafts a starting
 To browse visually, run `/too-many-papers:webui` or ask to open Too Many Papers. It opens at http://localhost:3737.
 
 <p align="center">
-  <img src="docs/screenshots/01-papers-browse.gif" width="700" alt="Browsing papers">
-  <img src="docs/screenshots/02-graph-view.gif" width="700" alt="Graph view">
+  <img src="docs/screenshots/demo.gif" width="700" alt="Too Many Papers demo">
 </p>
 
 The web UI has a tab per type (Papers, Concepts, Projects, Endpoints, Ideas, Pools, Notes, Venues) plus a graph view, search and filters everywhere, an inline PDF reader where you can select text to add a note, and a pencil icon to edit anything.
-
-<p align="center">
-  <img src="docs/screenshots/03-pdf-viewer.gif" width="700" alt="PDF viewer">
-  <img src="docs/screenshots/04-edit-modal.gif" width="700" alt="Editing a paper">
-</p>
 
 PDFs are fetched automatically from arXiv, Semantic Scholar, and Unpaywall when a paper is added, so there's usually something to read right away.
 

@@ -9,9 +9,7 @@ A local research assistant that keeps a knowledge graph of the papers, concepts,
 - A **web UI** to browse papers and the graph visually.
 
 <p align="center">
-  <img src="../docs/screenshots/01-papers-browse.gif" width="700" alt="Papers tab">
-  &nbsp;
-  <img src="../docs/screenshots/02-graph-view.gif" width="700" alt="Graph view">
+  <img src="../docs/screenshots/demo.gif" width="700" alt="Too Many Papers demo">
 </p>
 
 ## Setup
@@ -46,12 +44,6 @@ Just talk about papers:
 On first use, the AI asks what you're working on and drafts a starting set of concepts and projects to confirm.
 
 To open the web UI, run `/too-many-papers:webui` or ask to open Too Many Papers. It opens at http://localhost:3737.
-
-<p align="center">
-  <img src="../docs/screenshots/03-pdf-viewer.gif" width="700" alt="Inline PDF viewer">
-  &nbsp;
-  <img src="../docs/screenshots/05-advanced-filters.gif" width="700" alt="Advanced filters">
-</p>
 
 ## Data
 
