@@ -48,6 +48,35 @@ def _capture(func, args=None):
     return buf.getvalue()
 
 
+def _parse_list_arg(value: str) -> list:
+    """Accepts a JSON array (of strings or objects) for bulk tools. Every
+    bulk tool below takes its items this way instead of one call per item,
+    so bulk-adding/deleting N things is one tool call, not N."""
+    parsed = json.loads(value)
+    if not isinstance(parsed, list):
+        raise ValueError("expected a JSON array")
+    return parsed
+
+
+def _bulk(items: list, label_fn, call_fn) -> str:
+    """Run call_fn over each item, collecting a per-item result plus a
+    success/failure summary. A single bad item never aborts the rest."""
+    results = []
+    ok = fail = 0
+    for i, item in enumerate(items):
+        try:
+            label = label_fn(item)
+        except Exception:
+            label = f"item #{i}"
+        out = call_fn(item)
+        failed = any(marker in out for marker in ("ERROR", "REJECTED", "not found"))
+        ok += 0 if failed else 1
+        fail += 1 if failed else 0
+        results.append(f"--- {label} ---\n{out.strip()}")
+    summary = f"Bulk result: {ok} succeeded, {fail} failed, out of {len(items)}."
+    return summary + "\n\n" + "\n\n".join(results)
+
+
 # =============================================================================
 # Paper tools
 # =============================================================================
@@ -208,6 +237,34 @@ def papers_delete(id: str) -> str:
     return _capture(papers_api.cmd_delete_paper, [id])
 
 
+@mcp.tool()
+def papers_add_bulk(payloads: str) -> str:
+    """Add several papers in one call. Each is validated and saved
+    independently (same rules as papers_add), so one bad entry doesn't block
+    the rest.
+
+    Args:
+        payloads: JSON array of paper payload objects, same shape as the
+            'payload' argument of papers_add.
+    """
+    items = _parse_list_arg(payloads)
+    return _bulk(items, lambda p: p.get("title", "?"),
+                 lambda p: _capture(papers_api.cmd_add_paper, [json.dumps(p)]))
+
+
+@mcp.tool()
+def papers_delete_bulk(ids: str) -> str:
+    """Permanently delete several papers in one call. Ask the user to
+    confirm before calling this; it cannot be undone.
+
+    Args:
+        ids: JSON array of paper IDs, e.g. '["P001", "P004"]'.
+    """
+    items = _parse_list_arg(ids)
+    return _bulk(items, lambda pid: pid,
+                 lambda pid: _capture(papers_api.cmd_delete_paper, [pid]))
+
+
 # =============================================================================
 # Citation tools
 # =============================================================================
@@ -307,6 +364,36 @@ def venues_delete(id: str, force: bool = False) -> str:
     """
     args = [id, "force"] if force else [id]
     return _capture(papers_api.cmd_delete_venue, args)
+
+
+@mcp.tool()
+def venues_add_bulk(payloads: str) -> str:
+    """Add several venues in one call. Each is validated and saved
+    independently, so one bad entry doesn't block the rest.
+
+    Args:
+        payloads: JSON array of venue payload objects, same shape as the
+            'payload' argument of venues_add.
+    """
+    items = _parse_list_arg(payloads)
+    return _bulk(items, lambda v: v.get("name", "?"),
+                 lambda v: _capture(papers_api.cmd_add_venue, [json.dumps(v)]))
+
+
+@mcp.tool()
+def venues_delete_bulk(ids: str, force: bool = False) -> str:
+    """Permanently delete several venues in one call. Ask the user to
+    confirm before calling this; it cannot be undone.
+
+    Args:
+        ids: JSON array of venue IDs, e.g. '["V001", "V002"]'.
+        force: Delete even if papers still reference a venue (same as
+            venues_delete's force flag, applied to every ID).
+    """
+    items = _parse_list_arg(ids)
+    args_fn = (lambda vid: [vid, "force"]) if force else (lambda vid: [vid])
+    return _bulk(items, lambda vid: vid,
+                 lambda vid: _capture(papers_api.cmd_delete_venue, args_fn(vid)))
 
 
 # =============================================================================
@@ -470,6 +557,42 @@ def graph_remove_node(id: str) -> str:
 
 
 @mcp.tool()
+def graph_add_nodes_bulk(nodes: str) -> str:
+    """Add several nodes (any mix of types) to the knowledge graph in one
+    call. Each is validated and saved independently, so one bad entry
+    doesn't block the rest.
+
+    Args:
+        nodes: JSON array of objects, each with a "type" field (concept,
+            project, endpoint, idea, pool, or note) plus that type's fields
+            — same shape as graph_add_concept/graph_add_project/etc, e.g.
+            '[{"type": "concept", "name": "X", "area": "Y"}, ...]'.
+    """
+    items = _parse_list_arg(nodes)
+
+    def call(node):
+        node = dict(node)
+        node_type = node.pop("type", "")
+        return _capture(papers_api.cmd_graph_add_node, [node_type, json.dumps(node)])
+
+    return _bulk(items, lambda n: n.get("name", "?"), call)
+
+
+@mcp.tool()
+def graph_remove_nodes_bulk(ids: str) -> str:
+    """Remove several nodes (and all their edges) from the knowledge graph
+    in one call. Ask the user to confirm before calling this; it cannot be
+    undone.
+
+    Args:
+        ids: JSON array of node IDs, e.g. '["C003", "PROJ-FOO"]'.
+    """
+    items = _parse_list_arg(ids)
+    return _bulk(items, lambda nid: nid,
+                 lambda nid: _capture(papers_api.cmd_graph_remove_node, [nid]))
+
+
+@mcp.tool()
 def graph_add_edge(src: str, tgt: str, edge_type: str, note: str = "") -> str:
     """Add an edge between two nodes in the knowledge graph.
 
@@ -499,6 +622,47 @@ def graph_remove_edge(src: str, tgt: str, edge_type: str = "") -> str:
     if edge_type:
         args.extend(["--type", edge_type])
     return _capture(papers_api.cmd_graph_remove_edge, args)
+
+
+@mcp.tool()
+def graph_add_edges_bulk(edges: str) -> str:
+    """Add several edges in one call. Each is validated and saved
+    independently, so one bad entry doesn't block the rest.
+
+    Args:
+        edges: JSON array of objects with src, tgt, type, and optional note
+            — same fields as graph_add_edge, e.g.
+            '[{"src": "P001", "tgt": "C003", "type": "uses_concept"}, ...]'.
+    """
+    items = _parse_list_arg(edges)
+
+    def call(e):
+        args = [e.get("src", ""), e.get("tgt", ""), e.get("type", "")]
+        if e.get("note"):
+            args.append(e["note"])
+        return _capture(papers_api.cmd_graph_add_edge, args)
+
+    return _bulk(items, lambda e: f"{e.get('src')} -> {e.get('tgt')} [{e.get('type')}]", call)
+
+
+@mcp.tool()
+def graph_remove_edges_bulk(edges: str) -> str:
+    """Remove several edges in one call.
+
+    Args:
+        edges: JSON array of objects with src, tgt, and optional type
+            (omit type to remove all edges between that src/tgt), e.g.
+            '[{"src": "P001", "tgt": "C003"}, {"src": "P002", "tgt": "C001", "type": "relevant_to"}]'.
+    """
+    items = _parse_list_arg(edges)
+
+    def call(e):
+        args = [e.get("src", ""), e.get("tgt", "")]
+        if e.get("type"):
+            args.extend(["--type", e["type"]])
+        return _capture(papers_api.cmd_graph_remove_edge, args)
+
+    return _bulk(items, lambda e: f"{e.get('src')} -> {e.get('tgt')}", call)
 
 
 @mcp.tool()
