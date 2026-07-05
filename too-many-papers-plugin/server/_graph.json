@@ -1,1 +1,0 @@
-{"_deprecated": "Data now lives in the persistent plugin data directory (${CLAUDE_PLUGIN_DATA}), not here. This file is unused and kept only for backward compatibility with older installs; safe to delete."}

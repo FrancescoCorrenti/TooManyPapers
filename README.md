@@ -52,6 +52,31 @@ The web UI has a tab per type (Papers, Concepts, Projects, Endpoints, Ideas, Poo
 
 PDFs are fetched automatically from arXiv, Semantic Scholar, and Unpaywall when a paper is added, so there's usually something to read right away.
 
+## Features
+
+- Knowledge graph linking papers, concepts, projects, endpoints, ideas, pools, and reading notes.
+- All data in plain JSON at `~/.too-many-papers`, no cloud and no database, kept across plugin updates.
+- Conversational management through Claude: add, update, hide, or delete papers by talking.
+- Bulk tools to add or remove many papers, venues, or graph nodes and edges in one call.
+- Automatic paper discovery across arXiv, Semantic Scholar, and OpenAlex.
+- Duplicate detection before anything is added.
+- Automatic PDF fetching from arXiv, Semantic Scholar, and Unpaywall.
+- Automatic citation linking from Semantic Scholar, including backlinks and unresolved references.
+- Daily briefings and "what should I read next" suggestions.
+- Engagement tracking, so the graph reflects what you actually work on.
+- Web UI with a tab per type, plus search, filters, and sort on every tab.
+- Force-directed graph view (d3-force) with a clustered layout and organic node dragging.
+- Graph filters by node type, edge type, and hop depth, with searchable multi-select "linked to" and "concepts" filters.
+- Saveable filter presets.
+- Missing papers view: entries cited by your library but not in it, click to search them on the web.
+- Inline PDF reader where selecting text turns it into a note attached to the paper.
+- Edit any paper, venue, or graph item from the UI.
+- BibTeX export from Claude or the web UI, for the whole library, a selection, or a single paper.
+- A library.bib file kept in sync automatically on every change.
+- Output validation on export that flags missing years, missing DOIs or URLs, unverified metadata, and duplicate keys.
+- Stable citation keys that do not shift as the library grows.
+- Optional free API keys for higher rate limits.
+
 ## FAQ
 
 **Where is my data stored?**

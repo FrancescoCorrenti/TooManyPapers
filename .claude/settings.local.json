@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "mcp__plugin_too-many-papers_too-many-papers__graph_status",
-      "mcp__plugin_too-many-papers_too-many-papers__graph_add_node"
-    ]
-  }
-}

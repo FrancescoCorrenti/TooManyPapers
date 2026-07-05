@@ -6,9 +6,15 @@ node_modules/
 Thumbs.db
 *.pdf
 
+# Python virtualenv created by `uv run`.
+too-many-papers-plugin/server/.venv/
+
+# Developer-local Claude Code settings (personal permission allowlist).
+.claude/settings.local.json
+
 # Stray data files if the server is ever run with cwd inside the plugin
-# tree. Real data always lives at ~/.too-many-papers, not here — see
-# server/_templates/ for the seed files that ship with the plugin.
+# tree. Real data always lives at ~/.too-many-papers, not here; the seed
+# files that ship with the plugin are in server/_templates/.
 too-many-papers-plugin/server/_papers.json
 too-many-papers-plugin/server/_venues.json
 too-many-papers-plugin/server/_graph.json
