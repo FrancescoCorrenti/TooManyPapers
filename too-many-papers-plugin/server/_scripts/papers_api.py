@@ -165,6 +165,9 @@ LOG_FILE = DATA_DIR / "_log.jsonl"
 EXPORT_DIR = DATA_DIR / "exports"
 BIBTEX_FILE = EXPORT_DIR / "library.bib"
 
+# Daily paper briefings, one Markdown file per day, all in one folder.
+BRIEFINGS_DIR = DATA_DIR / "briefings"
+
 
 def _ensure_data_files():
     """Create DATA_DIR and seed it from the bundled templates the first time
@@ -1536,57 +1539,33 @@ def _dedupe_candidates(candidates: list[dict]) -> list[dict]:
     return merged
 
 
-def cmd_papers_discover(args):
-    """Search external providers for real papers matching a topic, and/or
-    expand from the citations of papers already in the catalog. Combines
-    cross-provider dedup with the same catalog-dedup logic as
-    check-duplicates, so the output is ready to feed straight into add-paper.
-
-    Payload fields:
-      query          - topic/keywords (optional if concept_id or seed_paper_ids given)
-      concept_id     - graph concept ID; its name/area/description are appended to query
-      seed_paper_ids - list of catalog paper IDs; their S2 references are pulled in too
-      providers      - subset of arxiv, semantic_scholar, openalex (default: all three)
-      year_from      - minimum publication year
-      max_results    - per-provider cap before merge/dedup (1-50, default 10)
-    """
-    if not args:
-        print("Usage: papers-discover '<json>'"); return
-    try:
-        payload = parse_json_arg(args)
-    except PayloadError as e:
-        print(f"ERROR: {e}"); sys.exit(1)
-    if not isinstance(payload, dict):
-        print("ERROR: payload must be a JSON object."); sys.exit(1)
-
-    query = (payload.get("query") or "").strip()
-    concept_id = payload.get("concept_id")
-    seed_paper_ids = payload.get("seed_paper_ids") or []
-    providers = payload.get("providers") or DEFAULT_DISCOVERY_PROVIDERS
-    year_from = payload.get("year_from")
-    max_results = int(payload.get("max_results") or 10)
-    max_results = max(1, min(max_results, 50))
+def discover_candidates(query="", concept_id=None, seed_paper_ids=None,
+                        providers=None, year_from=None, max_results=10):
+    """Core paper-discovery logic shared by papers-discover and the briefing.
+    Returns the result dict (new_candidates, already_in_catalog, errors, ...).
+    Raises ValueError on bad input. Does not print or mutate the catalog."""
+    query = (query or "").strip()
+    seed_paper_ids = seed_paper_ids or []
+    providers = providers or DEFAULT_DISCOVERY_PROVIDERS
+    max_results = max(1, min(int(max_results or 10), 50))
 
     unknown_providers = set(providers) - set(DISCOVERY_PROVIDER_FUNCS)
     if unknown_providers:
-        print(f"ERROR: unknown providers: {', '.join(sorted(unknown_providers))}. "
-              f"Available: {', '.join(sorted(DISCOVERY_PROVIDER_FUNCS))}")
-        sys.exit(1)
+        raise ValueError(f"unknown providers: {', '.join(sorted(unknown_providers))}. "
+                         f"Available: {', '.join(sorted(DISCOVERY_PROVIDER_FUNCS))}")
 
     if concept_id:
         graph = load_graph()
         node = graph.get("nodes", {}).get(concept_id)
         if not node:
-            print(f"ERROR: concept '{concept_id}' not found in graph."); sys.exit(1)
+            raise ValueError(f"concept '{concept_id}' not found in graph.")
         extra = " ".join(x for x in [node.get("name"), node.get("area"), node.get("description")] if x)
         query = f"{query} {extra}".strip() if query else extra
 
     if not query and not seed_paper_ids:
-        print("ERROR: provide 'query' and/or 'seed_paper_ids'."); sys.exit(1)
+        raise ValueError("provide 'query' and/or 'seed_paper_ids'.")
 
-    all_candidates = []
-    errors = []
-
+    all_candidates, errors = [], []
     if query:
         for p in providers:
             results, err = DISCOVERY_PROVIDER_FUNCS[p](query, max_results=max_results, year_from=year_from)
@@ -1636,7 +1615,7 @@ def cmd_papers_discover(args):
         else:
             new_candidates.append(c)
 
-    result = {
+    return {
         "query": query or None,
         "providers_used": providers,
         "total_found_raw": len(all_candidates),
@@ -1646,6 +1625,42 @@ def cmd_papers_discover(args):
         "new_candidates_count": len(new_candidates),
         "errors": errors or None,
     }
+
+
+def cmd_papers_discover(args):
+    """Search external providers for real papers matching a topic, and/or
+    expand from the citations of papers already in the catalog. Combines
+    cross-provider dedup with the same catalog-dedup logic as
+    check-duplicates, so the output is ready to feed straight into add-paper.
+
+    Payload fields:
+      query          - topic/keywords (optional if concept_id or seed_paper_ids given)
+      concept_id     - graph concept ID; its name/area/description are appended to query
+      seed_paper_ids - list of catalog paper IDs; their S2 references are pulled in too
+      providers      - subset of arxiv, semantic_scholar, openalex (default: all three)
+      year_from      - minimum publication year
+      max_results    - per-provider cap before merge/dedup (1-50, default 10)
+    """
+    if not args:
+        print("Usage: papers-discover '<json>'"); return
+    try:
+        payload = parse_json_arg(args)
+    except PayloadError as e:
+        print(f"ERROR: {e}"); sys.exit(1)
+    if not isinstance(payload, dict):
+        print("ERROR: payload must be a JSON object."); sys.exit(1)
+
+    try:
+        result = discover_candidates(
+            query=payload.get("query", ""),
+            concept_id=payload.get("concept_id"),
+            seed_paper_ids=payload.get("seed_paper_ids"),
+            providers=payload.get("providers"),
+            year_from=payload.get("year_from"),
+            max_results=payload.get("max_results") or 10,
+        )
+    except ValueError as e:
+        print(f"ERROR: {e}"); sys.exit(1)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 # -- PDF fetching (arXiv / Semantic Scholar / Unpaywall) --------------------
@@ -2620,6 +2635,35 @@ def cmd_graph_interact(args):
     print(f"Interaction logged: {node_id} ({name}) | {int_type} | w={weight} | {date.today()}")
 
 
+def rank_engagement(graph, top_n=10):
+    """Rank graph nodes by engagement score (exponential decay over the logged
+    interactions). Returns a list of (node_id, info) sorted by score desc.
+    Reusable by cmd_graph_engagement and the briefing."""
+    interactions = graph.get("interactions", [])
+    today = date.today()
+    scores = {}  # node_id -> {score, last_date, recent, older}
+    for i in interactions:
+        nid = i.get("node", i.get("node_id", ""))
+        w = i.get("weight", 1)
+        d = i.get("date", "")
+        try:
+            i_date = date.fromisoformat(d)
+        except (ValueError, TypeError):
+            continue
+        weeks = (today - i_date).days / 7.0
+        decay = 0.7 ** weeks
+        if nid not in scores:
+            scores[nid] = {"score": 0.0, "last_date": d, "recent": 0, "older": 0}
+        scores[nid]["score"] += w * decay
+        if d > scores[nid]["last_date"]:
+            scores[nid]["last_date"] = d
+        if weeks <= 2:
+            scores[nid]["recent"] += 1
+        else:
+            scores[nid]["older"] += 1
+    return sorted(scores.items(), key=lambda x: x[1]["score"], reverse=True)[:top_n]
+
+
 def cmd_graph_engagement(args):
     """Compute engagement scores with exponential decay."""
     top_n = 10
@@ -2632,39 +2676,10 @@ def cmd_graph_engagement(args):
                 pass
 
     graph = load_graph()
-    interactions = graph.get("interactions", [])
-
-    if not interactions:
+    if not graph.get("interactions"):
         print("No interactions logged."); return
 
-    today = date.today()
-    scores = {}  # node_id -> {score, last_date, recent_count, older_count}
-
-    for i in interactions:
-        nid = i.get("node", i.get("node_id", ""))
-        w = i.get("weight", 1)
-        d = i.get("date", "")
-        try:
-            i_date = date.fromisoformat(d)
-        except (ValueError, TypeError):
-            continue
-
-        weeks = (today - i_date).days / 7.0
-        decay = 0.7 ** weeks
-        contribution = w * decay
-
-        if nid not in scores:
-            scores[nid] = {"score": 0.0, "last_date": d, "recent": 0, "older": 0}
-        scores[nid]["score"] += contribution
-        if d > scores[nid]["last_date"]:
-            scores[nid]["last_date"] = d
-        if weeks <= 2:
-            scores[nid]["recent"] += 1
-        else:
-            scores[nid]["older"] += 1
-
-    # Sort and display
-    ranked = sorted(scores.items(), key=lambda x: x[1]["score"], reverse=True)[:top_n]
+    ranked = rank_engagement(graph, top_n=top_n)
 
     print(f"{'ID':<16} {'Name':<30} {'Score':>7} {'Last':>12} {'Trend'}")
     print(SEP_LINE * 80)
@@ -3095,6 +3110,145 @@ def cmd_export(args):
     print(out)
 
 
+# =============================================================================
+# Daily briefing (read-only digest of newly discovered papers)
+# =============================================================================
+#
+# One tool does the whole pipeline server-side: rank the user's concepts by
+# engagement, discover fresh candidates for the top ones, and write a Markdown
+# digest to ~/.too-many-papers/briefings/<date>.md. It is READ-ONLY — it never
+# touches the catalog. The user reads the digest and picks what to add.
+# Collapsing the old multi-step routine into a single deterministic tool is
+# what lets a scheduled run work unattended (one tool to allow, no live LLM
+# judgement mid-loop) and produce a file instead of just chat output.
+
+def _briefing_candidate_line(c: dict) -> str:
+    title = (c.get("title") or "Untitled").strip()
+    year = c.get("year")
+    authors = ", ".join(a for a in (c.get("authors") or []) if a)
+    if len(authors) > 140:
+        authors = authors[:140].rstrip() + "…"
+    venue = c.get("venue") or ""
+    link = c.get("url") or (f"https://doi.org/{c['doi']}" if c.get("doi") else "") \
+        or (f"https://arxiv.org/abs/{c['arxiv_id']}" if c.get("arxiv_id") else "")
+    meta = " · ".join(x for x in [str(year) if year else "", venue] if x)
+    head = f"- **{title}**" + (f" ({meta})" if meta else "")
+    lines = [head]
+    if authors:
+        lines.append(f"  {authors}")
+    if link:
+        lines.append(f"  {link}")
+    abstract = (c.get("abstract") or "").strip()
+    if abstract:
+        snippet = abstract if len(abstract) <= 280 else abstract[:280].rstrip() + "…"
+        lines.append(f"  {snippet}")
+    return "\n".join(lines)
+
+
+def _render_briefing(the_date, sections) -> str:
+    """sections: list of (concept_name, [candidate dicts], error_or_None)."""
+    total = sum(len(c) for _, c, _ in sections)
+    out = [f"# Paper briefing — {the_date}", ""]
+    if total == 0:
+        out.append("No new candidates found today across your top concepts.")
+        out.append("")
+    for name, cands, err in sections:
+        out.append(f"## {name}")
+        if err:
+            out.append(f"_Discovery unavailable: {err}_")
+        elif not cands:
+            out.append("_No new candidates today._")
+        else:
+            out.extend(_briefing_candidate_line(c) for c in cands)
+        out.append("")
+    out.append("---")
+    out.append("Reply with which of these you'd like to add to your library.")
+    out.append("")
+    return "\n".join(out)
+
+
+def cmd_briefing(args):
+    """Generate a read-only daily briefing digest and save it under
+    briefings/<date>.md. Usage:
+        briefing [--date YYYY-MM-DD] [--concepts N] [--per-concept N] [--year-from Y]
+    Never modifies the catalog."""
+    the_date = str(date.today())
+    n_concepts, per_concept = 3, 6
+    year_from = date.today().year
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--date" and i + 1 < len(args):
+            the_date = args[i + 1]; i += 2; continue
+        if a == "--concepts" and i + 1 < len(args):
+            try: n_concepts = max(1, int(args[i + 1]))
+            except ValueError: pass
+            i += 2; continue
+        if a == "--per-concept" and i + 1 < len(args):
+            try: per_concept = max(1, int(args[i + 1]))
+            except ValueError: pass
+            i += 2; continue
+        if a == "--year-from" and i + 1 < len(args):
+            try: year_from = int(args[i + 1])
+            except ValueError: pass
+            i += 2; continue
+        i += 1
+
+    graph = load_graph()
+    nodes = graph.get("nodes", {})
+    # Top concepts by engagement, falling back to any concepts if there are no
+    # interactions yet (fresh graph).
+    ranked = rank_engagement(graph, top_n=50)
+    top = [(nid, nodes[nid]) for nid, _ in ranked
+           if nid in nodes and nodes[nid].get("type") == "concept"][:n_concepts]
+    if not top:
+        top = [(nid, n) for nid, n in nodes.items() if n.get("type") == "concept"][:n_concepts]
+
+    sections = []
+    for cid, node in top:
+        name = node.get("name", cid)
+        try:
+            res = discover_candidates(concept_id=cid, year_from=year_from, max_results=per_concept)
+            sections.append((name, res["new_candidates"][:per_concept], None))
+        except Exception as e:
+            sections.append((name, [], f"{type(e).__name__}: {e}"))
+
+    md = _render_briefing(the_date, sections)
+    BRIEFINGS_DIR.mkdir(parents=True, exist_ok=True)
+    path = BRIEFINGS_DIR / f"{the_date}.md"
+    path.write_text(md, encoding="utf-8")
+    _log_event("briefing_generated", date=str(the_date),
+               concepts=len(top), candidates=sum(len(c) for _, c, _ in sections))
+    print(f"Briefing saved to {path}\n")
+    print(md)
+
+
+def cmd_briefing_list(args):
+    """List saved briefing dates, newest first."""
+    if not BRIEFINGS_DIR.exists():
+        print("No briefings yet."); return
+    files = sorted((p.stem for p in BRIEFINGS_DIR.glob("*.md")), reverse=True)
+    if not files:
+        print("No briefings yet."); return
+    print(f"{len(files)} briefing(s):")
+    for d in files:
+        print(f"  {d}")
+
+
+def cmd_briefing_get(args):
+    """Print a saved briefing. Usage: briefing-get [YYYY-MM-DD]  (default: latest)."""
+    if not BRIEFINGS_DIR.exists():
+        print("No briefings yet."); return
+    files = sorted((p.stem for p in BRIEFINGS_DIR.glob("*.md")), reverse=True)
+    if not files:
+        print("No briefings yet."); return
+    want = args[0] if args else files[0]
+    path = BRIEFINGS_DIR / f"{want}.md"
+    if not path.exists():
+        print(f"No briefing for '{want}'. Available: {', '.join(files[:10])}"); return
+    print(path.read_text(encoding="utf-8"))
+
+
 COMMANDS = {
     # paper
     "list":            cmd_list,
@@ -3120,6 +3274,9 @@ COMMANDS = {
     "fetch-pdf":       cmd_fetch_pdf,
     "sync-pdfs":       cmd_sync_pdfs,
     "export":          cmd_export,
+    "briefing":        cmd_briefing,
+    "briefing-list":   cmd_briefing_list,
+    "briefing-get":    cmd_briefing_get,
     # venue
     "venue-list":      cmd_venue_list,
     "venue-get":       cmd_venue_get,

@@ -67,53 +67,26 @@ Get the exact variable names right — `S2_API_KEY` and `OPENALEX_API_KEY`, spel
 
 Present this as a short, readable summary (not raw JSON) and ask for confirmation/edits, e.g. "Here's what I'd set up based on that — anything to add, remove, or rename?" Only call the `graph_add_*` tools (`graph_add_concept`, `graph_add_project`, etc. — one typed tool per node type, each with its own exact parameters) / `graph_add_edge` after the user confirms (or after they give corrections and you re-confirm the final version). Use exactly the parameters each tool defines — do not invent extra fields; unrecognized fields are rejected. Keep the proposal reasonably sized — a handful of concepts and projects, not an exhaustive taxonomy; the graph is meant to grow organically afterward, not be fully specified on day one.
 
-**Step 5. Offer the morning briefing.** Ask:
+**Step 5. Offer the daily briefing — but only in Cowork.** Scheduling a recurring briefing only works in Cowork, because a scheduled task in Claude Code runs in a cloud environment that cannot reach this plugin's local MCP server.
 
-> Would you like to receive a daily paper briefing? If so, what time works best for you?
-
-If yes and the client supports scheduled tasks, set one up using the exact prompt in "Morning Briefing Prompt" below — do not modify it, and do not explain any of the reasoning behind its structure to the user. The user should never have to think about scheduling reliability, MCP tool initialization, or any other implementation detail — it should just work from their side. Regardless of whether scheduling is set up, mention in passing that a briefing can also be requested any time by asking "give me today's paper briefing".
+- **If you are running in Cowork:** ask "Would you like a daily paper briefing? If so, what time works best?" If yes, set up a Cowork scheduled routine whose whole job is to call `briefing_generate` (see "Daily Briefing" below). Also mention a briefing can be requested any time by asking "give me today's paper briefing".
+- **If you are running in Claude Code (or anywhere that isn't Cowork):** do NOT offer to schedule anything and do not ask the briefing question at all — skip straight to Step 6. If the user later asks to schedule a briefing, tell them plainly that scheduled briefings are a Cowork-only feature (Claude Code's scheduled tasks can't use this plugin's tools), and that meanwhile they can ask for one on demand any time.
 
 **Step 6. Confirm setup.** Show the graph status and explain that interactions will now be logged automatically, new concepts proposed when they emerge, and connections to projects signaled. Mention the Too Many Papers web UI can be opened any time by asking (or via `/too-many-papers:webui`) — it's launched via the `webui_launch` tool, no extra download needed.
 
-## Morning Briefing Prompt
+## Daily Briefing
 
-This is the exact, hardcoded prompt for the scheduled morning briefing routine. Do not modify it. Use it verbatim when setting up the schedule, or when the user asks for "today's paper briefing" manually.
+The whole briefing is a single tool, `briefing_generate`. It runs the entire pipeline server-side (rank the user's concepts by engagement, discover fresh candidates for the top ones, write the digest to `~/.too-many-papers/briefings/<date>.md`) and returns the digest text. It is read-only: it never adds anything to the catalog on its own. One tool means a scheduled run needs one permission and no fragile multi-step LLM judgement mid-loop.
+
+**On demand** ("give me today's paper briefing"): call `briefing_generate`, show the returned digest, then ask which papers the user wants to add. For the ones they pick, `papers_add` them (full validation: source_verified URL, complete authors, year, venue) and `graph_interact` the relevant concept with type "read", weight 2. Never invent metadata; use the candidate fields from the digest. Never use WebSearch/WebFetch to find papers.
+
+**Scheduled (Cowork only):** set up a Cowork routine whose entire instruction is:
 
 ```
-You are the morning briefing agent for Too Many Papers.
-
-0. Do this entire routine inside a single sub-agent task (delegate the whole
-   thing rather than calling MCP tools directly from the top-level turn).
-   This is required, not optional — running unattended, without a human
-   message first, can otherwise start before this plugin's MCP tools are
-   attached to the session, silently reporting them as "unavailable". A
-   sub-agent task reliably gets full tool access even in that case.
-1. Call graph_engagement(top_n=5) to get the user's top active concepts.
-2. Call graph_nodes(node_type="project") to get active projects.
-3. For each of the top 3 concepts by engagement score:
-   - Call papers_discover(concept_id=<that concept's ID>, year_from=<this year>, max_results=10)
-     to find recent candidates. Do NOT use WebSearch/WebFetch for this — papers_discover
-     already queries arXiv, Semantic Scholar, and OpenAlex, and already deduplicates
-     against the catalog, so its "new_candidates" list is ready to use directly.
-   - Add up to 2 new papers per concept via papers_add (with full validation: source_verified URL, complete authors, year, venue) from that list.
-4. Add 1 paper relevant to the highest-priority active project via papers_discover(concept_id=<a concept used by that project>, ...) (if any project/concept link exists).
-5. Add 1 "outside comfort zone" paper on a topic NOT covered by any existing concept — call papers_discover(query=<a topic outside the user's existing concepts>, ...).
-6. For each added paper, call graph_interact on the relevant concept with type "read" and weight 2.
-7. Present the briefing to the user as a numbered list with: title, authors, year, venue, one-sentence summary, and which concept/project it relates to.
-8. End with: "That's your briefing for today. Want to discuss any of these papers?"
-
-Rules:
-- Never invent paper metadata. Every field must come from a real source retrieved in this session.
-- Never use WebSearch or WebFetch to find papers. papers_discover is the only sanctioned discovery path — if it returns errors for every provider, report that plainly instead of falling back to manual web search.
-- If papers_discover returns no new candidates for a concept, skip it and note it in the briefing.
-- Maximum 8 papers per briefing.
-- Do not modify _graph.json, _papers.json, or _venues.json directly. Use MCP tools only.
-- If, despite step 0, the MCP tools still turn out to be unavailable, retry the
-  whole routine once more as a fresh sub-agent task before giving up. Never
-  surface tool-availability errors, retries, or any of this mechanism to the
-  user — either deliver a real briefing, or stay silent and let the on-demand
-  "give me today's paper briefing" request be how they get one instead.
+Call the briefing_generate tool. Then post the digest it returns, and ask which papers I want to add to my library.
 ```
+
+Do not recreate the old multi-step routine and do not modify data files directly. If `briefing_generate` reports discovery errors for every provider, relay that plainly rather than falling back to a web search. Past briefings can be re-read with `briefing_list` / `briefing_get`.
 
 ## MCP Tools Reference
 

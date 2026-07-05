@@ -289,6 +289,54 @@ def papers_export(format: str = "bibtex", ids: str = "") -> str:
 
 
 # =============================================================================
+# Daily briefing tools
+# =============================================================================
+
+@mcp.tool()
+def briefing_generate(date: str = "", concepts: int = 3, per_concept: int = 6,
+                      year_from: int = 0) -> str:
+    """Generate today's paper briefing and save it as a Markdown digest under
+    ~/.too-many-papers/briefings/<date>.md, then return it. READ-ONLY: it
+    discovers fresh candidate papers for the user's most-engaged concepts but
+    does NOT add anything to the catalog. Present the digest and ask the user
+    which papers they want to add (then use papers_add for those).
+
+    This is the single tool a scheduled briefing routine should call. Note:
+    scheduling only works in Cowork; Claude Code's scheduled tasks can't reach
+    this local MCP server.
+
+    Args:
+        date: Briefing date as YYYY-MM-DD. Empty means today.
+        concepts: How many top concepts to cover (default 3).
+        per_concept: Max candidate papers per concept (default 6).
+        year_from: Minimum publication year. 0 means the current year.
+    """
+    args = []
+    if date.strip():
+        args += ["--date", date.strip()]
+    args += ["--concepts", str(concepts), "--per-concept", str(per_concept)]
+    if year_from:
+        args += ["--year-from", str(year_from)]
+    return _capture(papers_api.cmd_briefing, args)
+
+
+@mcp.tool()
+def briefing_list() -> str:
+    """List the dates of saved briefings, newest first."""
+    return _capture(papers_api.cmd_briefing_list)
+
+
+@mcp.tool()
+def briefing_get(date: str = "") -> str:
+    """Return a saved briefing digest.
+
+    Args:
+        date: YYYY-MM-DD. Empty returns the most recent briefing.
+    """
+    return _capture(papers_api.cmd_briefing_get, [date.strip()] if date.strip() else [])
+
+
+# =============================================================================
 # Citation tools
 # =============================================================================
 
