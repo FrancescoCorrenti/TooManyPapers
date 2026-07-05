@@ -605,6 +605,63 @@
     padding-top: 10px;
     border-top: 1px dashed var(--border);
   }
+
+  /* Searchable multi-select (graph "Linked to" / "Concepts" filters) */
+  .ms { position: relative; display: inline-block; }
+  .ms-control {
+    display: flex; align-items: center; gap: 6px;
+    min-width: 150px; max-width: 240px;
+    padding: 6px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 0.85rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .ms-control:hover { border-color: var(--border-light); }
+  .ms-summary { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ms-summary.placeholder { color: var(--text-dim); }
+  .ms-caret { color: var(--text-dim); font-size: 0.7rem; }
+  .ms-panel {
+    position: absolute; z-index: 60; top: calc(100% + 4px); left: 0;
+    width: 260px;
+    background: var(--surface2);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 8px;
+  }
+  .ms-search {
+    width: 100%; box-sizing: border-box;
+    padding: 6px 8px; margin-bottom: 6px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text); font-size: 0.85rem;
+  }
+  .ms-list { max-height: 240px; overflow-y: auto; }
+  .ms-opt {
+    display: flex; align-items: center; gap: 7px;
+    padding: 4px 6px; border-radius: 6px;
+    font-size: 0.82rem; color: var(--text); cursor: pointer;
+  }
+  .ms-opt:hover { background: var(--surface); }
+  .ms-opt input { flex-shrink: 0; }
+  .ms-opt .ms-grp { color: var(--text-dim); font-size: 0.72rem; }
+  .ms-group-label {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-dim); padding: 6px 6px 2px; margin-top: 4px;
+  }
+  .ms-empty { color: var(--text-dim); font-size: 0.8rem; padding: 6px; }
+  .ms-clear {
+    display: block; width: 100%; margin-top: 6px; padding: 5px;
+    background: none; border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text-dim);
+    font-size: 0.78rem; cursor: pointer;
+  }
+  .ms-clear:hover { color: var(--text); border-color: var(--border-light); }
   #graph-wrap {
     position: relative;
     width: 100%;
@@ -1396,10 +1453,12 @@
   <div id="graph-filters-panel" class="advanced-panel" style="display:none; padding: 0 40px 16px; background: var(--surface); border-bottom: 1px solid var(--border); margin-top: -1px;">
     <div class="filter-inline">
       <span>Linked to:</span>
-      <select class="sel" id="graph-concept-filter">
-        <option value="">Any</option>
-      </select>
+      <span id="graph-linkedto-ms"></span>
       <span class="form-hint" style="margin-left:4px;">or right-click a node to isolate it</span>
+    </div>
+    <div class="filter-inline">
+      <span>Concepts:</span>
+      <span id="graph-concepts-ms"></span>
     </div>
     <div class="filter-inline">
       <span>Depth:</span>
@@ -2217,6 +2276,7 @@ function distinctFieldValues(type, field) {
 function allNodeOptionsHTML() {
   const byType = {};
   Object.entries(GraphNodes).forEach(([id, n]) => {
+    if (n.type === 'ghost') return; // ghosts are references, never link targets
     (byType[n.type] = byType[n.type] || []).push([id, n]);
   });
   return Object.keys(byType).sort().map(t => {
@@ -2226,6 +2286,97 @@ function allNodeOptionsHTML() {
       .join('');
     return `<optgroup label="${esc((TYPE_META[t] && TYPE_META[t].label) || t)}">${opts}</optgroup>`;
   }).join('');
+}
+
+// A compact searchable multi-select. Mounts into `mountEl`, takes options as
+// [{id, label, group}], and calls onChange(Set of selected ids) on every
+// change. Built plain (no framework) to match the rest of this file; used
+// by the graph's "Linked to" and "Concepts" filters, where a long scrolling
+// <select> was unusable with hundreds of papers.
+function createMultiSelect(mountEl, { placeholder, onChange }) {
+  let options = [];
+  const selected = new Set();
+  mountEl.innerHTML = `
+    <div class="ms">
+      <div class="ms-control" tabindex="0">
+        <span class="ms-summary placeholder">${esc(placeholder)}</span>
+        <span class="ms-caret">&#9662;</span>
+      </div>
+      <div class="ms-panel" style="display:none;">
+        <input class="ms-search" type="search" placeholder="Search...">
+        <div class="ms-list"></div>
+        <button class="ms-clear" type="button">Clear selection</button>
+      </div>
+    </div>`;
+  const root    = mountEl.firstElementChild;
+  const control = root.querySelector('.ms-control');
+  const summary = root.querySelector('.ms-summary');
+  const panel   = root.querySelector('.ms-panel');
+  const search  = root.querySelector('.ms-search');
+  const list    = root.querySelector('.ms-list');
+  const clearBtn = root.querySelector('.ms-clear');
+
+  function updateSummary() {
+    if (selected.size === 0) {
+      summary.textContent = placeholder;
+      summary.classList.add('placeholder');
+    } else {
+      summary.classList.remove('placeholder');
+      if (selected.size === 1) {
+        const o = options.find(o => o.id === [...selected][0]);
+        summary.textContent = o ? o.label : '1 selected';
+      } else {
+        summary.textContent = selected.size + ' selected';
+      }
+    }
+  }
+
+  function renderList() {
+    const q = search.value.trim().toLowerCase();
+    const filtered = options.filter(o => !q || o.label.toLowerCase().includes(q));
+    if (!filtered.length) { list.innerHTML = '<div class="ms-empty">No matches</div>'; return; }
+    const groups = {};
+    filtered.forEach(o => { (groups[o.group || ''] = groups[o.group || ''] || []).push(o); });
+    let html = '';
+    Object.keys(groups).sort().forEach(g => {
+      if (g) html += `<div class="ms-group-label">${esc(g)}</div>`;
+      groups[g].forEach(o => {
+        html += `<label class="ms-opt"><input type="checkbox" value="${esc(o.id)}"${selected.has(o.id) ? ' checked' : ''}> <span>${esc(o.label)}</span></label>`;
+      });
+    });
+    list.innerHTML = html;
+  }
+
+  list.addEventListener('change', e => {
+    const cb = e.target.closest('input[type=checkbox]');
+    if (!cb) return;
+    if (cb.checked) selected.add(cb.value); else selected.delete(cb.value);
+    updateSummary();
+    onChange(new Set(selected));
+  });
+  control.addEventListener('click', () => {
+    const open = panel.style.display !== 'none';
+    panel.style.display = open ? 'none' : 'block';
+    if (!open) { renderList(); search.value = ''; search.focus(); }
+  });
+  search.addEventListener('input', renderList);
+  clearBtn.addEventListener('click', () => {
+    selected.clear(); renderList(); updateSummary(); onChange(new Set());
+  });
+  document.addEventListener('mousedown', e => {
+    if (!root.contains(e.target)) panel.style.display = 'none';
+  });
+
+  return {
+    setOptions(opts) {
+      options = opts;
+      [...selected].forEach(id => { if (!opts.some(o => o.id === id)) selected.delete(id); });
+      renderList(); updateSummary();
+    },
+    getSelected() { return new Set(selected); },
+    setSelected(ids) { selected.clear(); (ids || []).forEach(id => selected.add(id)); renderList(); updateSummary(); },
+    clear() { selected.clear(); renderList(); updateSummary(); },
+  };
 }
 
 function renderTypeList(type) {
@@ -3228,10 +3379,12 @@ const Graph = (function() {
   let hoverNode = null, hoverEdge = null;
   let typeFilter = new Set(['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
   let searchQ = '';
-  // "Linked to concept" filter: shows only nodes reachable from a chosen
-  // concept within `conceptLinkDepth` hops (BFS over currently-allowed edge
-  // types). Advanced panel also lets you narrow which edge types count.
-  let conceptLinkFilter = '';
+  // "Linked to" filter: shows only nodes reachable from a chosen set of seed
+  // nodes within `conceptLinkDepth` hops (BFS over currently-allowed edge
+  // types). Seeds come from two searchable multi-selects — a general one
+  // (any node) and a concepts-only one — unioned into `linkSeeds`.
+  let linkedToMS = null, conceptsMS = null;
+  let linkSeeds = new Set();  // union of both multi-selects' selections
   let conceptLinkDepth = 2;
   let conceptLinkSet = null; // Set of node ids, or null when no filter active
   let edgeTypeFilter = null; // Set of allowed edge types, or null = all allowed
@@ -3260,6 +3413,15 @@ const Graph = (function() {
     canvas  = document.getElementById('graph-canvas');
     tooltip = document.getElementById('graph-tooltip');
     ctx     = canvas.getContext('2d');
+
+    // The "Linked to" / "Concepts" multi-selects must exist before buildSim
+    // populates them.
+    if (!linkedToMS) {
+      linkedToMS = createMultiSelect(document.getElementById('graph-linkedto-ms'),
+        { placeholder: 'Any', onChange: updateLinkSeeds });
+      conceptsMS = createMultiSelect(document.getElementById('graph-concepts-ms'),
+        { placeholder: 'Any', onChange: updateLinkSeeds });
+    }
 
     try {
       await ensureGraphLoaded();
@@ -3400,14 +3562,32 @@ const Graph = (function() {
     panY = -cy * zoom;
   }
 
-  // "Linked to" filter: any node or paper, not just concepts — grouped by
-  // type the same way the per-type tabs' "linked to" filter is, via the
-  // shared allNodeOptionsHTML() helper.
+  // Feeds both "Linked to" (any node) and "Concepts" (concepts only)
+  // multi-selects from the current graph, excluding ghost nodes (they're
+  // references, not link targets). Preserves existing selections across
+  // rebuilds (setOptions drops only ids that no longer exist).
   function populateConceptFilter() {
-    const sel = document.getElementById('graph-concept-filter');
-    const prev = sel.value;
-    sel.innerHTML = '<option value="">Any</option>' + allNodeOptionsHTML();
-    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+    const all = [], concepts = [];
+    Object.entries(GraphNodes).forEach(([id, n]) => {
+      if (n.type === 'ghost') return;
+      const label = n.name || n.title || id;
+      const group = (TYPE_META[n.type] && TYPE_META[n.type].label) || n.type;
+      all.push({ id, label, group });
+      if (n.type === 'concept') concepts.push({ id, label, group: '' });
+    });
+    all.sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
+    concepts.sort((a, b) => a.label.localeCompare(b.label));
+    linkedToMS.setOptions(all);
+    conceptsMS.setOptions(concepts);
+    updateLinkSeeds();
+  }
+
+  // Recompute the seed set (union of both multi-selects) and refresh the
+  // reachable-node set + view.
+  function updateLinkSeeds() {
+    linkSeeds = new Set([...linkedToMS.getSelected(), ...conceptsMS.getSelected()]);
+    recomputeConceptLinkSet();
+    scheduleDraw();
   }
 
   // Right-click (or programmatic call) isolation: jump straight to "linked
@@ -3415,18 +3595,16 @@ const Graph = (function() {
   // types are immediately visible and adjustable — the panel doesn't stay
   // hidden with an invisible filter active.
   function isolateNode(nodeId) {
-    conceptLinkFilter = nodeId;
+    conceptsMS.clear();
+    linkedToMS.setSelected([nodeId]);
     conceptLinkDepth = 1;
-    const sel = document.getElementById('graph-concept-filter');
-    if ([...sel.options].some(o => o.value === nodeId)) sel.value = nodeId;
     document.getElementById('graph-link-depth').value = '1';
     const panel = document.getElementById('graph-filters-panel');
     const toggle = document.getElementById('graph-filters-toggle');
     panel.style.display = 'flex';
     toggle.setAttribute('aria-expanded', 'true');
     toggle.innerHTML = 'Filters &#9662;';
-    recomputeConceptLinkSet();
-    draw();
+    updateLinkSeeds();
   }
 
   function populateEdgeTypeFilters() {
@@ -3454,12 +3632,13 @@ const Graph = (function() {
   // directly connect the types still shown (e.g. paper-to-paper citations
   // when only Papers is checked).
   function recomputeConceptLinkSet() {
-    if (!conceptLinkFilter) { conceptLinkSet = null; return; }
+    if (!linkSeeds || linkSeeds.size === 0) { conceptLinkSet = null; return; }
     const allowed = e => !edgeTypeFilter || edgeTypeFilter.has(e.type);
     const typeOk = id => { const n = nodesById.get(id); return n && typeFilter.has(n.type); };
-    if (!typeOk(conceptLinkFilter)) { conceptLinkSet = new Set(); return; }
-    const visited = new Set([conceptLinkFilter]);
-    let frontier = [conceptLinkFilter];
+    const visited = new Set();
+    let frontier = [];
+    linkSeeds.forEach(id => { if (typeOk(id)) { visited.add(id); frontier.push(id); } });
+    if (!frontier.length) { conceptLinkSet = new Set(); return; }
     for (let hop = 0; hop < conceptLinkDepth; hop++) {
       const next = [];
       for (const id of frontier) {
@@ -3941,13 +4120,12 @@ const Graph = (function() {
       document.getElementById('graph-legend').classList.remove('open');
     });
 
-    document.getElementById('graph-concept-filter').addEventListener('change', e => {
-      conceptLinkFilter = e.target.value;
-      recomputeConceptLinkSet();
-    });
+    // The "Linked to" / "Concepts" multi-selects drive updateLinkSeeds()
+    // themselves via their onChange; only depth needs wiring here.
     document.getElementById('graph-link-depth').addEventListener('change', e => {
       conceptLinkDepth = parseInt(e.target.value, 10) || 2;
       recomputeConceptLinkSet();
+      scheduleDraw();
     });
     document.getElementById('graph-filters-toggle').addEventListener('click', () => {
       const panel = document.getElementById('graph-filters-panel');
@@ -3965,9 +4143,9 @@ const Graph = (function() {
       // type defaults to visible.
       document.querySelectorAll('.gtype').forEach(cb => { cb.checked = cb.value !== 'ghost'; });
       typeFilter = new Set(['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
-      conceptLinkFilter = '';
+      linkedToMS.clear();
+      conceptsMS.clear();
       conceptLinkDepth = 2;
-      document.getElementById('graph-concept-filter').value = '';
       document.getElementById('graph-link-depth').value = '2';
       edgeTypeFilter = null;
       populateEdgeTypeFilters(); // rebuilds edge-type checkboxes, all checked
@@ -3977,8 +4155,7 @@ const Graph = (function() {
       panel.style.display = 'none';
       toggleBtn.setAttribute('aria-expanded', 'false');
       toggleBtn.innerHTML = 'Filters &#9656;';
-      recomputeConceptLinkSet();
-      draw();
+      updateLinkSeeds();
     });
 
     initPresets();
@@ -4005,19 +4182,30 @@ const Graph = (function() {
   function currentFilterState() {
     return {
       types: [...typeFilter],
-      linkedTo: conceptLinkFilter,
+      linkedTo: [...linkedToMS.getSelected()],
+      concepts: [...conceptsMS.getSelected()],
       depth: conceptLinkDepth,
       edgeTypes: edgeTypeFilter ? [...edgeTypeFilter] : null,
     };
   }
 
   function applyFilterState(state) {
+    const hadGhosts = typeFilter.has('ghost');
     typeFilter = new Set(state.types || ['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
     document.querySelectorAll('.gtype').forEach(cb => { cb.checked = typeFilter.has(cb.value); });
+    // Restoring a preset that (un)includes ghosts changes sim membership.
+    if (typeFilter.has('ghost') !== hadGhosts) {
+      rebuildSimMembership();
+      buildEdgeIndex();
+      startSimulation();
+      simulation.alpha(0.6).restart();
+    }
 
-    conceptLinkFilter = state.linkedTo || '';
-    const linkSel = document.getElementById('graph-concept-filter');
-    if ([...linkSel.options].some(o => o.value === conceptLinkFilter)) linkSel.value = conceptLinkFilter;
+    // Back-compat: older presets stored linkedTo as a single id string.
+    const linkedIds = Array.isArray(state.linkedTo) ? state.linkedTo
+                    : (state.linkedTo ? [state.linkedTo] : []);
+    linkedToMS.setSelected(linkedIds);
+    conceptsMS.setSelected(state.concepts || []);
 
     conceptLinkDepth = state.depth || 2;
     document.getElementById('graph-link-depth').value = String(conceptLinkDepth);
@@ -4027,8 +4215,7 @@ const Graph = (function() {
       cb.checked = !edgeTypeFilter || edgeTypeFilter.has(cb.value);
     });
 
-    recomputeConceptLinkSet();
-    draw();
+    updateLinkSeeds();
   }
 
   function populatePresetSelect() {
