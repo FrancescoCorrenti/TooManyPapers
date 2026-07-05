@@ -142,7 +142,7 @@ Rules:
 ### Graph Tools (Write)
 `graph_add_concept(name, area, description?)` . `graph_add_project(name, status, description?)` . `graph_add_endpoint(name, status, description?)` . `graph_add_idea(name, status, created, description?, source?)` . `graph_add_pool(name, created, description?)` . `graph_update_node(id, payload)` . `graph_remove_node(id)` . `graph_add_edge(src, tgt, edge_type, note?)` . `graph_remove_edge(src, tgt, edge_type?)` . `graph_interact(id, interaction_type, weight?)`
 
-For full per-tool details, see `references/mcp-tools.md`.
+Each MCP tool carries its own name, description, and parameter schema, so consult the tool list directly for the full, always-current set (including the bulk `*_bulk` tools and `papers_export`).
 
 ## Strict Type System
 
