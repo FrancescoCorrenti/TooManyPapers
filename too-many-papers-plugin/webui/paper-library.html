@@ -1289,6 +1289,23 @@
     font-weight: 600;
   }
   .modal-btn-save:hover { background: var(--accent-hover); }
+
+  /* Shared sort control (used by every list tab for a uniform look) */
+  .sort-wrap { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-dim); }
+  .sort-dir-btn {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all .18s;
+    user-select: none;
+    min-width: 28px;
+    text-align: center;
+  }
+  .sort-dir-btn:hover { border-color: var(--border-light); }
 </style>
 </head>
 <body>
@@ -1370,7 +1387,7 @@
     <div class="advanced-panel" id="paper-advanced-panel" style="display:none; padding: 0 40px 16px; background: var(--surface); border-bottom: 1px solid var(--border); margin-top: -1px;">
       <div class="filter-inline">
         <span>Linked to:</span>
-        <select class="sel" id="paper-linkedto-filter"><option value="">Any</option></select>
+        <span id="paper-linkedto-ms"></span>
       </div>
       <div class="filter-inline">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
@@ -1544,7 +1561,8 @@ let filterMode  = 'all';
 let searchQ     = '';
 let conceptF    = '';
 let venueF      = '';
-let linkedToF   = ''; // advanced filter: paper must be linked (any edge) to this graph node id
+let linkedToF   = new Set(); // advanced filter: paper linked (any edge) to ANY of these node ids
+let paperLinkedMS = null;    // the searchable multi-select instance for it
 let sortMode    = 'discovered';
 let sortAscend  = false;
 let pinnedOrder = []; // ordered array of pinned IDs
@@ -1802,8 +1820,8 @@ function render() {
     if (filterMode === 'unread' &&  p.read) return false;
     if (conceptF && !(p.concepts || []).some(c => c.id === conceptF)) return false;
     if (venueF   && p.venueId !== venueF) return false;
-    if (linkedToF && !GraphEdges.some(e =>
-        (e.from === p.id && e.to === linkedToF) || (e.to === p.id && e.from === linkedToF))) return false;
+    if (linkedToF.size && !GraphEdges.some(e =>
+        (e.from === p.id && linkedToF.has(e.to)) || (e.to === p.id && linkedToF.has(e.from)))) return false;
     if (q) {
       const hay = [p.id, p.titolo, p.autori, p.venueName, p.venueDetail,
                    ...(p.concepts || []).map(c => c.name)].join(' ').toLowerCase();
@@ -2074,11 +2092,6 @@ document.getElementById('venue-filter').addEventListener('change', e => {
   render();
 });
 
-document.getElementById('paper-linkedto-filter').addEventListener('change', e => {
-  linkedToF = e.target.value;
-  render();
-});
-
 document.getElementById('paper-show-ghosts').addEventListener('change', e => {
   showGhosts = e.target.checked;
   render();
@@ -2094,11 +2107,11 @@ document.getElementById('paper-advanced-toggle').addEventListener('click', () =>
 });
 
 document.getElementById('paper-reset-filters').addEventListener('click', () => {
-  searchQ = ''; filterMode = 'all'; conceptF = ''; venueF = ''; linkedToF = '';
+  searchQ = ''; filterMode = 'all'; conceptF = ''; venueF = ''; linkedToF = new Set();
   sortMode = 'discovered'; sortAscend = false; showGhosts = false;
   document.getElementById('concept-filter').value = '';
   document.getElementById('venue-filter').value = '';
-  document.getElementById('paper-linkedto-filter').value = '';
+  if (paperLinkedMS) paperLinkedMS.clear();
   document.getElementById('paper-show-ghosts').checked = false;
   applyUIToDOM();
   const panel = document.getElementById('paper-advanced-panel');
@@ -2110,11 +2123,18 @@ document.getElementById('paper-reset-filters').addEventListener('click', () => {
   render();
 });
 
+// Searchable multi-select "Linked to" for Papers — same widget as the graph
+// and per-type tabs. Created once, options refreshed when graph data loads.
 function populatePaperLinkedToFilter() {
-  const sel = document.getElementById('paper-linkedto-filter');
-  const prev = sel.value;
-  sel.innerHTML = '<option value="">Any</option>' + allNodeOptionsHTML();
-  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  if (!paperLinkedMS) {
+    paperLinkedMS = createMultiSelect(document.getElementById('paper-linkedto-ms'), {
+      placeholder: 'Any',
+      onChange: sel => { linkedToF = sel; render(); },
+    });
+  }
+  const prev = [...linkedToF];
+  paperLinkedMS.setOptions(nodeMultiSelectOptions());
+  paperLinkedMS.setSelected(prev);
 }
 
 document.getElementById('sort-select').addEventListener('change', e => {
@@ -2258,14 +2278,25 @@ function renderActivePane(type) {
 
 const QUICK_FIELD = { concept: 'area', project: 'status', endpoint: 'status', idea: 'status', pool: null, note: null };
 
+// linkedTo is a Set of node ids (multi-select). sortKey/asc are seeded from
+// each type's default sort in ensureTypeFilterState().
 let typeFilterState = {
-  concept:  { search: '', quick: '', linkedTo: '' },
-  project:  { search: '', quick: '', linkedTo: '' },
-  endpoint: { search: '', quick: '', linkedTo: '' },
-  idea:     { search: '', quick: '', linkedTo: '' },
-  pool:     { search: '', quick: '', linkedTo: '' },
-  note:     { search: '', quick: '', linkedTo: '' },
+  concept:  { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
+  project:  { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
+  endpoint: { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
+  idea:     { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
+  pool:     { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
+  note:     { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
 };
+
+function ensureTypeSortDefaults(type) {
+  const st = typeFilterState[type];
+  if (st.sortKey === undefined) {
+    const def = TYPE_SORTS[type][0];
+    st.sortKey = def.key;
+    st.asc = def.dir === 'asc';
+  }
+}
 
 function distinctFieldValues(type, field) {
   const set = new Set();
@@ -2379,11 +2410,76 @@ function createMultiSelect(mountEl, { placeholder, onChange }) {
   };
 }
 
+// Node option list for the searchable multi-select "Linked to" filters
+// (per-type tabs and Papers), grouped by type, ghosts excluded.
+function nodeMultiSelectOptions() {
+  const opts = [];
+  Object.entries(GraphNodes).forEach(([id, n]) => {
+    if (n.type === 'ghost') return;
+    opts.push({ id, label: n.name || n.title || id, group: (TYPE_META[n.type] && TYPE_META[n.type].label) || n.type });
+  });
+  opts.sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
+  return opts;
+}
+
+// ── Sorting (uniform across list tabs) ──────────────────────────────────────
+// Each tab exposes a Sort dropdown + a direction toggle, matching Papers.
+// A sort option is {key, label, get, dir}: `get([id,node])` returns the
+// comparable value (number or string), `dir` is the sensible default
+// direction when that option is picked.
+function nodeConnCount(id) {
+  let c = 0; GraphEdges.forEach(e => { if (e.from === id || e.to === id) c++; }); return c;
+}
+function nodeLinkedTypeCount(id, t) {
+  let c = 0;
+  GraphEdges.forEach(e => {
+    const o = e.from === id ? e.to : (e.to === id ? e.from : null);
+    if (o && GraphNodes[o] && GraphNodes[o].type === t) c++;
+  });
+  return c;
+}
+const S_NAME    = { key: 'name', label: 'Name', get: ([id, n]) => (n.name || n.title || id).toLowerCase(), dir: 'asc' };
+const S_ID      = { key: 'id', label: 'ID', get: ([id]) => id, dir: 'asc' };
+const S_CONN    = { key: 'connections', label: '# connections', get: ([id]) => nodeConnCount(id), dir: 'desc' };
+const S_CREATED = { key: 'created', label: 'Created', get: ([, n]) => n.created || '', dir: 'desc' };
+const TYPE_SORTS = {
+  concept:  [S_NAME, { key: 'papers', label: '# papers', get: ([id]) => nodeLinkedTypeCount(id, 'paper'), dir: 'desc' }, S_CONN, S_ID],
+  project:  [S_NAME, S_CONN, S_CREATED, S_ID],
+  endpoint: [S_NAME, S_CONN, S_CREATED, S_ID],
+  idea:     [S_NAME, S_CREATED, S_CONN, S_ID],
+  pool:     [S_NAME, S_CREATED, S_CONN, S_ID],
+  note:     [S_CREATED, S_NAME, S_CONN, S_ID],
+};
+
+// Builds the shared Sort control markup for a tab.
+function sortControlHTML(sorts, sortKey, asc) {
+  return `<div class="sort-wrap"><span>Sort:</span>
+    <select class="sel sort-select">
+      ${sorts.map(s => `<option value="${s.key}"${s.key === sortKey ? ' selected' : ''}>${esc(s.label)}</option>`).join('')}
+    </select>
+    <button class="sort-dir-btn" title="Toggle ascending/descending">${asc ? '↑' : '↓'}</button>
+  </div>`;
+}
+
+// Applies the active sort option + direction to a list of [id, node] entries.
+function applySortEntries(entries, sorts, sortKey, asc) {
+  const opt = sorts.find(s => s.key === sortKey) || sorts[0];
+  entries.sort((a, b) => {
+    const va = opt.get(a), vb = opt.get(b);
+    const c = (typeof va === 'number' && typeof vb === 'number') ? va - vb : String(va).localeCompare(String(vb));
+    return asc ? c : -c;
+  });
+  return entries;
+}
+
 function renderTypeList(type) {
   const container = document.getElementById(`pane-${type}-list`);
+  ensureTypeSortDefaults(type);
   if (!container.dataset.toolbarBuilt) {
     const qf = QUICK_FIELD[type];
     const quickOptions = qf ? distinctFieldValues(type, qf) : [];
+    const sorts = TYPE_SORTS[type];
+    const state = typeFilterState[type];
     container.innerHTML = `
       <div class="toolbar">
         <div class="search-wrap" style="max-width:320px;">
@@ -2396,19 +2492,19 @@ function renderTypeList(type) {
           <option value="">All ${esc(qf)}</option>
           ${quickOptions.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
         </select>` : ''}
+        ${sortControlHTML(sorts, state.sortKey, state.asc)}
         <button class="filter-btn type-advanced-toggle" aria-expanded="false">Advanced filters &#9656;</button>
         <button class="filter-btn type-reset-filters">Reset filters</button>
       </div>
       <div class="advanced-panel" style="display:none;">
         <div class="filter-inline">
           <span>Linked to:</span>
-          <select class="sel type-linkedto"><option value="">Any</option>${allNodeOptionsHTML()}</select>
+          <span class="type-linkedto-ms"></span>
         </div>
       </div>
       <div class="type-grid"></div>`;
     container.dataset.toolbarBuilt = '1';
 
-    const state = typeFilterState[type];
     container.querySelector('.type-search').addEventListener('input', e => {
       state.search = e.target.value.toLowerCase();
       renderTypeGrid(type);
@@ -2418,17 +2514,38 @@ function renderTypeList(type) {
       state.quick = e.target.value;
       renderTypeGrid(type);
     });
-    container.querySelector('.type-linkedto').addEventListener('change', e => {
-      state.linkedTo = e.target.value;
+    // Searchable multi-select "Linked to" (uniform with the graph filter).
+    state.linkedMS = createMultiSelect(container.querySelector('.type-linkedto-ms'), {
+      placeholder: 'Any',
+      onChange: sel => { state.linkedTo = sel; renderTypeGrid(type); },
+    });
+    state.linkedMS.setOptions(nodeMultiSelectOptions());
+    state.linkedMS.setSelected([...state.linkedTo]); // restore across rebuilds
+    const sortSel = container.querySelector('.sort-select');
+    const dirBtn = container.querySelector('.sort-dir-btn');
+    sortSel.addEventListener('change', e => {
+      state.sortKey = e.target.value;
+      const opt = sorts.find(s => s.key === state.sortKey) || sorts[0];
+      state.asc = opt.dir === 'asc'; // reset to the option's sensible default
+      dirBtn.textContent = state.asc ? '↑' : '↓';
+      renderTypeGrid(type);
+    });
+    dirBtn.addEventListener('click', () => {
+      state.asc = !state.asc;
+      dirBtn.textContent = state.asc ? '↑' : '↓';
       renderTypeGrid(type);
     });
     const advToggle = container.querySelector('.type-advanced-toggle');
     const advPanel = container.querySelector('.advanced-panel');
     container.querySelector('.type-reset-filters').addEventListener('click', () => {
-      state.search = ''; state.quick = ''; state.linkedTo = '';
+      state.search = ''; state.quick = ''; state.linkedTo = new Set();
+      const def = sorts[0];
+      state.sortKey = def.key; state.asc = def.dir === 'asc';
       container.querySelector('.type-search').value = '';
       if (quickSel) quickSel.value = '';
-      container.querySelector('.type-linkedto').value = '';
+      state.linkedMS.clear();
+      sortSel.value = state.sortKey;
+      dirBtn.textContent = state.asc ? '↑' : '↓';
       advPanel.style.display = 'none';
       advToggle.setAttribute('aria-expanded', 'false');
       advToggle.innerHTML = 'Advanced filters &#9656;';
@@ -2456,11 +2573,12 @@ function renderTypeGrid(type) {
       (id + ' ' + (n.name || '') + ' ' + (n.description || '')).toLowerCase().includes(state.search));
   }
   if (qf && state.quick) items = items.filter(([, n]) => n[qf] === state.quick);
-  if (state.linkedTo) {
+  if (state.linkedTo && state.linkedTo.size) {
+    // Keep items linked to ANY of the selected nodes (union / OR).
     items = items.filter(([id]) => GraphEdges.some(e =>
-      (e.from === id && e.to === state.linkedTo) || (e.to === id && e.from === state.linkedTo)));
+      (e.from === id && state.linkedTo.has(e.to)) || (e.to === id && state.linkedTo.has(e.from))));
   }
-  items.sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''));
+  applySortEntries(items, TYPE_SORTS[type], state.sortKey, state.asc);
 
   if (!items.length) {
     grid.innerHTML = `<div class="empty">No ${TYPE_META[type].label.toLowerCase()} match your filters</div>`;
@@ -2516,7 +2634,13 @@ function venueCardHTML(id, v) {
   </div>`;
 }
 
-let venueFilterState = { search: '', type: '' };
+function venuePaperCount(id) { return allPapers.filter(p => p.venueId === id).length; }
+const VENUE_SORTS = [
+  { key: 'name', label: 'Name', get: ([id, v]) => (v.name || id).toLowerCase(), dir: 'asc' },
+  { key: 'papers', label: '# papers', get: ([id]) => venuePaperCount(id), dir: 'desc' },
+  { key: 'type', label: 'Type', get: ([, v]) => (v.type || '').toLowerCase(), dir: 'asc' },
+];
+let venueFilterState = { search: '', type: '', sortKey: 'name', asc: true };
 
 function renderVenueList(container) {
   if (!container.dataset.toolbarBuilt) {
@@ -2533,15 +2657,39 @@ function renderVenueList(container) {
           <option value="">All types</option>
           ${types.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
         </select>
+        ${sortControlHTML(VENUE_SORTS, venueFilterState.sortKey, venueFilterState.asc)}
+        <button class="filter-btn venue-reset-filters">Reset filters</button>
       </div>
       <div class="type-grid"></div>`;
     container.dataset.toolbarBuilt = '1';
-    container.querySelector('.venue-search').addEventListener('input', e => {
+    const searchEl = container.querySelector('.venue-search');
+    const typeEl = container.querySelector('.venue-type-filter');
+    const sortSel = container.querySelector('.sort-select');
+    const dirBtn = container.querySelector('.sort-dir-btn');
+    searchEl.addEventListener('input', e => {
       venueFilterState.search = e.target.value.toLowerCase();
       renderVenueGrid(container);
     });
-    container.querySelector('.venue-type-filter').addEventListener('change', e => {
+    typeEl.addEventListener('change', e => {
       venueFilterState.type = e.target.value;
+      renderVenueGrid(container);
+    });
+    sortSel.addEventListener('change', e => {
+      venueFilterState.sortKey = e.target.value;
+      const opt = VENUE_SORTS.find(s => s.key === e.target.value) || VENUE_SORTS[0];
+      venueFilterState.asc = opt.dir === 'asc';
+      dirBtn.textContent = venueFilterState.asc ? '↑' : '↓';
+      renderVenueGrid(container);
+    });
+    dirBtn.addEventListener('click', () => {
+      venueFilterState.asc = !venueFilterState.asc;
+      dirBtn.textContent = venueFilterState.asc ? '↑' : '↓';
+      renderVenueGrid(container);
+    });
+    container.querySelector('.venue-reset-filters').addEventListener('click', () => {
+      venueFilterState = { search: '', type: '', sortKey: 'name', asc: true };
+      searchEl.value = ''; typeEl.value = '';
+      sortSel.value = 'name'; dirBtn.textContent = '↑';
       renderVenueGrid(container);
     });
   }
@@ -2557,7 +2705,7 @@ function renderVenueGrid(container) {
   if (venueFilterState.type) {
     entries = entries.filter(([, v]) => v.type === venueFilterState.type);
   }
-  entries.sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''));
+  applySortEntries(entries, VENUE_SORTS, venueFilterState.sortKey, venueFilterState.asc);
   grid.innerHTML = entries.map(([id, v]) => venueCardHTML(id, v)).join('') ||
     '<div class="empty">No venues found</div>';
   grid.querySelectorAll('.type-card').forEach(el => {
@@ -3572,8 +3720,10 @@ const Graph = (function() {
       if (n.type === 'ghost') return;
       const label = n.name || n.title || id;
       const group = (TYPE_META[n.type] && TYPE_META[n.type].label) || n.type;
+      // Concepts have their own dedicated filter, so keep them out of the
+      // general "Linked to" list to avoid two ways to pick the same thing.
+      if (n.type === 'concept') { concepts.push({ id, label, group: '' }); return; }
       all.push({ id, label, group });
-      if (n.type === 'concept') concepts.push({ id, label, group: '' });
     });
     all.sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label));
     concepts.sort((a, b) => a.label.localeCompare(b.label));
