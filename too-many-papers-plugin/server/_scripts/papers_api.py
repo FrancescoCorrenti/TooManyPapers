@@ -159,6 +159,12 @@ GRAPH_FILE = DATA_DIR / "_graph.json"
 # never has to remember to log anything for this file to stay accurate.
 LOG_FILE = DATA_DIR / "_log.jsonl"
 
+# Bibliographic exports (BibTeX now; format-dispatched so RIS/CSL-JSON are
+# small additions later). library.bib is regenerated automatically on every
+# papers save, the same way _log.jsonl is written automatically.
+EXPORT_DIR = DATA_DIR / "exports"
+BIBTEX_FILE = EXPORT_DIR / "library.bib"
+
 
 def _ensure_data_files():
     """Create DATA_DIR and seed it from the bundled templates the first time
@@ -204,8 +210,19 @@ def load_papers():
         return json.load(f)
 
 def save_papers(data):
+    # Assign stable cite keys to any new papers, and keep the auto-exported
+    # library.bib in sync — both best-effort, and never allowed to break a
+    # save (the papers JSON is what matters here).
+    try:
+        ensure_cite_keys(data.get("papers", {}))
+    except Exception:
+        pass
     with open(PAPERS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    try:
+        regenerate_bibtex_export(data, load_venues())
+    except Exception:
+        pass
 
 def load_venues():
     with open(VENUES_FILE, encoding="utf-8") as f:
@@ -490,7 +507,7 @@ PAPER_REQUIRED_FIELDS = {"title", "authors", "year", "discovered", "venue_id",
                          "venue_detail", "source_verified", "concepts",
                          "file", "outside_zone", "notes"}
 PAPER_OPTIONAL_FIELDS = {"url", "hidden", "cites", "cited_by", "cites_unmatched",
-                          "pdf_status", "pdf_source", "pdf_notes"}
+                          "pdf_status", "pdf_source", "pdf_notes", "cite_key"}
 PAPER_ALLOWED_FIELDS = PAPER_REQUIRED_FIELDS | PAPER_OPTIONAL_FIELDS
 
 def validate_paper_payload(payload: dict) -> list[str]:
@@ -2867,6 +2884,217 @@ def cmd_graph_search(args):
 
 # -- Dispatch --------------------------------------------------------------
 
+# =============================================================================
+# Bibliographic export (BibTeX) + output validation
+# =============================================================================
+#
+# One canonical generator + validator lives here, in the module that already
+# owns DOI/arXiv extraction and the source_verified discipline. The MCP tool
+# and the web UI both go through it (the web UI shells out to `export`), so
+# there is never a second, drifting implementation.
+
+_LATEX_SPECIALS = {
+    '\\': r'\textbackslash{}', '&': r'\&', '%': r'\%', '$': r'\$', '#': r'\#',
+    '_': r'\_', '{': r'\{', '}': r'\}', '~': r'\textasciitilde{}',
+    '^': r'\textasciicircum{}',
+}
+# Title-key stopwords skipped when picking the "significant" first word.
+_CITEKEY_STOP = {"the", "a", "an", "of", "on", "in", "for", "and", "to",
+                 "with", "from", "using", "via", "by", "at", "into"}
+
+
+def _latex_escape(s) -> str:
+    """Escape the characters that otherwise break a .bib file. Processed on the
+    original string so replacements (which contain braces themselves) are never
+    re-escaped."""
+    if not isinstance(s, str):
+        s = "" if s is None else str(s)
+    return "".join(_LATEX_SPECIALS.get(ch, ch) for ch in s)
+
+
+def _year_digits(paper: dict) -> str:
+    return re.sub(r"[^0-9]", "", str(paper.get("year") or ""))[:4]
+
+
+def cite_key_base(paper: dict) -> str:
+    """Deterministic cite key from first-author surname + year + first
+    significant title word, e.g. 'ge2026multimodal'. Deterministic so it stays
+    stable across exports even before it's persisted."""
+    authors = paper.get("authors") or []
+    surname = "anon"
+    if authors and isinstance(authors[0], str) and authors[0].strip():
+        surname = re.sub(r"[^A-Za-z]", "", authors[0].split()[0]) or "anon"
+    word = ""
+    for w in re.findall(r"[A-Za-z]+", paper.get("title") or ""):
+        if w.lower() not in _CITEKEY_STOP:
+            word = w.lower()
+            break
+    return (surname.lower() + _year_digits(paper) + word) or "ref"
+
+
+def ensure_cite_keys(papers: dict) -> bool:
+    """Assign a stable, unique cite_key to any paper missing one. Existing keys
+    are never changed (so \\cite{...} in the user's LaTeX keeps working), and
+    new collisions get a/b/c suffixes. Returns True if anything changed."""
+    changed = False
+    used = {p["cite_key"] for p in papers.values()
+            if isinstance(p, dict) and p.get("cite_key")}
+    for p in papers.values():
+        if not isinstance(p, dict) or p.get("cite_key"):
+            continue
+        base = cite_key_base(p)
+        key, i = base, 0
+        while key in used:
+            i += 1
+            key = base + chr(ord('a') + i - 1)
+        p["cite_key"] = key
+        used.add(key)
+        changed = True
+    return changed
+
+
+def _bibtex_entry(pid: str, paper: dict, venues: dict) -> tuple[str, str, dict]:
+    """Return (cite_key, entry_text, meta) for one paper. meta feeds validation."""
+    key = paper.get("cite_key") or cite_key_base(paper)
+    venue = venues.get(paper.get("venue_id")) or {}
+    vtype = (venue.get("type") or "").lower()
+    arxiv = extract_arxiv_id(paper)
+    doi = extract_doi(paper)
+    url = _as_str(paper.get("url")) or None
+    year = _year_digits(paper)
+    vname = venue.get("name") or _as_str(paper.get("venue_detail")) or ""
+    authors = " and ".join(a for a in (paper.get("authors") or [])
+                           if isinstance(a, str) and a.strip())
+
+    fields: list[tuple[str, str]] = []
+    if authors:
+        fields.append(("author", _latex_escape(authors)))
+    # Double-brace the title to preserve its capitalization in BibTeX styles.
+    fields.append(("title", "{" + _latex_escape(paper.get("title") or "") + "}"))
+    if year:
+        fields.append(("year", year))
+
+    if vtype == "journal":
+        etype = "article"
+        if vname:
+            fields.append(("journal", _latex_escape(vname)))
+    elif vtype in ("conference", "workshop"):
+        etype = "inproceedings"
+        if vname:
+            fields.append(("booktitle", _latex_escape(vname)))
+    elif arxiv or vtype == "preprint":
+        etype = "misc"
+        if arxiv:
+            fields.append(("eprint", arxiv))
+            fields.append(("archivePrefix", "arXiv"))
+        fields.append(("howpublished", _latex_escape(vname) or "Preprint"))
+    else:
+        etype = "misc"
+        if vname:
+            fields.append(("howpublished", _latex_escape(vname)))
+
+    if venue.get("publisher") and etype != "misc":
+        fields.append(("publisher", _latex_escape(venue.get("publisher"))))
+    if doi:
+        fields.append(("doi", doi))
+    if url:
+        fields.append(("url", url))
+
+    body = ",\n".join(f"  {k} = {{{v}}}" for k, v in fields)
+    entry = f"@{etype}{{{key},\n{body}\n}}"
+    meta = {"pid": pid, "key": key, "etype": etype, "year": year,
+            "has_locator": bool(doi or url),
+            "verified": bool(_as_str(paper.get("source_verified")).strip())}
+    return key, entry, meta
+
+
+def _validate_bibtex(metas: list[dict]) -> list[str]:
+    """The 'controllo in uscita': surface entries that would produce a broken or
+    unverifiable citation, rather than emitting them silently."""
+    warnings: list[str] = []
+    seen: dict[str, str] = {}
+    for m in metas:
+        if m["key"] in seen:
+            warnings.append(f"{m['pid']}: duplicate cite key '{m['key']}' "
+                            f"(shared with {seen[m['key']]})")
+        else:
+            seen[m["key"]] = m["pid"]
+        if not m["year"]:
+            warnings.append(f"{m['pid']} ({m['key']}): missing year")
+        if not m["has_locator"]:
+            warnings.append(f"{m['pid']} ({m['key']}): no DOI or URL — unlocatable")
+        if not m["verified"]:
+            warnings.append(f"{m['pid']} ({m['key']}): source_verified empty "
+                            f"— metadata not verified")
+    return warnings
+
+
+def build_bibtex(papers: dict, venues: dict, ids: list[str] | None = None,
+                 include_hidden: bool = False) -> tuple[str, list[str]]:
+    """Build the .bib text plus a list of validation warnings. `ids` selects a
+    subset (in the given order); otherwise every non-hidden paper is included."""
+    if ids:
+        items = [(pid, papers[pid]) for pid in ids if pid in papers]
+    else:
+        items = [(pid, p) for pid, p in papers.items()
+                 if include_hidden or not p.get("hidden")]
+    entries, metas = [], []
+    for pid, p in items:
+        _key, entry, meta = _bibtex_entry(pid, p, venues)
+        entries.append(entry)
+        metas.append(meta)
+    warnings = _validate_bibtex(metas)
+    header = f"% Too Many Papers — BibTeX export, {len(entries)} entr" \
+             f"{'y' if len(entries) == 1 else 'ies'}\n\n"
+    content = header + "\n\n".join(entries) + ("\n" if entries else "")
+    return content, warnings
+
+
+def regenerate_bibtex_export(papers_data: dict, venues_data: dict) -> None:
+    """Rewrite ~/.too-many-papers/exports/library.bib from the whole (non-hidden)
+    library. Called automatically after every papers save; must never raise into
+    the caller."""
+    papers = papers_data.get("papers", {})
+    venues = venues_data.get("venues", {})
+    content, warnings = build_bibtex(papers, venues)
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    with open(BIBTEX_FILE, "w", encoding="utf-8") as f:
+        f.write(content)
+    n_entries = sum(1 for line in content.splitlines() if line.startswith("@"))
+    _log_event("bibtex_exported", entries=n_entries, warnings=len(warnings))
+
+
+def cmd_export(args):
+    """Export papers as BibTeX. Usage:
+        export [--format bibtex] [--ids P001,P004] [--report]
+    Prints pure .bib to stdout; with --report, appends validation warnings as
+    trailing % comment lines (harmless to BibTeX, visible to the caller)."""
+    fmt = "bibtex"
+    ids = None
+    report = False
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--format" and i + 1 < len(args):
+            fmt = args[i + 1].lower(); i += 2; continue
+        if a == "--ids" and i + 1 < len(args):
+            ids = [x.strip().upper() for x in args[i + 1].split(",") if x.strip()]; i += 2; continue
+        if a == "--report":
+            report = True; i += 1; continue
+        i += 1
+
+    if fmt != "bibtex":
+        print(f"ERROR: unsupported format '{fmt}' (supported: bibtex)"); sys.exit(1)
+
+    papers = load_papers().get("papers", {})
+    venues = load_venues().get("venues", {})
+    content, warnings = build_bibtex(papers, venues, ids=ids, include_hidden=bool(ids))
+    out = content
+    if report and warnings:
+        out += "\n" + "\n".join("% WARN: " + w for w in warnings) + "\n"
+    print(out)
+
+
 COMMANDS = {
     # paper
     "list":            cmd_list,
@@ -2891,6 +3119,7 @@ COMMANDS = {
     "sync-citations":  cmd_sync_citations,
     "fetch-pdf":       cmd_fetch_pdf,
     "sync-pdfs":       cmd_sync_pdfs,
+    "export":          cmd_export,
     # venue
     "venue-list":      cmd_venue_list,
     "venue-get":       cmd_venue_get,

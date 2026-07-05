@@ -265,6 +265,29 @@ def papers_delete_bulk(ids: str) -> str:
                  lambda pid: _capture(papers_api.cmd_delete_paper, [pid]))
 
 
+@mcp.tool()
+def papers_export(format: str = "bibtex", ids: str = "") -> str:
+    """Export papers as a citation file (currently BibTeX) with an output
+    validation report. Returns the file text; any problems (missing year,
+    no DOI/URL, unverified metadata, duplicate cite keys) are appended as
+    trailing '% WARN:' comment lines — surface those to the user rather than
+    handing over a silently-incomplete file.
+
+    A fresh library.bib for the whole (non-hidden) library is also kept
+    up to date automatically at ~/.too-many-papers/exports/library.bib; this
+    tool is for on-demand or selective exports.
+
+    Args:
+        format: Export format. Currently only "bibtex".
+        ids: Optional comma-separated paper IDs to export just a subset
+            (e.g. "P001,P004"). Empty exports the whole non-hidden library.
+    """
+    args = ["--format", format, "--report"]
+    if ids.strip():
+        args += ["--ids", ids.strip()]
+    return _capture(papers_api.cmd_export, args)
+
+
 # =============================================================================
 # Citation tools
 # =============================================================================

@@ -11,6 +11,21 @@ const http = require('http');
 const fs   = require('fs');
 const path = require('path');
 const os   = require('os');
+const { spawnSync } = require('child_process');
+
+// The BibTeX exporter is the Python one in papers_api.py — the single source
+// of truth, with its output validation. The web UI shells out to it rather
+// than reimplementing (and drifting from) the generator here.
+const SERVER_DIR = path.join(__dirname, '..', 'server');
+function runBibtexExport(ids) {
+  const args = ['run', '--directory', SERVER_DIR, '_scripts/papers_api.py',
+                'export', '--format', 'bibtex'];
+  if (ids) args.push('--ids', ids);
+  const r = spawnSync('uv', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  if (r.error) return { error: 'Could not run the exporter (is uv installed?): ' + r.error.message };
+  if (r.status !== 0) return { error: 'Exporter failed: ' + String(r.stderr || '').slice(0, 500) };
+  return { content: r.stdout };
+}
 
 const PORT        = parseInt(process.env.PORT, 10) || 3737;
 // Data always lives at ~/.too-many-papers, unconditionally — independent of
@@ -475,6 +490,27 @@ const server = http.createServer(function(req, res) {
       res.end(html);
     } catch(e) {
       res.writeHead(404); res.end('paper-library.html not found');
+    }
+    return;
+  }
+
+  // BibTeX export. ?ids=P001,P004 exports a subset (order preserved);
+  // no ids exports the whole non-hidden library. `download=1` sets an
+  // attachment filename; otherwise the raw .bib is returned for copying.
+  if (req.method === 'GET' && req.url.startsWith('/api/export/bibtex')) {
+    try {
+      const u = new URL(req.url, 'http://localhost');
+      const ids = (u.searchParams.get('ids') || '').trim();
+      const r = runBibtexExport(ids);
+      if (r.error) { res.writeHead(500); res.end(r.error); return; }
+      const headers = { 'Content-Type': 'application/x-bibtex; charset=utf-8' };
+      if (u.searchParams.get('download')) {
+        headers['Content-Disposition'] = 'attachment; filename="too-many-papers.bib"';
+      }
+      res.writeHead(200, headers);
+      res.end(r.content);
+    } catch (e) {
+      res.writeHead(500); res.end(String(e.message));
     }
     return;
   }

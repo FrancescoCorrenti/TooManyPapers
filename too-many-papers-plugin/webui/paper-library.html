@@ -1306,6 +1306,29 @@
     text-align: center;
   }
   .sort-dir-btn:hover { border-color: var(--border-light); }
+
+  /* Dropdown menu (Export) */
+  .menu-wrap { position: relative; display: inline-block; }
+  .menu {
+    position: absolute; z-index: 60; top: calc(100% + 4px); right: 0;
+    min-width: 220px;
+    background: var(--surface2);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 6px;
+  }
+  .menu button {
+    display: block; width: 100%; text-align: left;
+    padding: 8px 10px; border: none; border-radius: 6px;
+    background: none; color: var(--text); font-size: 0.85rem; cursor: pointer;
+  }
+  .menu button:hover:not(:disabled) { background: var(--surface); }
+  .menu button:disabled { color: var(--text-dim); cursor: default; }
+
+  /* Per-card export selection checkbox */
+  .card-select { cursor: pointer; margin-right: 2px; flex-shrink: 0; }
+  .card.export-selected { border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -1383,6 +1406,15 @@
 
       <button class="filter-btn" id="paper-advanced-toggle" aria-expanded="false">Advanced filters &#9656;</button>
       <button class="filter-btn" id="paper-reset-filters">Reset filters</button>
+
+      <div class="menu-wrap">
+        <button class="filter-btn" id="paper-export-btn" title="Export citations as BibTeX">Export &#9662;</button>
+        <div class="menu" id="paper-export-menu" style="display:none;">
+          <button data-export="all-download">Download all (.bib)</button>
+          <button data-export="sel-download">Download selected (<span id="export-sel-count">0</span>) (.bib)</button>
+          <button data-export="sel-copy">Copy selected to clipboard</button>
+        </div>
+      </div>
     </div>
     <div class="advanced-panel" id="paper-advanced-panel" style="display:none; padding: 0 40px 16px; background: var(--surface); border-bottom: 1px solid var(--border); margin-top: -1px;">
       <div class="filter-inline">
@@ -1557,6 +1589,7 @@ let allVenues   = {};
 let allConcepts = {};
 let allGhosts   = []; // papers cited by others but absent from the library
 let showGhosts  = false;
+let selectedForExport = new Set(); // paper IDs ticked for BibTeX export
 let filterMode  = 'all';
 let searchQ     = '';
 let conceptF    = '';
@@ -1881,13 +1914,65 @@ function render() {
   grid.querySelectorAll('.cite-link').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); openDetail('paper', el.dataset.goto); });
   });
+  grid.querySelectorAll('.card-select').forEach(cb => {
+    cb.addEventListener('click', e => e.stopPropagation()); // don't open the card
+    cb.addEventListener('change', e => {
+      const id = cb.dataset.id;
+      if (cb.checked) selectedForExport.add(id); else selectedForExport.delete(id);
+      cb.closest('.card').classList.toggle('export-selected', cb.checked);
+      updateExportCount();
+    });
+  });
+  grid.querySelectorAll('.cite-btn').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); copyBibtex(btn.dataset.cite); });
+  });
   grid.querySelectorAll('.card:not(.ghost-card)').forEach(card => {
     card.addEventListener('click', e => {
-      if (e.target.closest('button, a')) return; // let action buttons/links handle their own click
+      if (e.target.closest('button, a, input')) return; // let action buttons/links/checkbox handle their own click
       openDetail('paper', card.dataset.id);
     });
   });
+  updateExportCount();
   initDrag(grid);
+}
+
+// ── BibTeX export ─────────────────────────────────────────────────────────────
+// Same-origin so it hits whichever server served this page (which has the
+// /api/export endpoint), regardless of the hardcoded data API host.
+function bibtexUrl(ids, download) {
+  const params = [];
+  if (ids) params.push('ids=' + encodeURIComponent(ids));
+  if (download) params.push('download=1');
+  return location.origin + '/api/export/bibtex' + (params.length ? '?' + params.join('&') : '');
+}
+
+function updateExportCount() {
+  const el = document.getElementById('export-sel-count');
+  if (el) el.textContent = String(selectedForExport.size);
+  const selDl = document.querySelector('[data-export="sel-download"]');
+  const selCopy = document.querySelector('[data-export="sel-copy"]');
+  const none = selectedForExport.size === 0;
+  if (selDl) selDl.disabled = none;
+  if (selCopy) selCopy.disabled = none;
+}
+
+function downloadBibtex(ids) {
+  const a = document.createElement('a');
+  a.href = bibtexUrl(ids, true);
+  a.download = 'too-many-papers.bib';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+async function copyBibtex(ids) {
+  try {
+    const res = await fetch(bibtexUrl(ids, false));
+    if (!res.ok) { toast('Export failed: ' + (await res.text()).slice(0, 120)); return; }
+    const text = await res.text();
+    await navigator.clipboard.writeText(text);
+    toast('Citation copied to clipboard');
+  } catch (e) {
+    toast('Copy failed: ' + e.message);
+  }
 }
 
 // ── Card ─────────────────────────────────────────────────────────────────────
@@ -1940,11 +2025,16 @@ function cardHTML(p) {
       </div>` : ''}
     </div>` : '';
 
+  const isSelected = selectedForExport.has(p.id);
   return `
-  <div class="card ${isRead ? 'read' : ''} ${isOut ? 'outside' : ''} ${isPinnedCard ? 'pinned-card' : ''} ${isHidden ? 'hidden-card' : ''}" data-id="${esc(p.id)}">
+  <div class="card ${isRead ? 'read' : ''} ${isOut ? 'outside' : ''} ${isPinnedCard ? 'pinned-card' : ''} ${isHidden ? 'hidden-card' : ''} ${isSelected ? 'export-selected' : ''}" data-id="${esc(p.id)}">
     <div class="card-header">
-      <span class="paper-id ${isOut ? 'outside' : ''} ${isHidden ? 'hidden-tag' : ''}">${esc(p.id)}${isOut ? ' ↗' : ''}${isHidden ? ' (Hidden)' : ''}</span>
+      <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+        <input type="checkbox" class="card-select" data-id="${esc(p.id)}"${isSelected ? ' checked' : ''} title="Select for export">
+        <span class="paper-id ${isOut ? 'outside' : ''} ${isHidden ? 'hidden-tag' : ''}">${esc(p.id)}${isOut ? ' ↗' : ''}${isHidden ? ' (Hidden)' : ''}</span>
+      </div>
       <div class="card-actions">
+        <button class="cite-btn" data-cite="${esc(p.id)}" title="Copy BibTeX citation">&#8220;&#8221;</button>
         <button class="edit-btn" data-edit-paper="${esc(p.id)}" title="Edit">${PENCIL_SVG}</button>
         <button class="pin-btn ${isPinnedCard ? 'pinned' : ''}" data-id="${esc(p.id)}" title="${isPinnedCard ? 'Unpin' : 'Pin to top'}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.68V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.68a2 2 0 0 1-1.11 1.87l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg></button>
         ${sourceBtn}
@@ -2079,6 +2169,31 @@ document.querySelectorAll('.filter-btns .filter-btn').forEach(btn => {
     render();
   });
 });
+
+// ── Export menu ────────────────────────────────────────────────────────────
+(function initExportMenu() {
+  const btn = document.getElementById('paper-export-btn');
+  const menu = document.getElementById('paper-export-menu');
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const open = menu.style.display !== 'none';
+    menu.style.display = open ? 'none' : 'block';
+    updateExportCount();
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.menu-wrap')) menu.style.display = 'none';
+  });
+  menu.querySelectorAll('button[data-export]').forEach(b => {
+    b.addEventListener('click', () => {
+      const action = b.dataset.export;
+      const ids = [...selectedForExport].join(',');
+      if (action === 'all-download') downloadBibtex('');
+      else if (action === 'sel-download' && ids) downloadBibtex(ids);
+      else if (action === 'sel-copy' && ids) copyBibtex(ids);
+      menu.style.display = 'none';
+    });
+  });
+})();
 
 document.getElementById('concept-filter').addEventListener('change', e => {
   conceptF = e.target.value;
