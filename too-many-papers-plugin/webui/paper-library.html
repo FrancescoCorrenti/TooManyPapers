@@ -1470,6 +1470,8 @@
   </div>
 </div>
 
+<!-- d3-force (vendored): force-layout engine for the graph view. -->
+<script src="/vendor/d3-force.min.js"></script>
 <script>
 const API = 'http://localhost:3737/api';
 const PENCIL_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
@@ -3197,14 +3199,26 @@ const Graph = (function() {
   let canvas, ctx, tooltip;
   let width = 0, height = 0;
   let panX = 0, panY = 0, zoom = 1;
-  let alpha = 1;
-  let rafId = null;
-  // Grid-bucketed spatial index, cell size matches step()'s repulsion grid.
-  // Rebuilt whenever node positions change (every physics step, or right
-  // after a drag); nodeAt()/edgeAt() use it instead of scanning every node,
-  // so hover/click hit-testing stays fast with thousands of nodes.
+  // The layout engine: a d3-force simulation (vendored). It owns node
+  // positions/velocities and its own settling schedule — replacing the
+  // hand-rolled Euler integrator, which was numerically unstable on
+  // high-degree nodes and produced a tense hairball that thrashed on drag.
+  let simulation = null;
+  let simNodes = [];   // nodes actually in the simulation (ghosts excluded by default)
+  let simLinks = [];   // d3 link objects {source, target, ...} for those nodes
+  // Coalesces interaction-driven redraws (hover/zoom/pan/filter) into one
+  // rAF, separate from the simulation's own per-tick redraw.
+  let drawScheduled = false;
+  // Armed once per (re)build; triggers a fitView() as the initial layout
+  // settles, until the user first interacts.
+  let needsInitialFit = true;
+  // Grid-bucketed spatial index over current node positions, rebuilt each
+  // simulation tick; nodeAt()/edgeAt() use it instead of scanning every
+  // node, so hover/click hit-testing stays fast with thousands of nodes.
   let spatialGrid = null;
   const SPATIAL_CELL = 80;
+  // Lower bound loose enough that fitView() can frame a large, wide layout.
+  const MIN_ZOOM = 0.02, MAX_ZOOM = 4;
   // node id -> incident edges, rebuilt whenever edges change (buildSim only
   // — never per frame). Lets edgeAt() check only edges near the cursor
   // instead of scanning every edge in the graph.
@@ -3250,7 +3264,6 @@ const Graph = (function() {
     try {
       await ensureGraphLoaded();
       buildSim({ nodes: GraphNodes, edges: GraphEdges });
-      warmStart();
     } catch (e) {
       console.error('Graph load error:', e);
       toast('Error loading graph');
@@ -3260,7 +3273,8 @@ const Graph = (function() {
     bindEvents();
     resize();
     Graph.loaded = true;
-    requestFrame();
+    // The simulation (started in buildSim) drives the initial layout and
+    // frames it via fitView() as it settles (see onSimTick/onSimEnd).
   }
 
   function buildSim(data) {
@@ -3282,11 +3296,11 @@ const Graph = (function() {
         const primary = (n.concepts || [])[0];
         if (primary) color = conceptColorById[primary] || conceptColor(primary);
       }
+      // A small starting scatter; d3-force takes over from here.
       return {
         id, type: n.type, name: displayName, raw: n, color,
-        x: (Math.random() - 0.5) * 600,
-        y: (Math.random() - 0.5) * 600,
-        vx: 0, vy: 0,
+        x: (Math.random() - 0.5) * 400,
+        y: (Math.random() - 0.5) * 400,
       };
     });
     nodesById = new Map(nodes.map(n => [n.id, n]));
@@ -3299,29 +3313,91 @@ const Graph = (function() {
     populateConceptFilter();
     populateEdgeTypeFilters();
     recomputeConceptLinkSet();
-
-    alpha = 1;
-    spatialGrid = buildSpatialGrid();
     buildEdgeIndex();
+
+    needsInitialFit = true;
+    rebuildSimMembership();
+    spatialGrid = buildSpatialGrid();
+    startSimulation();
   }
 
-  // Runs the physics simulation forward synchronously, with nothing drawn,
-  // before the first paint. Without this, a large graph starts from random
-  // scattered positions and visibly, janky-ly unscrambles itself over
-  // hundreds of full-speed animation frames. Fast-forwarding to
-  // near-convergence up front means the graph appears already-settled on
-  // first paint instead. Bounded by both an iteration cap and a wall-clock
-  // budget so a huge graph degrades to "still somewhat scrambled, finishes
-  // settling visibly" rather than freezing the tab.
-  function warmStart() {
-    const start = performance.now();
-    const maxMs = 400;
-    const maxIters = 400;
-    let iters = 0;
-    while (alpha > 0.05 && iters < maxIters && (performance.now() - start) < maxMs) {
-      step();
-      iters++;
-    }
+  // The simulation only ever contains nodes we intend to lay out. Ghost
+  // nodes (papers cited but not in the library) are excluded unless the
+  // "Missing" toggle is on — there are typically thousands of them, and
+  // simulating leaf nodes nobody's looking at just makes the default view
+  // slower and drags the real papers toward invisible anchors.
+  function rebuildSimMembership() {
+    const showGhosts = typeFilter.has('ghost');
+    simNodes = nodes.filter(n => showGhosts || n.type !== 'ghost');
+    const inSim = new Set(simNodes);
+    simLinks = edges
+      .filter(e => inSim.has(e.a) && inSim.has(e.b))
+      .map(e => ({ source: e.a, target: e.b }));
+  }
+
+  function startSimulation() {
+    if (simulation) simulation.stop();
+    // Force tuning: charge spreads nodes apart (distanceMax caps its reach
+    // so far-apart clusters don't feel each other), link pulls connected
+    // nodes together, x/y provide gentle centering gravity, collide keeps
+    // nodes from stacking. Tuned to open the hairball into readable clusters
+    // rather than a tense central blob.
+    simulation = d3.forceSimulation(simNodes)
+      .force('charge', d3.forceManyBody().strength(-90).distanceMax(600))
+      .force('link', d3.forceLink(simLinks).distance(55).strength(0.35))
+      .force('x', d3.forceX(0).strength(0.03))
+      .force('y', d3.forceY(0).strength(0.03))
+      .force('collide', d3.forceCollide(10).strength(0.6))
+      .velocityDecay(0.45)
+      .on('tick', onSimTick)
+      .on('end', onSimEnd);
+  }
+
+  function onSimTick() {
+    spatialGrid = buildSpatialGrid();
+    // Track the growing layout in-frame while it settles, until the user
+    // takes over the view (needsInitialFit is cleared on first interaction).
+    if (needsInitialFit && !dragNode && !panStart) fitView();
+    draw();
+  }
+
+  function onSimEnd() {
+    if (needsInitialFit && !dragNode && !panStart) fitView();
+    needsInitialFit = false;
+    draw();
+  }
+
+  // Coalesced redraw for interactions that change what's on screen without
+  // the simulation running (hover highlight, zoom, pan, filter changes).
+  function scheduleDraw() {
+    if (drawScheduled) return;
+    drawScheduled = true;
+    requestAnimationFrame(() => { drawScheduled = false; draw(); });
+  }
+
+  // Zooms/pans so the current set of visible nodes fits in the canvas.
+  // A force-directed layout's natural size scales with node count (more
+  // nodes push each other further apart) — with thousands of nodes the
+  // equilibrium spread can be far larger than a fixed zoom=1 view, so a
+  // graph that's actually laid out fine can look completely empty just
+  // because everything ended up outside the viewport. Fitting to the
+  // actual bounds instead of assuming a fixed zoom is what makes this work
+  // at any graph size instead of only the size it happened to be tuned for.
+  function fitView() {
+    if (width === 0 || height === 0) return; // canvas not sized yet
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    nodes.forEach(n => {
+      if (!nodeVisible(n)) return;
+      minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x);
+      minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y);
+    });
+    if (!isFinite(minX)) { zoom = 1; panX = 0; panY = 0; return; }
+    const boundsW = Math.max(1, maxX - minX), boundsH = Math.max(1, maxY - minY);
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const padding = 0.85; // leave breathing room around the fitted bounds
+    zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(width / boundsW, height / boundsH) * padding));
+    panX = -cx * zoom;
+    panY = -cy * zoom;
   }
 
   // "Linked to" filter: any node or paper, not just concepts — grouped by
@@ -3415,7 +3491,7 @@ const Graph = (function() {
 
   function buildSpatialGrid() {
     const grid = new Map();
-    nodes.forEach(n => {
+    simNodes.forEach(n => {
       const cx = Math.floor(n.x / SPATIAL_CELL), cy = Math.floor(n.y / SPATIAL_CELL);
       const k = cx + ',' + cy;
       if (!grid.has(k)) grid.set(k, []);
@@ -3432,77 +3508,6 @@ const Graph = (function() {
       edgesByNode.get(e.a.id).push(e);
       edgesByNode.get(e.b.id).push(e);
     });
-  }
-
-  function step() {
-    if (alpha <= 0.001) return;
-    const grid = buildSpatialGrid();
-    spatialGrid = grid; // reused by nodeAt()/edgeAt() for hit-testing
-
-    const repulsion = 1800;
-    nodes.forEach(n => {
-      if (n === dragNode) return;
-      const cx = Math.floor(n.x / SPATIAL_CELL), cy = Math.floor(n.y / SPATIAL_CELL);
-      let fx = 0, fy = 0;
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          const bucket = grid.get((cx + dx) + ',' + (cy + dy));
-          if (!bucket) continue;
-          for (const other of bucket) {
-            if (other === n) continue;
-            let ddx = n.x - other.x, ddy = n.y - other.y;
-            let distSq = ddx * ddx + ddy * ddy;
-            if (distSq < 1) distSq = 1;
-            const dist = Math.sqrt(distSq);
-            const f = repulsion / distSq;
-            fx += (ddx / dist) * f;
-            fy += (ddy / dist) * f;
-          }
-        }
-      }
-      // Weak centering force to keep the graph from drifting away.
-      fx += -n.x * 0.005;
-      fy += -n.y * 0.005;
-      n.vx = (n.vx + fx * alpha) * 0.82;
-      n.vy = (n.vy + fy * alpha) * 0.82;
-    });
-
-    const linkDist = 90, linkStrength = 0.05;
-    edges.forEach(e => {
-      const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const f = (dist - linkDist) * linkStrength * alpha;
-      const ux = dx / dist, uy = dy / dist;
-      if (e.a !== dragNode) { e.a.vx += ux * f; e.a.vy += uy * f; }
-      if (e.b !== dragNode) { e.b.vx -= ux * f; e.b.vy -= uy * f; }
-    });
-
-    nodes.forEach(n => {
-      if (n === dragNode) return;
-      n.x += n.vx;
-      n.y += n.vy;
-    });
-
-    alpha *= 0.985;
-  }
-
-  // On-demand redraw: the old loop ran step()+draw() forever at 60fps, even
-  // once the layout had fully settled and nothing on screen was changing —
-  // with a large graph that's a continuous, pointless cost. Now a frame
-  // only gets scheduled when something could actually change (physics still
-  // settling, or an active drag/pan), and every other interaction
-  // (search, filters, zoom, hover) explicitly asks for the one frame it
-  // needs via requestFrame().
-  function requestFrame() {
-    if (rafId != null) return;
-    rafId = requestAnimationFrame(tick);
-  }
-
-  function tick() {
-    rafId = null;
-    step();
-    draw();
-    if (alpha > 0.001 || dragNode || panStart) requestFrame();
   }
 
   function nodeVisible(n) {
@@ -3700,33 +3705,41 @@ const Graph = (function() {
     };
   }
 
-  // Only checks nodes in the cursor's own spatial-grid cell and its 8
-  // neighbors instead of every node — with the hit radius (10) well inside
-  // one cell (80), that's guaranteed to cover every node that could match.
-  // Falls back to a full scan if the grid isn't built yet (e.g. before the
-  // very first frame).
+  // Checks only nodes in the spatial-grid cells the hit radius can reach,
+  // instead of every node. Falls back to a full scan if the grid isn't
+  // built yet (e.g. before the very first frame).
+  //
+  // The hit radius has a screen-space floor (14px / zoom): a fixed
+  // world-space radius shrinks to a couple of pixels once you zoom out on a
+  // big graph, making nodes essentially impossible to grab. Because that
+  // radius can now exceed one grid cell, the cell search range is derived
+  // from it rather than hard-coded to the 8 immediate neighbours — miss
+  // that and a node just inside the radius but one cell over is silently
+  // un-grabbable.
   function nodeAt(sx, sy) {
     const w = screenToWorld(sx, sy);
-    const r = 10;
+    const r = Math.max(10, 14 / zoom);
+    const r2 = r * r;
     let best = null, bestDist = Infinity;
 
     function consider(n) {
       if (!nodeVisible(n)) return;
       const dx = n.x - w.x, dy = n.y - w.y;
       const d = dx * dx + dy * dy;
-      if (d < r * r && d < bestDist) { best = n; bestDist = d; }
+      if (d < r2 && d < bestDist) { best = n; bestDist = d; }
     }
 
     if (spatialGrid) {
       const cx = Math.floor(w.x / SPATIAL_CELL), cy = Math.floor(w.y / SPATIAL_CELL);
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
+      const cellR = Math.max(1, Math.ceil(r / SPATIAL_CELL));
+      for (let dx = -cellR; dx <= cellR; dx++) {
+        for (let dy = -cellR; dy <= cellR; dy++) {
           const bucket = spatialGrid.get((cx + dx) + ',' + (cy + dy));
           if (bucket) bucket.forEach(consider);
         }
       }
     } else {
-      nodes.forEach(consider);
+      simNodes.forEach(consider);
     }
     return best;
   }
@@ -3788,15 +3801,25 @@ const Graph = (function() {
       const n = nodeAt(sx, sy);
       dragDistance = 0;
       mouseDownAt = { x: e.clientX, y: e.clientY };
+      needsInitialFit = false; // user has taken over the view
       if (n) {
         dragNode = n;
         dragging = true;
+        // Pin the grabbed node under the cursor (d3 reads fx/fy as fixed
+        // positions) and gently warm the simulation so its neighbours
+        // accommodate. alphaTarget is deliberately low (0.05): measured
+        // against a settled layout, that lets direct neighbours follow the
+        // drag while nodes elsewhere barely move (a few px) — the "organic
+        // but not the whole graph lurching" behaviour we're after. Higher
+        // values make distant nodes visibly drift.
+        n.fx = n.x; n.fy = n.y;
+        if (simulation) simulation.alphaTarget(0.05).restart();
         canvas.classList.add('dragging');
       } else {
         panStart = { x: e.clientX - panX, y: e.clientY - panY };
         canvas.classList.add('dragging');
       }
-      requestFrame();
+      scheduleDraw();
     });
 
     window.addEventListener('mousemove', e => {
@@ -3807,14 +3830,11 @@ const Graph = (function() {
       }
       if (dragNode) {
         const w = screenToWorld(sx, sy);
-        dragNode.x = w.x; dragNode.y = w.y;
-        dragNode.vx = 0; dragNode.vy = 0;
-        alpha = Math.max(alpha, 0.3);
-        requestFrame();
+        dragNode.fx = w.x; dragNode.fy = w.y; // the simulation's tick redraws
       } else if (panStart) {
         panX = e.clientX - panStart.x;
         panY = e.clientY - panStart.y;
-        requestFrame();
+        scheduleDraw();
       } else {
         const prevNode = hoverNode, prevEdge = hoverEdge;
         hoverNode = nodeAt(sx, sy);
@@ -3823,11 +3843,18 @@ const Graph = (function() {
         // Only the hover highlight changes the canvas — skip redrawing on
         // every pixel of mouse movement when the hovered node/edge is the
         // same as last time.
-        if (hoverNode !== prevNode || hoverEdge !== prevEdge) requestFrame();
+        if (hoverNode !== prevNode || hoverEdge !== prevEdge) scheduleDraw();
       }
     });
 
     window.addEventListener('mouseup', () => {
+      if (dragNode) {
+        // Unpin so the node is free again, and let the simulation cool back
+        // down (alphaTarget 0). Its neighbours settle into the new shape
+        // organically instead of the whole graph re-exploding.
+        dragNode.fx = null; dragNode.fy = null;
+        if (simulation) simulation.alphaTarget(0);
+      }
       dragNode = null;
       panStart = null;
       dragging = false;
@@ -3840,11 +3867,12 @@ const Graph = (function() {
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
       const before = screenToWorld(sx, sy);
-      zoom = Math.min(4, Math.max(0.15, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+      zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
       const after = screenToWorld(sx, sy);
       panX += (after.x - before.x) * zoom;
       panY += (after.y - before.y) * zoom;
-      requestFrame();
+      needsInitialFit = false; // user has taken over the view
+      scheduleDraw();
     }, { passive: false });
 
     canvas.addEventListener('click', e => {
@@ -3875,22 +3903,35 @@ const Graph = (function() {
 
     document.getElementById('graph-search').addEventListener('input', e => {
       searchQ = e.target.value.toLowerCase();
-      requestFrame();
+      scheduleDraw();
     });
 
     document.querySelectorAll('.gtype').forEach(cb => {
       cb.addEventListener('change', () => {
+        const hadGhosts = typeFilter.has('ghost');
         typeFilter = new Set([...document.querySelectorAll('.gtype:checked')].map(c => c.value));
+        // Toggling "Missing" changes which nodes are in the simulation at
+        // all (ghosts are excluded by default), so the layout must be
+        // rebuilt. Other type toggles only change what's drawn, not laid
+        // out — a redraw is enough.
+        if (typeFilter.has('ghost') !== hadGhosts) {
+          rebuildSimMembership();
+          buildEdgeIndex();
+          needsInitialFit = true;
+          startSimulation();
+          simulation.alpha(0.6).restart();
+        }
         // The "linked to" subgraph (if any) depends on which types are
         // currently visible — recompute it, not just the rendering.
         recomputeConceptLinkSet();
-        draw();
+        scheduleDraw();
       });
     });
 
     document.getElementById('graph-reset').addEventListener('click', () => {
-      panX = 0; panY = 0; zoom = 1; alpha = 0.5;
-      requestFrame();
+      needsInitialFit = false;
+      fitView();
+      scheduleDraw();
     });
 
     document.getElementById('graph-legend-toggle').addEventListener('click', () => {
@@ -4071,7 +4112,7 @@ const Graph = (function() {
     const wrap = document.getElementById('graph-wrap');
     width  = canvas.width  = wrap.clientWidth;
     height = canvas.height = wrap.clientHeight;
-    requestFrame();
+    scheduleDraw();
   }
 
   return { init, resize, loaded: false };
