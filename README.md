@@ -69,6 +69,18 @@ The web UI has a tab per type (Papers, Concepts, Projects, Endpoints, Ideas, Poo
 
 PDFs are fetched automatically from arXiv, Semantic Scholar, and Unpaywall when a paper is added, so there's usually something to read right away.
 
+## Example workflow
+
+A typical end-to-end session, from reading to shipping code:
+
+1. **Gather papers.** "Find me recent work on brain lesion segmentation" → `papers_discover` pulls candidates from arXiv/Semantic Scholar/OpenAlex; confirm which ones to add.
+2. **Present a project.** Describe what you're building ("I'm working on a segmentation pipeline for my FCD project") → the assistant proposes a `project` node plus the `concept` nodes it touches, and links the papers you just added to those concepts.
+3. **Co-create an idea.** Discuss what a paper suggests you could try → the assistant proposes an `idea` node connected to the project (`part_of`), grounded in the papers that inspired it (`inspired_by`).
+4. **Choose an endpoint.** Agree on what "done" looks like for the project (a milestone, a deliverable) → an `endpoint` node with `status: pending`.
+5. **Think about waypoints.** Break the path to that endpoint into concrete intermediate steps → `waypoint` nodes.
+6. **Create the chain.** Connect them in order with `leads_to` edges: `waypoint → waypoint → ... → endpoint`. Each waypoint can be flipped to `reached`/`failed` as you make progress.
+7. **Feed the graph into code.** Once the chain is set, hand it to Claude Code (or Cursor, via the MCP server) — e.g. "implement the next waypoint in my FCD project's chain" — so the graph's papers, ideas, and ordered steps directly guide what gets built next.
+
 ## Features
 
 - **It reads with you.** The graph tracks the concepts, projects, and ideas behind what you read, and quietly learns what you're actually into.
