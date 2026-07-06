@@ -3615,12 +3615,13 @@ function closeEditModal() {
 const EDGE_TYPES = ['connected_to', 'uses_concept', 'part_of', 'inspired_by',
                      'relevant_to', 'derived_from', 'enables', 'annotates'];
 
-// cites/concept_tag are synthesized by loadGraph() from a paper's own
-// cites/concepts fields — they're not entries in _graph.json's edges array,
-// so they can't be deleted through /api/edge-delete. Show them read-only
-// with a pointer to where they're actually edited instead of a dead delete
-// button.
-const SYNTHETIC_EDGE_TYPES = new Set(['cites', 'concept_tag']);
+// cites is synthesized by loadGraph() from a paper's own cites field — it's
+// not an entry in _graph.json's edges array, so it can't be deleted through
+// /api/edge-delete. Show it read-only with a pointer to where it's actually
+// edited instead of a dead delete button. Paper-concept links are real
+// uses_concept edges in the graph (kept in sync automatically on add/update),
+// so they're editable like any other edge and are not in this set.
+const SYNTHETIC_EDGE_TYPES = new Set(['cites']);
 
 function connectionsSectionHTML(id) {
   const rows = GraphEdges
@@ -3932,9 +3933,9 @@ const Graph = (function() {
   let edgeTypeFilter = null; // Set of allowed edge types, or null = all allowed
 
   const EDGE_STYLE = {
-    cites:       { dash: [6, 4], alpha: 0.55, color: '#BA7C65' },
-    concept_tag: { dash: [1, 4], alpha: 0.35, color: '#688C6F' },
-    annotates:   { dash: [2, 3], alpha: 0.5,  color: '#D4AF37' },
+    cites:        { dash: [6, 4], alpha: 0.55, color: '#BA7C65' },
+    uses_concept: { dash: [1, 4], alpha: 0.35, color: '#688C6F' },
+    annotates:    { dash: [2, 3], alpha: 0.5,  color: '#D4AF37' },
   };
   const DEFAULT_EDGE_STYLE = { dash: [], alpha: 0.45, color: '#8496B0' };
 

@@ -652,6 +652,16 @@ def cmd_add_paper(args):
 
     save_papers(data)
     _log_event("paper_added", id=new_id, title=payload.get("title"))
+
+    # -- Keep the graph's uses_concept edges in sync with `concepts` ---------
+    concept_ids = data["papers"][new_id].get("concepts") or []
+    if concept_ids:
+        graph = load_graph()
+        added = sync_concept_edges(new_id, concept_ids, graph)
+        if added:
+            save_graph(graph)
+            _log_event("concept_edges_synced", id=new_id, added=added)
+
     print(f"Paper added with ID: {new_id}")
     print(format_paper(new_id, data["papers"][new_id], verbose=True))
 
@@ -741,6 +751,14 @@ def cmd_update_paper(args):
     data["_meta"]["last_updated"] = str(date.today())
     save_papers(data)
     _log_event("paper_updated", id=pid, fields=sorted(patch.keys()))
+
+    if "concepts" in patch:
+        graph = load_graph()
+        added = sync_concept_edges(pid, patch["concepts"] or [], graph)
+        if added:
+            save_graph(graph)
+            _log_event("concept_edges_synced", id=pid, added=added)
+
     print(f"Paper {pid} updated.")
     print(format_paper(pid, data["papers"][pid], verbose=True))
 
@@ -2448,6 +2466,33 @@ def cmd_graph_remove_node(args):
     print(f"Removed node {node_id} ({removed_node.get('name','')}) and {edges_removed} edges.")
 
 
+def sync_concept_edges(pid: str, concept_ids: list, graph: dict) -> int:
+    """Ensure a uses_concept edge exists from each concept in concept_ids to pid.
+
+    Additive only: never removes an existing edge, even if a concept is later
+    dropped from the paper's `concepts` field. Silently skips concept IDs that
+    don't resolve to an actual concept node (the field is free-form and may
+    drift). Returns the number of edges added.
+    """
+    if not concept_ids:
+        return 0
+    edges = graph.setdefault("edges", [])
+    existing = {(e.get("src"), e.get("tgt"), e.get("type")) for e in edges}
+    added = 0
+    for cid in concept_ids:
+        cid = str(cid).upper()
+        node = graph.get("nodes", {}).get(cid)
+        if not node or node.get("type") != "concept":
+            continue
+        key = (cid, pid, "uses_concept")
+        if key in existing:
+            continue
+        edges.append({"src": cid, "tgt": pid, "type": "uses_concept"})
+        existing.add(key)
+        added += 1
+    return added
+
+
 def cmd_graph_add_edge(args):
     """Add an edge between two nodes."""
     if len(args) < 3:
@@ -2790,6 +2835,7 @@ def cmd_graph_lint(args):
         "orphan_nodes": [], "projects_without_papers": [], "orphan_papers": [],
         "stale_ideas": [], "broken_venue_refs": [], "dangling_citations": [],
         "quiet_concepts": [], "invalid_type_nodes": [], "invalid_type_edges": [],
+        "concept_edge_mismatches": [],
     }
 
     # Nodes/edges whose type isn't in the centralized GRAPH_NODE_TYPES/
@@ -2838,6 +2884,22 @@ def cmd_graph_lint(args):
             continue
         if pid not in touched and not p.get("concepts"):
             issues["orphan_papers"].append({"id": pid, "title": p.get("title", "")})
+
+    # `concepts` field vs. `uses_concept` edges — the two representations of
+    # the same paper-concept relationship should agree; report drift so it
+    # can be backfilled with --fix instead of silently accumulating.
+    for pid, p in papers.items():
+        listed = {str(c).upper() for c in (p.get("concepts") or [])}
+        edged = {
+            e.get("src") for e in incoming_by_tgt.get(pid, [])
+            if e.get("type") == "uses_concept"
+        }
+        missing_edges = sorted(listed - edged)
+        extra_edges = sorted(edged - listed)
+        if missing_edges or extra_edges:
+            issues["concept_edge_mismatches"].append({
+                "id": pid, "missing_edges": missing_edges, "extra_edges": extra_edges,
+            })
 
     # Ideas not marked done/discarded, old, and with no recent interaction.
     CLOSED_STATUSES = {"done", "completed", "discarded", "closed", "abandoned"}
@@ -2911,6 +2973,7 @@ def cmd_graph_lint(args):
         "quiet_concepts": f"Concepts with no interaction in {quiet_days}+ days",
         "invalid_type_nodes": "Nodes with a type outside GRAPH_NODE_TYPES (not official)",
         "invalid_type_edges": "Edges with a type outside GRAPH_EDGE_TYPES (not official)",
+        "concept_edge_mismatches": "Papers where `concepts` and uses_concept edges disagree",
     }
     for key, label in labels.items():
         items = issues[key]
@@ -2923,10 +2986,13 @@ def cmd_graph_lint(args):
     if not do_fix:
         if issues["invalid_type_nodes"] or issues["invalid_type_edges"]:
             print("\nRun graph-lint --fix to remove the non-official nodes/edges above.")
+        if issues["concept_edge_mismatches"]:
+            print("\nRun graph-lint --fix to backfill missing uses_concept edges above.")
         return
 
-    if not issues["invalid_type_nodes"] and not issues["invalid_type_edges"]:
-        print("\n--fix: nothing to remove (no non-official nodes/edges).")
+    if (not issues["invalid_type_nodes"] and not issues["invalid_type_edges"]
+            and not issues["concept_edge_mismatches"]):
+        print("\n--fix: nothing to fix.")
         return
 
     edges_before = len(edges)
@@ -2938,13 +3004,23 @@ def cmd_graph_lint(args):
     ]
     for nid in invalid_node_ids:
         nodes.pop(nid, None)
+    edges_removed = edges_before - len(fixed_edges)
     graph["nodes"] = nodes
     graph["edges"] = fixed_edges
+
+    # Backfill missing uses_concept edges. Additive only — a listed concept
+    # with no edge gets one added; an edge with no matching list entry is left
+    # alone (the field, not the edge, is treated as possibly stale/free-form).
+    edges_added = 0
+    for mismatch in issues["concept_edge_mismatches"]:
+        edges_added += sync_concept_edges(mismatch["id"], mismatch["missing_edges"], graph)
+
     save_graph(graph)
     _log_event("graph_lint_fix", nodes_removed=len(invalid_node_ids),
-               edges_removed=edges_before - len(fixed_edges))
-    print(f"\n--fix: removed {len(invalid_node_ids)} non-official node(s) and "
-          f"{edges_before - len(fixed_edges)} non-official/dangling edge(s).")
+               edges_removed=edges_removed, concept_edges_added=edges_added)
+    print(f"\n--fix: removed {len(invalid_node_ids)} non-official node(s), "
+          f"{edges_removed} non-official/dangling edge(s), "
+          f"and backfilled {edges_added} missing uses_concept edge(s).")
 
 
 def cmd_graph_search(args):

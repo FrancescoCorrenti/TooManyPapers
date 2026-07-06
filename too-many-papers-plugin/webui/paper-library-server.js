@@ -249,9 +249,6 @@ function loadGraph() {
     (p.cites || []).forEach(cid => {
       if (papers[cid]) edges.push({ from: id, to: cid, type: 'cites' });
     });
-    (p.concepts || []).forEach(cid => {
-      if (nodes[cid]) edges.push({ from: id, to: cid, type: 'concept_tag' });
-    });
     (p.cites_unmatched || []).forEach(u => {
       const title = (u.title || '').trim();
       if (!title) return;
