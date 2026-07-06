@@ -69,6 +69,18 @@ The web UI has a tab per type (Papers, Concepts, Projects, Endpoints, Ideas, Poo
 
 PDFs are fetched automatically from arXiv, Semantic Scholar, and Unpaywall when a paper is added, so there's usually something to read right away.
 
+## Example workflow
+
+A typical end-to-end session, from reading to shipping code:
+
+1. **Gather papers.** "Find me recent work on retrieval-augmented generation" → `papers_discover` pulls candidates from arXiv/Semantic Scholar/OpenAlex; confirm which ones to add.
+2. **Present a project.** "I'm building a RAG pipeline for our docs" → the assistant proposes a `project` node ("RAG Pipeline") plus a `concept` node ("Retrieval-Augmented Generation"), and links the papers you just added to it.
+3. **Co-create an idea.** One paper suggests reranking retrieved chunks before generation → the assistant proposes an `idea` node ("Add a reranker stage"), connected to the project (`part_of`) and grounded in that paper (`inspired_by`).
+4. **Choose an endpoint.** You agree the goal is "Answer quality above 90% on our eval set" → an `endpoint` node with `status: pending`.
+5. **Think about waypoints.** Break the path there into concrete steps: "Build eval set" → "Add reranker" → "Tune chunk size" → `waypoint` nodes.
+6. **Create the chain.** Connect them in order with `leads_to` edges: `Build eval set → Add reranker → Tune chunk size → Answer quality above 90%`. Mark each `reached` as you finish it.
+7. **Feed the graph into code.** With the chain set, hand it to Claude Code (or Cursor, via the MCP server): "implement the next waypoint in my RAG Pipeline project's chain" — so the papers, the idea, and the ordered steps directly guide what gets built next.
+
 ## Features
 
 - **It reads with you.** The graph tracks the concepts, projects, and ideas behind what you read, and quietly learns what you're actually into.
