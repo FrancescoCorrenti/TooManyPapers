@@ -24,6 +24,23 @@ Restart Claude after installing.
 
 Restart Claude after installing.
 
+### Cursor
+
+The MCP server works natively in Cursor. Add it to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "too-many-papers": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/too-many-papers-plugin/server", "_scripts/mcp_server.py"]
+    }
+  }
+}
+```
+
+Replace the path with where you cloned this repo. Skills and slash commands are Claude Code-only and won't be available in Cursor — just the MCP tools (papers, graph, briefing, etc.).
+
 ### Requirements
 
 - **[uv](https://docs.astral.sh/uv/)**, to run the MCP server.
