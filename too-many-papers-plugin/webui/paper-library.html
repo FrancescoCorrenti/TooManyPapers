@@ -804,8 +804,8 @@
     background-image: radial-gradient(circle, #1c1f26 1px, transparent 1.2px);
     background-size: 4px 4px;
   }
-  .legend-shape.hexagon {
-    clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+  .legend-shape.dot {
+    width: 6px; height: 6px; border-radius: 50%; align-self: center;
   }
   .legend-shape.star {
     clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
@@ -854,7 +854,7 @@
   }
   .subtab-close:hover { opacity: 1; background: var(--border); }
 
-  /* ── Generic object-type list (concepts/projects/endpoints/ideas/pools) ── */
+  /* ── Generic object-type list (concepts/projects/endpoints/ideas/waypoints) ── */
   .type-grid {
     padding: 32px 40px;
     display: grid;
@@ -1024,6 +1024,47 @@
   .conn-name { color: var(--text); font-weight: 500; }
   .conn-note { color: var(--text-dim); font-style: italic; font-size: 0.8rem; }
   .conn-edit-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+
+  /* ── Project detail page: status pills + waypoint chain visualization ── */
+  .status-pill {
+    display: inline-block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 9px;
+    border-radius: 10px;
+    color: #14161a;
+    font-weight: 600;
+  }
+  .endpoint-block {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+  .endpoint-block-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    margin-bottom: 6px;
+  }
+  .chain-block { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+  .chain-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+  .chain-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 1px solid rgba(0,0,0,0.3);
+    flex-shrink: 0;
+  }
+  .chain-dot.chain-endpoint { width: 16px; height: 16px; }
+  .chain-arrow { color: var(--text-dim); font-size: 0.8rem; }
+  .chain-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chain-actions .filter-btn, .chain-actions .delete-btn { font-size: 0.75rem; padding: 4px 9px; }
   .conn-edit-row {
     display: flex;
     align-items: center;
@@ -1437,7 +1478,7 @@
   <button class="tab-btn" data-tab="project" title="An active research project with goals.">Projects</button>
   <button class="tab-btn" data-tab="endpoint" title="A specific milestone within a project.">Endpoints</button>
   <button class="tab-btn" data-tab="idea" title="A concrete idea connected to a project.">Ideas</button>
-  <button class="tab-btn" data-tab="pool" title="A transversal idea that spans multiple projects.">Pools</button>
+  <button class="tab-btn" data-tab="waypoint" title="An intermediate node in a project's chain toward an endpoint.">Waypoints</button>
   <button class="tab-btn" data-tab="note" title="A reading annotation — a quoted excerpt and/or comment, usually tied to a paper page.">Notes</button>
   <button class="tab-btn" data-tab="venue" title="Where a paper was published (journal, conference, preprint server). Not part of the knowledge graph — usable only as a filter.">Venues</button>
   <button class="tab-btn" data-tab="graph" title="Force-directed view of the whole knowledge graph.">Graph</button>
@@ -1548,10 +1589,10 @@
   <div id="pane-idea-detail" class="detail-pane" style="display:none;"></div>
 </div>
 
-<div id="view-pool" style="display:none;">
-  <div class="subtab-bar" id="subtabbar-pool"></div>
-  <div id="pane-pool-list"></div>
-  <div id="pane-pool-detail" class="detail-pane" style="display:none;"></div>
+<div id="view-waypoint" style="display:none;">
+  <div class="subtab-bar" id="subtabbar-waypoint"></div>
+  <div id="pane-waypoint-list"></div>
+  <div id="pane-waypoint-detail" class="detail-pane" style="display:none;"></div>
 </div>
 
 <div id="view-note" style="display:none;">
@@ -1578,9 +1619,9 @@
       <label><input type="checkbox" class="gtype" value="paper" checked> Papers</label>
       <label><input type="checkbox" class="gtype" value="concept" checked> Concepts</label>
       <label><input type="checkbox" class="gtype" value="project" checked> Projects</label>
-      <label><input type="checkbox" class="gtype" value="endpoint" checked> Endpoints</label>
+      <label><input type="checkbox" class="gtype" value="endpoint"> Endpoints</label>
       <label><input type="checkbox" class="gtype" value="idea" checked> Ideas</label>
-      <label><input type="checkbox" class="gtype" value="pool" checked> Pools</label>
+      <label><input type="checkbox" class="gtype" value="waypoint"> Waypoints</label>
       <label><input type="checkbox" class="gtype" value="note" checked> Notes</label>
       <label title="Papers referenced by something in your library but not in it themselves"><input type="checkbox" class="gtype" value="ghost"> Missing</label>
     </div>
@@ -1636,9 +1677,9 @@
         <div class="legend-row"><span class="legend-shape circle" style="background:#8496B0"></span> <span class="lbl">Paper (solid)</span></div>
         <div class="legend-row"><span class="legend-shape circle dithered" style="background:#8496B0"></span> <span class="lbl">Concept (dithered)</span></div>
         <div class="legend-row"><span class="legend-shape square"></span> <span class="lbl">Project</span></div>
-        <div class="legend-row"><span class="legend-shape triangle"></span> <span class="lbl">Endpoint</span></div>
+        <div class="legend-row"><span class="legend-shape triangle"></span> <span class="lbl">Endpoint (pending gray / reached green / failed red)</span></div>
         <div class="legend-row"><span class="legend-shape diamond"></span> <span class="lbl">Idea</span></div>
-        <div class="legend-row"><span class="legend-shape hexagon"></span> <span class="lbl">Pool</span></div>
+        <div class="legend-row"><span class="legend-shape dot"></span> <span class="lbl">Waypoint (pending gray / reached green / failed red)</span></div>
         <div class="legend-row"><span class="legend-shape star"></span> <span class="lbl">Note</span></div>
         <div class="legend-row"><span class="legend-shape circle" style="background:transparent;border:1px dashed #888;"></span> <span class="lbl">Missing (cited, not in library)</span></div>
       </div>
@@ -1726,34 +1767,34 @@ function invalidateGraphCache() {
   if (typeof Graph !== 'undefined') Graph.loaded = false;
 }
 
-// Forces the per-type list panes (Concepts/Projects/Endpoints/Ideas/Pools)
+// Forces the per-type list panes (Concepts/Projects/Endpoints/Ideas/Waypoints)
 // to rebuild their filter toolbars — including the "linked to" dropdown and
 // quick-filter option lists — next time they're rendered, so a rename/edit
 // is reflected there too instead of showing stale option labels.
 function resetAllTypeToolbars() {
-  ['concept', 'project', 'endpoint', 'idea', 'pool', 'note', 'venue'].forEach(t => {
+  ['concept', 'project', 'endpoint', 'idea', 'waypoint', 'note', 'venue'].forEach(t => {
     const el = document.getElementById(`pane-${t}-list`);
     if (el) delete el.dataset.toolbarBuilt;
   });
 }
 
-// ── Tabs: object-type views (Papers/Concepts/Projects/Endpoints/Ideas/Pools) ──
+// ── Tabs: object-type views (Papers/Concepts/Projects/Endpoints/Ideas/Waypoints) ──
 
 const TYPE_META = {
   paper:    { label: 'Papers',    description: 'A paper in your library.' },
   concept:  { label: 'Concepts',  description: 'A research area you care about.' },
   project:  { label: 'Projects',  description: 'An active research project with goals.' },
-  endpoint: { label: 'Endpoints', description: 'A specific milestone within a project.' },
+  endpoint: { label: 'Endpoints', description: "A project's goal/milestone — pending, reached, or failed." },
   idea:     { label: 'Ideas',     description: 'A concrete idea connected to a project.' },
-  pool:     { label: 'Pools',     description: 'A transversal idea that spans multiple projects.' },
+  waypoint: { label: 'Waypoints', description: "An intermediate node in a project's chain toward an endpoint." },
   note:     { label: 'Notes',     description: 'A reading annotation — a quoted excerpt and/or comment, usually tied to a paper page.' },
   venue:    { label: 'Venues',    description: 'Where a paper was published (journal, conference, preprint server). Not part of the knowledge graph — usable only as a filter.' },
 };
-const TOP_TABS = ['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note', 'venue', 'graph'];
+const TOP_TABS = ['paper', 'concept', 'project', 'endpoint', 'idea', 'waypoint', 'note', 'venue', 'graph'];
 
 let currentTopTab = 'paper';
-let openTabs  = { paper: [], concept: [], project: [], endpoint: [], idea: [], pool: [], note: [], venue: [] };
-let activeSub = { paper: 'list', concept: 'list', project: 'list', endpoint: 'list', idea: 'list', pool: 'list', note: 'list', venue: 'list' };
+let openTabs  = { paper: [], concept: [], project: [], endpoint: [], idea: [], waypoint: [], note: [], venue: [] };
+let activeSub = { paper: 'list', concept: 'list', project: 'list', endpoint: 'list', idea: 'list', waypoint: 'list', note: 'list', venue: 'list' };
 
 // ── Cookie helpers ────────────────────────────────────────────────────────────
 
@@ -1934,7 +1975,7 @@ async function deleteSelectedPapers() {
 }
 
 // Permanent delete for any non-paper, non-venue graph node (concept/
-// project/endpoint/idea/pool/note) — mirrors deletePaper above.
+// project/endpoint/idea/waypoint/note) — mirrors deletePaper above.
 async function deleteGraphNode(type, id) {
   if (!confirm(`Permanently delete ${id}? This cannot be undone.`)) return;
   try {
@@ -2558,7 +2599,7 @@ document.getElementById('sort-toggle').addEventListener('click', () => {
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 //
-// Top-level tabs: Papers / Concepts / Projects / Endpoints / Ideas / Pools / Graph.
+// Top-level tabs: Papers / Concepts / Projects / Endpoints / Ideas / Waypoints / Graph.
 // Each object-type tab (all but Graph) has its own row of sub-tabs: an
 // always-open "list" tab showing the summary grid, plus one closable
 // detail sub-tab per item the user has opened. Opening an item shows its
@@ -2671,14 +2712,14 @@ function renderActivePane(type) {
   }
 }
 
-// ── Generic object-type list (concepts/projects/endpoints/ideas/pools) ──────
+// ── Generic object-type list (concepts/projects/endpoints/ideas/waypoints) ──
 //
 // Easy-access filters (search + a type-relevant quick filter) stay visible
 // at all times; a "linked to" cross-reference filter — the same kind of
 // filter the Graph view offers via its concept-link filter — lives behind
 // an Advanced toggle since it's a more specialized, less-common query.
 
-const QUICK_FIELD = { concept: 'area', project: 'status', endpoint: 'status', idea: 'status', pool: null, note: null };
+const QUICK_FIELD = { concept: 'area', project: 'status', endpoint: 'status', idea: 'status', waypoint: 'status', note: null };
 
 // linkedTo is a Set of node ids (multi-select). sortKey/asc are seeded from
 // each type's default sort in ensureTypeFilterState().
@@ -2687,7 +2728,7 @@ let typeFilterState = {
   project:  { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
   endpoint: { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
   idea:     { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
-  pool:     { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
+  waypoint: { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
   note:     { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
 };
 
@@ -2706,10 +2747,11 @@ function distinctFieldValues(type, field) {
   return [...set].sort();
 }
 
-function allNodeOptionsHTML() {
+function allNodeOptionsHTML(excludeTypes) {
   const byType = {};
   Object.entries(GraphNodes).forEach(([id, n]) => {
     if (n.type === 'ghost') return; // ghosts are references, never link targets
+    if (excludeTypes && excludeTypes.has(n.type)) return;
     (byType[n.type] = byType[n.type] || []).push([id, n]);
   });
   return Object.keys(byType).sort().map(t => {
@@ -2849,7 +2891,7 @@ const TYPE_SORTS = {
   project:  [S_NAME, S_CONN, S_CREATED, S_ID],
   endpoint: [S_NAME, S_CONN, S_CREATED, S_ID],
   idea:     [S_NAME, S_CREATED, S_CONN, S_ID],
-  pool:     [S_NAME, S_CREATED, S_CONN, S_ID],
+  waypoint: [S_NAME, S_CONN, S_CREATED, S_ID],
   note:     [S_CREATED, S_NAME, S_CONN, S_ID],
 };
 
@@ -3545,6 +3587,7 @@ function wireSelectToNote(wrap, p, container) {
 }
 
 function renderNodeDetail(container, type, id) {
+  if (type === 'project') { renderProjectDetail(container, id); return; }
   const n = GraphNodes[id];
   if (!n) { container.innerHTML = `<div class="empty">Not found</div>`; return; }
 
@@ -3607,10 +3650,219 @@ function renderNodeDetail(container, type, id) {
   if (deleteBtn) deleteBtn.addEventListener('click', () => deleteGraphNode(type, deleteBtn.dataset.deleteNode));
 }
 
+// ── Project detail page ─────────────────────────────────────────────────────
+//
+// Unlike every other node type (fully generic via renderNodeDetail above), a
+// project gets its own layout: its ideas, and its endpoints each shown with
+// the waypoint chain(s) leading to them. An endpoint can have more than one
+// independent chain converging on it (each waypoint has at most one
+// predecessor by convention, but an endpoint itself can have several),
+// so chains are discovered and rendered per incoming `leads_to` edge, not
+// assumed to be singular.
+
+async function bulkPatchNodes(ids, patch) {
+  for (const nid of ids) {
+    try {
+      const res = await fetch(`${API}/node-update`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: nid, patch }),
+      });
+      const data = await res.json();
+      if (data.error) { toast(`Error on ${nid}: ${data.error}`); continue; }
+      GraphNodes = data.nodes || {}; GraphEdges = data.edges || [];
+    } catch (e) { toast(`Error updating ${nid}`); }
+  }
+  invalidateGraphCache();
+  graphLoadPromise = Promise.resolve({ nodes: GraphNodes, edges: GraphEdges });
+}
+
+async function bulkDeleteNodesSilent(ids) {
+  for (const nid of ids) {
+    try {
+      const res = await fetch(`${API}/node-delete`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: nid }),
+      });
+      const data = await res.json();
+      if (data.error) { toast(`Error on ${nid}: ${data.error}`); continue; }
+      GraphNodes = data.nodes || {}; GraphEdges = data.edges || [];
+    } catch (e) { toast(`Error deleting ${nid}`); }
+  }
+  invalidateGraphCache();
+  graphLoadPromise = Promise.resolve({ nodes: GraphNodes, edges: GraphEdges });
+}
+
+// All nodes of a given type connected to `id` by any edge, regardless of
+// direction or edge type (a project's ideas/endpoints/waypoints aren't
+// restricted to one particular edge type in practice).
+function connectedNodesOfType(id, wantType) {
+  const seen = new Set();
+  const out = [];
+  GraphEdges.forEach(e => {
+    if (e.from !== id && e.to !== id) return;
+    const otherId = e.from === id ? e.to : e.from;
+    if (seen.has(otherId)) return;
+    const other = GraphNodes[otherId];
+    if (other && other.type === wantType) { seen.add(otherId); out.push(otherId); }
+  });
+  return out;
+}
+
+function incomingLeadsTo(nodeId) {
+  return GraphEdges.filter(e => e.to === nodeId && e.type === 'leads_to');
+}
+
+// Walks a single chain backward from a waypoint to its root (the earliest
+// waypoint with no predecessor), returning ids root-first. By convention a
+// waypoint has at most one incoming leads_to edge; if that's ever violated
+// the first one found is followed and a cycle guard prevents infinite loops.
+function walkChainBack(waypointId, guard) {
+  guard = guard || new Set();
+  if (guard.has(waypointId)) return [waypointId];
+  guard.add(waypointId);
+  const incoming = incomingLeadsTo(waypointId);
+  if (!incoming.length) return [waypointId];
+  return [...walkChainBack(incoming[0].from, guard), waypointId];
+}
+
+function statusPillHTML(status) {
+  const s = status || 'pending';
+  return `<span class="status-pill status-${esc(s)}" style="background:${STATUS_COLOR_HEX[s] || STATUS_COLOR_HEX.pending}">${esc(s)}</span>`;
+}
+
+const STATUS_COLOR_HEX = { pending: '#8a8f98', reached: '#4caf7a', failed: '#c25b5b' };
+
+function chainDotsHTML(chainIds, endpointId) {
+  const dots = chainIds.map(wid => {
+    const wn = GraphNodes[wid];
+    const color = STATUS_COLOR_HEX[(wn && wn.status) || 'pending'];
+    return `<span class="chain-dot" data-open-id="${esc(wid)}" title="${esc(wn ? (wn.name || wid) : wid)}" style="background:${color}"></span>`;
+  }).join('<span class="chain-arrow">&#8594;</span>');
+  const epn = GraphNodes[endpointId];
+  const epColor = STATUS_COLOR_HEX[(epn && epn.status) || 'pending'];
+  const epDot = `<span class="chain-dot chain-endpoint" data-open-id="${esc(endpointId)}" title="${esc(epn ? (epn.name || endpointId) : endpointId)}" style="background:${epColor}"></span>`;
+  return `<div class="chain-row">${dots}${chainIds.length ? '<span class="chain-arrow">&#8594;</span>' : ''}${epDot}</div>`;
+}
+
+function renderProjectDetail(container, id) {
+  const n = GraphNodes[id];
+  if (!n) { container.innerHTML = `<div class="empty">Not found</div>`; return; }
+
+  const ideaIds = connectedNodesOfType(id, 'idea');
+  const endpointIds = connectedNodesOfType(id, 'endpoint');
+  const projectWaypointIds = new Set(connectedNodesOfType(id, 'waypoint'));
+
+  const chainWaypointIds = new Set();
+  const endpointBlocks = endpointIds.map(epId => {
+    const ep = GraphNodes[epId];
+    const chains = incomingLeadsTo(epId).map(e => walkChainBack(e.from));
+    chains.forEach(chain => chain.forEach(wid => chainWaypointIds.add(wid)));
+    const chainsHTML = chains.length
+      ? chains.map(chain => {
+          const allIds = JSON.stringify([...chain, epId]);
+          return `
+            <div class="chain-block">
+              ${chainDotsHTML(chain, epId)}
+              <div class="chain-actions">
+                <button type="button" class="filter-btn chain-action-btn" data-chain-ids='${esc(allIds)}' data-chain-status="reached">Mark reached</button>
+                <button type="button" class="filter-btn chain-action-btn" data-chain-ids='${esc(allIds)}' data-chain-status="failed">Mark failed</button>
+                <button type="button" class="filter-btn chain-action-btn" data-chain-ids='${esc(allIds)}' data-chain-status="pending">Reset pending</button>
+                <button type="button" class="delete-btn chain-action-btn" data-chain-delete-ids='${esc(JSON.stringify(chain))}' title="Delete this chain's waypoints (keeps the endpoint)">Delete chain</button>
+              </div>
+            </div>`;
+        }).join('')
+      : `<div class="empty" style="padding:8px 0;">No waypoint chain yet — connect a waypoint to this endpoint with a "leads_to" edge.</div>`;
+
+    return `
+      <div class="endpoint-block">
+        <div class="endpoint-block-header" data-open-id="${esc(epId)}">
+          <b>${esc(ep.name || epId)}</b> ${statusPillHTML(ep.status)}
+        </div>
+        ${ep.description ? `<div class="detail-text markdown-body" style="font-size:13px;">${renderMarkdown(ep.description)}</div>` : ''}
+        ${chainsHTML}
+      </div>`;
+  }).join('') || `<div class="empty" style="padding:8px 0;">No endpoints yet.</div>`;
+
+  const orphanWaypointIds = [...projectWaypointIds].filter(wid => !chainWaypointIds.has(wid));
+  const orphanHTML = orphanWaypointIds.length ? `
+    <div class="detail-section">
+      <div class="detail-section-title">Orphan waypoints (not part of any endpoint's chain)</div>
+      <div class="conn-list">${orphanWaypointIds.map(wid => {
+        const wn = GraphNodes[wid];
+        return `<div class="conn-row" data-open-type="waypoint" data-open-id="${esc(wid)}">
+          <span class="conn-name">${esc(wn ? (wn.name || wid) : wid)}</span> ${statusPillHTML(wn && wn.status)}
+        </div>`;
+      }).join('')}</div>
+    </div>` : '';
+
+  const ideasHTML = ideaIds.length ? ideaIds.map(ideaId => {
+    const idea = GraphNodes[ideaId];
+    return `<div class="conn-row" data-open-type="idea" data-open-id="${esc(ideaId)}">
+      <span class="conn-name">${esc(idea ? (idea.name || ideaId) : ideaId)}</span>
+      ${idea && idea.status ? `<span class="conn-note">${esc(idea.status)}</span>` : ''}
+    </div>`;
+  }).join('') : `<div class="empty" style="padding:8px 0;">No ideas linked yet.</div>`;
+
+  container.innerHTML = `
+    <div class="detail-header">
+      <div>
+        <div class="paper-id">${esc(id)}</div>
+        <h2 class="detail-title">${esc(n.name || id)}</h2>
+        ${n.status ? `<div class="detail-field"><b>Status:</b> ${esc(n.status)}</div>` : ''}
+      </div>
+      <div class="detail-actions">
+        <button class="edit-btn detail-edit-btn" data-edit-node="${esc(id)}" title="Edit / manage connections">${PENCIL_SVG}</button>
+        <button class="delete-btn detail-edit-btn" data-delete-node="${esc(id)}" title="Delete permanently">${TRASH_SVG}</button>
+      </div>
+    </div>
+    ${n.description ? `<div class="detail-section"><div class="detail-section-title">Description</div><div class="detail-text markdown-body">${renderMarkdown(n.description)}</div></div>` : ''}
+    <div class="detail-section">
+      <div class="detail-section-title">Ideas</div>
+      <div class="conn-list">${ideasHTML}</div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Endpoints &amp; waypoint chains</div>
+      ${endpointBlocks}
+    </div>
+    ${orphanHTML}
+  `;
+
+  container.querySelectorAll('[data-open-type]').forEach(el =>
+    el.addEventListener('click', () => openDetail(el.dataset.openType, el.dataset.openId)));
+  container.querySelectorAll('[data-open-id]:not([data-open-type])').forEach(el => {
+    const target = GraphNodes[el.dataset.openId];
+    if (target) el.addEventListener('click', () => openDetail(target.type, el.dataset.openId));
+  });
+  const editBtn = container.querySelector('[data-edit-node]');
+  if (editBtn) editBtn.addEventListener('click', () => openEditModal('node', editBtn.dataset.editNode));
+  const deleteBtn = container.querySelector('[data-delete-node]');
+  if (deleteBtn) deleteBtn.addEventListener('click', () => deleteGraphNode('project', deleteBtn.dataset.deleteNode));
+
+  container.querySelectorAll('.chain-action-btn[data-chain-ids]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const ids = JSON.parse(btn.dataset.chainIds);
+      const status = btn.dataset.chainStatus;
+      await bulkPatchNodes(ids, { status });
+      toast(`Marked ${ids.length} node(s) as ${status}`);
+      renderProjectDetail(container, id);
+    });
+  });
+  container.querySelectorAll('[data-chain-delete-ids]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const ids = JSON.parse(btn.dataset.chainDeleteIds);
+      if (!ids.length) return;
+      if (!confirm(`Permanently delete ${ids.length} waypoint(s) in this chain? This cannot be undone.`)) return;
+      await bulkDeleteNodesSilent(ids);
+      toast(`Deleted ${ids.length} waypoint(s)`);
+      renderProjectDetail(container, id);
+    });
+  });
+}
+
 // ── Edit modal ───────────────────────────────────────────────────────────────
 //
 // One generic modal reused for editing any paper or graph node (concept/
-// project/endpoint/idea/pool) — opened from the pencil button that appears
+// project/endpoint/idea/waypoint) — opened from the pencil button that appears
 // top-right on every card and every detail pane. Fields shown depend on the
 // item's type; system-managed fields (cites/cited_by, pdf_status/pdf_source,
 // read/hidden) are intentionally left out since they have their own
@@ -3636,6 +3888,9 @@ async function openEditModal(kind, id) {
     editContext = { kind, id, type: n.type };
     title.textContent = `Edit ${id}`;
     body.innerHTML = nodeEditFormHTML(n);
+    const descEl = document.getElementById('ef-node-description');
+    const countEl = document.getElementById('ef-node-description-count');
+    if (descEl && countEl) descEl.addEventListener('input', () => { countEl.textContent = descEl.value.length; });
   }
   wireConnectionsSection(body, id);
   document.getElementById('edit-modal-overlay').classList.add('open');
@@ -3656,7 +3911,11 @@ function closeEditModal() {
 // paperEditFormHTML() and nodeEditFormHTML().
 
 const EDGE_TYPES = ['connected_to', 'uses_concept', 'part_of', 'inspired_by',
-                     'relevant_to', 'derived_from', 'enables', 'annotates'];
+                     'relevant_to', 'derived_from', 'enables', 'annotates', 'leads_to'];
+
+// A project may only connect to concepts/ideas/waypoints/endpoints (never
+// a paper) — mirrors the server-side check in cmd_graph_add_edge.
+const PROJECT_EXCLUDED_CONNECTION_TYPES = new Set(['paper', 'venue']);
 
 // cites is synthesized by loadGraph() from a paper's own cites field — it's
 // not an entry in _graph.json's edges array, so it can't be deleted through
@@ -3696,7 +3955,7 @@ function connectionsSectionHTML(id) {
           <option value="in">← This</option>
         </select>
         <select id="ce-type">${EDGE_TYPES.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
-        <select id="ce-target"><option value="">Select node/paper…</option>${allNodeOptionsHTML()}</select>
+        <select id="ce-target"><option value="">Select node/paper…</option>${allNodeOptionsHTML(GraphNodes[id] && GraphNodes[id].type === 'project' ? PROJECT_EXCLUDED_CONNECTION_TYPES : null)}</select>
         <button type="button" class="filter-btn" id="ce-add-btn">Add</button>
       </div>
     </div>`;
@@ -3811,16 +4070,30 @@ const NODE_TYPE_FIELDS = {
   project:  ['status'],
   endpoint: ['status'],
   idea:     ['status', 'created', 'source'],
-  pool:     ['created'],
+  waypoint: ['status'],
   note:     ['created', 'page'],
 };
 const FIELD_LABELS = { area: 'Area', status: 'Status', created: 'Created (YYYY-MM-DD)', source: 'Source', page: 'Page' };
 
+// endpoint/waypoint status is a fixed enum (server rejects anything else);
+// every other type's status stays free text.
+const STATUS_ENUM_TYPES = new Set(['endpoint', 'waypoint']);
+
 function nodeEditFormHTML(n) {
-  const extra = (NODE_TYPE_FIELDS[n.type] || []).map(f => `
+  const extra = (NODE_TYPE_FIELDS[n.type] || []).map(f => {
+    if (f === 'status' && STATUS_ENUM_TYPES.has(n.type)) {
+      const current = n.status || 'pending';
+      const opts = ['pending', 'reached', 'failed']
+        .map(s => `<option value="${s}" ${s === current ? 'selected' : ''}>${s[0].toUpperCase()}${s.slice(1)}</option>`)
+        .join('');
+      return `<div class="form-field"><label>${esc(FIELD_LABELS[f] || f)}</label>
+        <select id="ef-node-${f}">${opts}</select></div>`;
+    }
+    return `
     <div class="form-field"><label>${esc(FIELD_LABELS[f] || f)}</label>
       <input type="text" id="ef-node-${f}" value="${esc(n[f] || '')}"></div>
-  `).join('');
+  `;
+  }).join('');
   // Concepts default to a hash-derived color (see conceptColor()) unless
   // the user has picked one here — stored as a plain hex string on the
   // node, same as any other optional field.
@@ -3839,12 +4112,18 @@ function nodeEditFormHTML(n) {
       ${connectionsSectionHTML(n.id)}
     `;
   }
+  const isProject = n.type === 'project';
+  const descLen = (n.description || '').length;
   return `
     <div class="form-field"><label>Name</label><input type="text" id="ef-node-name" value="${esc(n.name || '')}"></div>
     ${extra}
     ${colorField}
-    <div class="form-field"><label>Description</label><textarea id="ef-node-description" rows="4">${esc(n.description || '')}</textarea>
-      <div class="form-hint">Markdown supported (headers, **bold**, *italic*, lists, links, code, quotes).</div></div>
+    <div class="form-field"><label>Description</label>
+      <textarea id="ef-node-description" rows="4" ${isProject ? 'maxlength="200"' : ''}>${esc(n.description || '')}</textarea>
+      ${isProject
+        ? `<div class="form-hint"><span id="ef-node-description-count">${descLen}</span>/200 characters</div>`
+        : `<div class="form-hint">Markdown supported (headers, **bold**, *italic*, lists, links, code, quotes).</div>`}
+    </div>
     ${connectionsSectionHTML(n.id)}
   `;
 }
@@ -3963,7 +4242,7 @@ const Graph = (function() {
   let dragDistance = 0, mouseDownAt = null;
   let hoverNode = null, hoverEdge = null;
   let lastMouseX = 0, lastMouseY = 0;
-  let typeFilter = new Set(['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
+  let typeFilter = new Set(['paper', 'concept', 'project', 'idea', 'note']);
   let searchQ = '';
   // "Linked to" filter: shows only nodes reachable from a chosen set of seed
   // nodes within `conceptLinkDepth` hops (BFS over currently-allowed edge
@@ -3979,8 +4258,13 @@ const Graph = (function() {
     cites:        { dash: [6, 4], alpha: 0.55, color: '#BA7C65' },
     uses_concept: { dash: [1, 4], alpha: 0.35, color: '#688C6F' },
     annotates:    { dash: [2, 3], alpha: 0.5,  color: '#D4AF37' },
+    leads_to:     { dash: [],     alpha: 0.6,  color: '#7a9cc6' },
   };
   const DEFAULT_EDGE_STYLE = { dash: [], alpha: 0.45, color: '#8496B0' };
+
+  // Shared status coloring for waypoint/endpoint nodes, in both the graph
+  // view and the project detail page's chain visualization.
+  const STATUS_COLOR = { pending: '#8a8f98', reached: '#4caf7a', failed: '#c25b5b' };
 
   function hashHue(str) {
     let h = 0;
@@ -4104,7 +4388,7 @@ const Graph = (function() {
     const inSim = new Set(simNodes);
     simLinks = edges
       .filter(e => inSim.has(e.a) && inSim.has(e.b))
-      .map(e => ({ source: e.a, target: e.b }));
+      .map(e => ({ source: e.a, target: e.b, type: e.type }));
   }
 
   function startSimulation() {
@@ -4116,7 +4400,12 @@ const Graph = (function() {
     // rather than a tense central blob.
     simulation = d3.forceSimulation(simNodes)
       .force('charge', d3.forceManyBody().strength(-90).distanceMax(600))
-      .force('link', d3.forceLink(simLinks).distance(55).strength(0.35))
+      .force('link', d3.forceLink(simLinks)
+        // leads_to links stay short and stiff so a project's waypoint
+        // chains cluster into small, tight radial spurs rather than
+        // spreading out like ordinary graph connections.
+        .distance(l => l.type === 'leads_to' ? 18 : 55)
+        .strength(l => l.type === 'leads_to' ? 0.9 : 0.35))
       .force('x', d3.forceX(0).strength(0.03))
       .force('y', d3.forceY(0).strength(0.03))
       .force('collide', d3.forceCollide(10).strength(0.6))
@@ -4322,13 +4611,10 @@ const Graph = (function() {
       ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath();
     } else if (type === 'endpoint') {
       ctx.moveTo(x, y - r); ctx.lineTo(x + r, y + r); ctx.lineTo(x - r, y + r); ctx.closePath();
-    } else if (type === 'pool') {
-      for (let i = 0; i < 6; i++) {
-        const ang = Math.PI / 3 * i - Math.PI / 2;
-        const px = x + r * Math.cos(ang), py = y + r * Math.sin(ang);
-        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-      }
-      ctx.closePath();
+    } else if (type === 'waypoint') {
+      // A tiny dot — waypoints are meant to read as small, unobtrusive
+      // links in a chain, not full-size nodes.
+      ctx.arc(x, y, r, 0, Math.PI * 2);
     } else if (type === 'note') {
       // 5-point star — reads as an annotation/pin marker, distinct from the
       // other node shapes.
@@ -4440,34 +4726,40 @@ const Graph = (function() {
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
 
-    // Citation arrowheads — "cites" is the one edge type where direction
-    // actually matters (who cites whom); drawn as small filled triangles
-    // pointing at the cited paper, on top of the plain lines above, using
+    // Directional arrowheads — "cites" (who cites whom) and "leads_to" (the
+    // waypoint chain's direction toward its endpoint) are the two edge types
+    // where direction actually matters; drawn as small filled triangles
+    // pointing at the target node, on top of the plain lines above, using
     // the same visibility/dim/culling rules so they never appear detached
     // from their line.
     ctx.setLineDash([]);
-    const citeStyle = EDGE_STYLE.cites || DEFAULT_EDGE_STYLE;
-    ctx.fillStyle = citeStyle.color;
-    [...edges, ...(hoverEdge ? [hoverEdge] : [])].forEach(e => {
-      if (e.type !== 'cites') return;
-      if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeTypeVisible(e)) return;
-      if (!inView(e.a) && !inView(e.b)) return;
-      const dim = hasSearch && !(nodeMatchesSearch(e.a) && nodeMatchesSearch(e.b));
-      const rb = (e.b.type === 'paper' ? 6 : 8) + Math.min(4, Math.sqrt(e.b.degree || 0));
-      const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
-      const dist = Math.hypot(dx, dy) || 1;
-      const ux = dx / dist, uy = dy / dist;
-      const tipX = e.b.x - ux * rb, tipY = e.b.y - uy * rb;
-      const arrowLen = 6 / zoom, arrowHalfWidth = 2.5 / zoom;
-      const baseX = tipX - ux * arrowLen, baseY = tipY - uy * arrowLen;
-      const perpX = -uy * arrowHalfWidth, perpY = ux * arrowHalfWidth;
-      ctx.globalAlpha = (dim ? citeStyle.alpha * 0.15 : citeStyle.alpha) * (e === hoverEdge ? 1 : 0.9);
-      ctx.beginPath();
-      ctx.moveTo(tipX, tipY);
-      ctx.lineTo(baseX + perpX, baseY + perpY);
-      ctx.lineTo(baseX - perpX, baseY - perpY);
-      ctx.closePath();
-      ctx.fill();
+    function edgeBaseRadius(n) {
+      return n.type === 'paper' ? 6 : (n.type === 'waypoint' ? 4 : (n.type === 'endpoint' ? 6 : 8));
+    }
+    ['cites', 'leads_to'].forEach(arrowType => {
+      const style = EDGE_STYLE[arrowType] || DEFAULT_EDGE_STYLE;
+      ctx.fillStyle = style.color;
+      [...edges, ...(hoverEdge ? [hoverEdge] : [])].forEach(e => {
+        if (e.type !== arrowType) return;
+        if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeTypeVisible(e)) return;
+        if (!inView(e.a) && !inView(e.b)) return;
+        const dim = hasSearch && !(nodeMatchesSearch(e.a) && nodeMatchesSearch(e.b));
+        const rb = edgeBaseRadius(e.b) + Math.min(4, Math.sqrt(e.b.degree || 0));
+        const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const ux = dx / dist, uy = dy / dist;
+        const tipX = e.b.x - ux * rb, tipY = e.b.y - uy * rb;
+        const arrowLen = 6 / zoom, arrowHalfWidth = 2.5 / zoom;
+        const baseX = tipX - ux * arrowLen, baseY = tipY - uy * arrowLen;
+        const perpX = -uy * arrowHalfWidth, perpY = ux * arrowHalfWidth;
+        ctx.globalAlpha = (dim ? style.alpha * 0.15 : style.alpha) * (e === hoverEdge ? 1 : 0.9);
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(baseX + perpX, baseY + perpY);
+        ctx.lineTo(baseX - perpX, baseY - perpY);
+        ctx.closePath();
+        ctx.fill();
+      });
     });
     ctx.globalAlpha = 1;
 
@@ -4475,7 +4767,7 @@ const Graph = (function() {
     nodes.forEach(n => {
       if (!nodeVisible(n)) return;
       if (!inView(n)) return;
-      const baseR = n.type === 'paper' ? 6 : (n.type === 'concept' ? 8 : 8);
+      const baseR = n.type === 'paper' ? 6 : (n.type === 'waypoint' ? 4 : (n.type === 'endpoint' ? 6 : 8));
       // Subtle degree-based growth, capped so a handful of highly-connected
       // hubs don't dwarf everything else — sqrt keeps it a gentle curve
       // instead of linear.
@@ -4502,8 +4794,11 @@ const Graph = (function() {
         ctx.setLineDash([2, 2]);
         shapePath(ctx, n.type, n.x, n.y, r);
       } else {
+        const isChainNode = n.type === 'waypoint' || n.type === 'endpoint';
+        const chainColor = isChainNode ? (STATUS_COLOR[n.raw.status] || STATUS_COLOR.pending) : null;
         shapePath(ctx, n.type, n.x, n.y, r);
-        ctx.fillStyle = n.type === 'paper' ? n.color : '#242830';
+        ctx.fillStyle = n.type === 'paper' ? n.color : (isChainNode ? chainColor : '#242830');
+        if (isChainNode && n.raw.status === 'failed') ctx.globalAlpha *= 0.5;
         ctx.fill();
         // Path is still current — the stroke below reuses it instead of
         // rebuilding the same shape a second time.
@@ -4511,7 +4806,9 @@ const Graph = (function() {
       ctx.lineWidth = (n === hoverNode ? 2.5 : 1.2) / zoom;
       ctx.strokeStyle = n === hoverNode ? '#f3c944'
         : n.type === 'ghost' ? '#888'
-        : (n.type === 'concept' || n.type === 'paper' ? 'rgba(0,0,0,0.3)' : n.color);
+        : (n.type === 'concept' || n.type === 'paper' ? 'rgba(0,0,0,0.3)'
+        : (n.type === 'waypoint' || n.type === 'endpoint') ? (STATUS_COLOR[n.raw.status] || STATUS_COLOR.pending)
+        : n.color);
       ctx.stroke();
       ctx.setLineDash([]);
     });
@@ -4814,10 +5111,11 @@ const Graph = (function() {
     document.getElementById('graph-reset-filters').addEventListener('click', () => {
       document.getElementById('graph-search').value = '';
       searchQ = '';
-      // "Missing" (ghost) nodes stay opt-in even after a reset — every other
-      // type defaults to visible.
-      document.querySelectorAll('.gtype').forEach(cb => { cb.checked = cb.value !== 'ghost'; });
-      typeFilter = new Set(['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
+      // "Missing" (ghost) nodes stay opt-in even after a reset, and so do
+      // endpoint/waypoint (they clutter the graph until a project's chain
+      // is actually being worked on) — every other type defaults to visible.
+      document.querySelectorAll('.gtype').forEach(cb => { cb.checked = cb.value !== 'ghost' && cb.value !== 'endpoint' && cb.value !== 'waypoint'; });
+      typeFilter = new Set(['paper', 'concept', 'project', 'idea', 'note']);
       // Resetting types changes sim membership just like any other type
       // toggle — rebuild the layout from what's left.
       rebuildSimMembership();
@@ -4871,7 +5169,7 @@ const Graph = (function() {
   }
 
   function applyFilterState(state) {
-    typeFilter = new Set(state.types || ['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
+    typeFilter = new Set(state.types || ['paper', 'concept', 'project', 'idea', 'note']);
     document.querySelectorAll('.gtype').forEach(cb => { cb.checked = typeFilter.has(cb.value); });
     // Restoring a preset changes which types are checked, which changes sim
     // membership — rebuild the layout from what's left, same as any other
@@ -4940,7 +5238,7 @@ const Graph = (function() {
     });
   }
 
-  // Clicking any node (paper, concept, project, endpoint, idea, pool) opens
+  // Clicking any node (paper, concept, project, endpoint, idea, waypoint) opens
   // its detail sub-tab in the matching object-type tab — same behavior for
   // every type, so you can jump straight from the graph to full item info.
   // Ghost nodes have no record of their own to open, so they go to a Google

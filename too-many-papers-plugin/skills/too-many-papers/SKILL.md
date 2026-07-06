@@ -38,11 +38,11 @@ When the knowledge graph is empty (check via `graph_status`: no nodes), run the 
 > The graph has a few building blocks:
 > - **concept** — a research area you care about (e.g. "Brain Lesion Segmentation")
 > - **project** — an active research project with a goal
-> - **endpoint** — a specific milestone within a project
 > - **idea** — a concrete idea connected to a project
-> - **pool** — a broader idea that spans multiple projects
+> - **waypoint** — an intermediate node in a project's chain of work toward an endpoint
+> - **endpoint** — a project's goal/milestone, tracked as pending / reached / failed
 >
-> These connect to each other (e.g. a project *uses* a concept) and to the papers you read, so the graph grows into a map of how your research fits together.
+> A project connects to concepts and ideas, and reaches its endpoints through chains of waypoints (never directly to a paper). These connections grow the graph into a map of how your research fits together.
 
 Adapt the wording, but keep the five node types and one-line definitions — the user needs this to give a useful answer in Step 3.
 
@@ -113,7 +113,7 @@ Do not recreate the old multi-step routine and do not modify data files directly
 `graph_lint` health-checks the graph and catalog: orphan nodes with no edges, projects with no papers linked, papers with no concept/edge, ideas left open and untouched past `stale_days` (default 90), papers pointing at a missing venue, dangling `cites`/`cited_by`, and concepts with no interaction in `quiet_days` (default 45). It only reports — it never deletes or fixes anything itself. Run it when the user asks to check the graph's health, or suggest it occasionally if the graph has grown a lot since the last check. Never run it silently as a background/automatic step the user didn't ask for or wasn't told about.
 
 ### Graph Tools (Write)
-`graph_add_concept(name, area, description?)` . `graph_add_project(name, status, description?)` . `graph_add_endpoint(name, status, description?)` . `graph_add_idea(name, status, created, description?, source?)` . `graph_add_pool(name, created, description?)` . `graph_update_node(id, payload)` . `graph_remove_node(id)` . `graph_add_edge(src, tgt, edge_type, note?)` . `graph_remove_edge(src, tgt, edge_type?)` . `graph_interact(id, interaction_type, weight?)`
+`graph_add_concept(name, area, description?)` . `graph_add_project(name, status, description?)` . `graph_add_endpoint(name, status?, description?)` . `graph_add_idea(name, status, created, description?, source?)` . `graph_add_waypoint(name, description?, status?)` . `graph_update_node(id, payload)` . `graph_remove_node(id)` . `graph_add_edge(src, tgt, edge_type, note?)` . `graph_remove_edge(src, tgt, edge_type?)` . `graph_interact(id, interaction_type, weight?)`
 
 Each MCP tool carries its own name, description, and parameter schema, so consult the tool list directly for the full, always-current set (including the bulk `*_bulk` tools and `papers_export`).
 
@@ -121,11 +121,15 @@ Each MCP tool carries its own name, description, and parameter schema, so consul
 
 All types are enforced by the server. The LLM cannot invent new types.
 
-**Node types:** `concept` . `project` . `endpoint` . `idea` . `pool`
+**Node types:** `concept` . `project` . `endpoint` . `idea` . `waypoint`
 
-**Edge types:** `connected_to` . `uses_concept` . `part_of` . `inspired_by` . `relevant_to` . `derived_from` . `enables`
+**Edge types:** `connected_to` . `uses_concept` . `part_of` . `inspired_by` . `relevant_to` . `derived_from` . `enables` . `leads_to`
 
-**Never create a `uses_concept`/`relevant_to` edge from a paper to a concept it's already tagged with in its `concepts` field.** The paper's `concepts` array is already the paper-to-concept link (rendered as the graph's `concept_tag` edges) — adding an explicit graph edge for the same pair is a pure duplicate. Reserve `uses_concept` for non-paper nodes (project/idea/pool → concept) or for a paper-concept link that is deliberately NOT already covered by the `concepts` field.
+**Never create a `uses_concept`/`relevant_to` edge from a paper to a concept it's already tagged with in its `concepts` field.** The paper's `concepts` array is already the paper-to-concept link (rendered as the graph's `concept_tag` edges) — adding an explicit graph edge for the same pair is a pure duplicate. Reserve `uses_concept` for non-paper nodes (project/idea/waypoint → concept) or for a paper-concept link that is deliberately NOT already covered by the `concepts` field.
+
+**A project connects only to concepts, ideas, waypoints, and endpoints — never directly to a paper.** The server rejects a project↔paper edge. Route paper relevance through a project's ideas or concepts instead.
+
+**Endpoints and waypoints track progress with a `status` of `pending` (default), `reached`, or `failed`** — not free text. Build a project's path to a goal as a chain of waypoints connected by `leads_to` edges (waypoint → waypoint → ... → endpoint). A waypoint may have **at most one outgoing** `leads_to` edge — the server rejects a second one, so redirecting a chain means removing the old edge first. Incoming edges are a soft convention of one (keeping each chain a simple line, easy to bulk mark-as-reached/failed or delete as a unit), but an endpoint itself can have several independent chains converging on it.
 
 **Interaction types:** `discussed` (w=3) . `deepened` (w=5) . `paper_requested` (w=10) . `read` (w=2) . `linked` (w=8)
 
@@ -143,7 +147,7 @@ All types are enforced by the server. The LLM cannot invent new types.
 6. **Engagement drives recommendations.** Use `graph_engagement` to understand what the user cares about most right now.
 7. **Never search the web for papers.** `papers_discover` (arXiv + Semantic Scholar + OpenAlex, with dedup) is the only sanctioned way to find new papers, whether for the morning briefing or a normal "find me something on X" request. WebSearch/WebFetch defeat the anti-hallucination guarantees this plugin exists to provide.
 8. **Confirm before permanent deletion.** `papers_delete`, `venues_delete`, and `graph_remove_node`/`graph_remove_edge` cannot be undone. Always get explicit confirmation from the user before calling any of them — don't infer consent from an ambiguous request like "clean this up."
-9. **Write `description`/`notes`/`text` fields in markdown.** The web UI renders these fields as markdown (headers, `**bold**`, `*italic*`, lists, `` `code` ``, blockquotes, links, code blocks) wherever they're shown — a paper's notes/abstract, and a concept/project/endpoint/idea/pool's description, plus a note's own text. Use that formatting where it actually helps readability (e.g. a short list of open questions, a key term in bold) — don't force structure onto a one-line description that doesn't need it.
+9. **Write `description`/`notes`/`text` fields in markdown.** The web UI renders these fields as markdown (headers, `**bold**`, `*italic*`, lists, `` `code` ``, blockquotes, links, code blocks) wherever they're shown — a paper's notes/abstract, and a concept/project/endpoint/idea/waypoint's description, plus a note's own text. Use that formatting where it actually helps readability (e.g. a short list of open questions, a key term in bold) — don't force structure onto a one-line description that doesn't need it.
 
 ## Too Many Papers Web UI
 

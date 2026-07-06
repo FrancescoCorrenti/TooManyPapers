@@ -85,7 +85,7 @@ GRAPH COMMANDS
   graph-status                  -> overview: nodes by type, edges, interactions
   graph-node <id>               -> node with context (edges, recent interactions)
   graph-nodes [--type <type>]   -> list nodes (filterable by type)
-  graph-add-node <type> <json>  -> adds a node (concept/project/endpoint/idea/pool)
+  graph-add-node <type> <json>  -> adds a node (concept/project/endpoint/idea/waypoint)
   graph-update-node <id> <json> -> updates fields of a node (partial merge)
   graph-remove-node <id>        -> removes node and all its edges
   graph-add-edge <src> <tgt> <type> [note] -> adds an edge
@@ -2150,9 +2150,9 @@ def cmd_delete_venue(args):
 
 # -- Graph helpers ---------------------------------------------------------
 
-GRAPH_NODE_TYPES = {"concept", "project", "endpoint", "idea", "pool", "note"}
+GRAPH_NODE_TYPES = {"concept", "project", "endpoint", "idea", "waypoint", "note"}
 GRAPH_EDGE_TYPES = {"connected_to", "uses_concept", "part_of", "inspired_by",
-                    "relevant_to", "derived_from", "enables", "annotates"}
+                    "relevant_to", "derived_from", "enables", "annotates", "leads_to"}
 INTERACTION_TYPES = {
     "discussed": 3,
     "deepened": 5,
@@ -2161,12 +2161,22 @@ INTERACTION_TYPES = {
     "linked": 8,
 }
 
+# Applies only to endpoint/waypoint nodes — their `status` tracks progress
+# toward a project's goal, not free-text like project/idea status.
+STATUS_ENUM = {"pending", "reached", "failed"}
+STATUS_ENUM_TYPES = {"endpoint", "waypoint"}
+DEFAULT_STATUS = "pending"
+
+# A project's description is meant to stay a short summary, not a place for
+# sprawling notes — those belong on its ideas/waypoints/endpoints instead.
+PROJECT_DESCRIPTION_MAX_LEN = 200
+
 NODE_REQUIRED_FIELDS = {
     "concept": {"name", "area"},
     "project": {"name", "status"},
     "endpoint": {"name", "status"},
     "idea": {"name", "status", "created"},
-    "pool": {"name", "created"},
+    "waypoint": {"name"},
     "note": {"name", "created"},
 }
 
@@ -2178,7 +2188,7 @@ NODE_OPTIONAL_FIELDS = {
     "project": {"description"},
     "endpoint": {"description"},
     "idea": {"description", "source"},
-    "pool": {"description"},
+    "waypoint": {"description", "status"},
     # `note` = a reading annotation captured from a PDF (via the web UI's
     # select-to-note flow, or graph_add_note). `quote` is the verbatim
     # excerpt the user selected; `text` is their own comment on it; `page`
@@ -2187,6 +2197,31 @@ NODE_OPTIONAL_FIELDS = {
     # other graph relationship (BFS, "linked to" filters, etc.).
     "note": {"quote", "text", "page"},
 }
+
+
+def _validate_node_status(node_type: str, payload: dict) -> None:
+    """Default/validate `status` in place for endpoint/waypoint nodes.
+
+    Mutates payload to fill in the default when status is missing. Exits
+    with an error if an explicit status isn't one of the allowed values."""
+    if node_type not in STATUS_ENUM_TYPES:
+        return
+    status = payload.get("status")
+    if status is None or status == "":
+        payload["status"] = DEFAULT_STATUS
+        return
+    if status not in STATUS_ENUM:
+        print(f"ERROR: status for a '{node_type}' must be one of: "
+              f"{', '.join(sorted(STATUS_ENUM))} (got '{status}')")
+        sys.exit(1)
+
+
+def _validate_project_description(payload: dict) -> None:
+    description = payload.get("description")
+    if description and len(description) > PROJECT_DESCRIPTION_MAX_LEN:
+        print(f"ERROR: project description must be at most "
+              f"{PROJECT_DESCRIPTION_MAX_LEN} characters (got {len(description)}).")
+        sys.exit(1)
 
 
 def _resolve_node_id(node_id: str, graph_data: dict) -> dict | None:
@@ -2253,8 +2288,8 @@ def _generate_node_id(node_type: str, payload: dict, nodes: dict) -> str:
         return f"{candidate_base}-{next_num}"
     elif node_type == "idea":
         return _next_graph_id(nodes, "IDEA-")
-    elif node_type == "pool":
-        return _next_graph_id(nodes, "POOL-")
+    elif node_type == "waypoint":
+        return _next_graph_id(nodes, "WP-")
     return _next_graph_id(nodes, node_type.upper()[:4] + "-")
 
 
@@ -2390,6 +2425,10 @@ def cmd_graph_add_node(args):
               f"Allowed: {', '.join(sorted(allowed))}")
         sys.exit(1)
 
+    _validate_node_status(node_type, payload)
+    if node_type == "project":
+        _validate_project_description(payload)
+
     graph = load_graph()
     nodes = graph.setdefault("nodes", {})
     new_id = _generate_node_id(node_type, payload, nodes)
@@ -2434,6 +2473,14 @@ def cmd_graph_update_node(args):
         if "type" in patch and patch["type"] != node_type:
             print("ERROR: a node's type cannot be changed via update.")
             sys.exit(1)
+
+    if node_type in STATUS_ENUM_TYPES and "status" in patch and patch["status"] not in STATUS_ENUM:
+        print(f"ERROR: status for a '{node_type}' must be one of: "
+              f"{', '.join(sorted(STATUS_ENUM))} (got '{patch['status']}')")
+        sys.exit(1)
+    if node_type == "project" and "description" in patch:
+        merged = dict(nodes[node_id]); merged.update(patch)
+        _validate_project_description(merged)
 
     nodes[node_id].update(patch)
     save_graph(graph)
@@ -2518,6 +2565,40 @@ def cmd_graph_add_edge(args):
     tgt_node = _resolve_node_id(tgt, graph)
     if not tgt_node:
         print(f"ERROR: target node '{tgt}' not found."); sys.exit(1)
+
+    src_type = src_node.get("type")
+    tgt_type = tgt_node.get("type")
+
+    # A project may only connect to concepts, ideas, waypoints, and
+    # endpoints — never directly to a paper (or venue).
+    PROJECT_ALLOWED_PEERS = {"concept", "idea", "waypoint", "endpoint"}
+    if src_type == "project" and tgt_type not in PROJECT_ALLOWED_PEERS:
+        print(f"ERROR: a project can only connect to concept/idea/waypoint/endpoint "
+              f"nodes, not '{tgt_type}'.")
+        sys.exit(1)
+    if tgt_type == "project" and src_type not in PROJECT_ALLOWED_PEERS:
+        print(f"ERROR: a project can only connect to concept/idea/waypoint/endpoint "
+              f"nodes, not '{src_type}'.")
+        sys.exit(1)
+
+    # leads_to forms the waypoint chain: waypoint -> waypoint -> ... -> endpoint.
+    if edge_type == "leads_to":
+        if src_type != "waypoint" or tgt_type not in ("waypoint", "endpoint"):
+            print("ERROR: a 'leads_to' edge must go from a waypoint to another "
+                  "waypoint or to an endpoint.")
+            sys.exit(1)
+        # A waypoint has at most one outgoing leads_to edge — enforced (unlike
+        # incoming, where multiple independent chains may converge on the
+        # same endpoint, and unlike a waypoint's own incoming edge count,
+        # which stays a soft convention).
+        existing_out = [e for e in graph.get("edges", [])
+                        if e.get("src") == src and e.get("type") == "leads_to"]
+        if existing_out:
+            print(f"ERROR: waypoint '{src}' already has an outgoing 'leads_to' edge "
+                  f"(to '{existing_out[0].get('tgt')}'). A waypoint can only lead to "
+                  f"one next node — remove the existing edge first if you want to "
+                  f"redirect it.")
+            sys.exit(1)
 
     # Check duplicate
     edges = graph.setdefault("edges", [])

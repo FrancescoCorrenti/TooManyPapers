@@ -493,7 +493,7 @@ def graph_nodes(node_type: str = "") -> str:
 
     Args:
         node_type: If provided, filter by type. Must be one of:
-            concept, project, endpoint, idea, pool.
+            concept, project, endpoint, idea, waypoint.
             Leave empty to list all nodes.
     """
     args = []
@@ -524,14 +524,16 @@ def graph_add_concept(name: str, area: str, description: str = "") -> str:
 
 @mcp.tool()
 def graph_add_project(name: str, status: str, description: str = "") -> str:
-    """Add a project node — an active research project with a goal.
+    """Add a project node — an active research project with a goal. A project
+    connects only to concepts, ideas, waypoints, and endpoints — never
+    directly to a paper.
 
     Args:
         name: Project name.
         status: Free-text status, e.g. ideation, literature-review, active, writing.
-        description: Optional one-sentence goal/summary. Use this field for
-            anything like a project's goal or description — there is no
-            separate "goal" field.
+        description: Optional one-sentence goal/summary (max 200 characters).
+            Use this field for anything like a project's goal or description
+            — there is no separate "goal" field.
     """
     payload = {"name": name, "status": status}
     if description:
@@ -540,12 +542,13 @@ def graph_add_project(name: str, status: str, description: str = "") -> str:
 
 
 @mcp.tool()
-def graph_add_endpoint(name: str, status: str, description: str = "") -> str:
-    """Add an endpoint node — a specific milestone within a project.
+def graph_add_endpoint(name: str, status: str = "pending", description: str = "") -> str:
+    """Add an endpoint node — a project's goal/milestone that a chain of
+    waypoints (see graph_add_waypoint) leads to via "leads_to" edges.
 
     Args:
         name: Endpoint name.
-        status: Free-text status.
+        status: One of "pending" (default), "reached", or "failed".
         description: Optional one-sentence description.
     """
     payload = {"name": name, "status": status}
@@ -574,18 +577,23 @@ def graph_add_idea(name: str, status: str, created: str, description: str = "", 
 
 
 @mcp.tool()
-def graph_add_pool(name: str, created: str, description: str = "") -> str:
-    """Add a pool node — a broader idea that spans multiple projects.
+def graph_add_waypoint(name: str, description: str = "", status: str = "pending") -> str:
+    """Add a waypoint node — an intermediate node in a project's chain toward
+    an endpoint. Connect it to the chain with "leads_to" edges (waypoint ->
+    waypoint, or waypoint -> endpoint for the last one). A waypoint may have
+    at most one outgoing "leads_to" edge (enforced by the server — add a
+    second one and it's rejected); incoming edges are a soft convention of
+    one, but an endpoint itself may receive several independent chains.
 
     Args:
-        name: Pool name.
-        created: Creation date, e.g. "2026-07-02".
+        name: Waypoint name.
         description: Optional one-sentence description.
+        status: One of "pending" (default), "reached", or "failed".
     """
-    payload = {"name": name, "created": created}
+    payload = {"name": name, "status": status}
     if description:
         payload["description"] = description
-    return _add_node("pool", payload)
+    return _add_node("waypoint", payload)
 
 
 @mcp.tool()
@@ -637,7 +645,7 @@ def graph_add_nodes_bulk(nodes: str) -> str:
 
     Args:
         nodes: JSON array of objects, each with a "type" field (concept,
-            project, endpoint, idea, pool, or note) plus that type's fields
+            project, endpoint, idea, waypoint, or note) plus that type's fields
             — same shape as graph_add_concept/graph_add_project/etc, e.g.
             '[{"type": "concept", "name": "X", "area": "Y"}, ...]'.
     """
@@ -673,7 +681,11 @@ def graph_add_edge(src: str, tgt: str, edge_type: str, note: str = "") -> str:
         src: Source node ID.
         tgt: Target node ID.
         edge_type: Must be one of: connected_to, uses_concept, part_of,
-            inspired_by, relevant_to, derived_from, enables
+            inspired_by, relevant_to, derived_from, enables, leads_to. A
+            project can only connect to concept/idea/waypoint/endpoint nodes
+            (never a paper). leads_to must go waypoint -> waypoint or
+            waypoint -> endpoint (the project's chain toward its goal); a
+            waypoint can have at most one outgoing leads_to edge.
         note: Optional free-text annotation for the edge.
     """
     args = [src, tgt, edge_type]
