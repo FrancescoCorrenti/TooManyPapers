@@ -276,6 +276,43 @@ function toggleHidden(paperId) {
   return true;
 }
 
+// Permanent delete (not the soft hide above) — mirrors papers_api.py's
+// cmd_delete_paper: pop the paper and scrub its ID out of every other
+// paper's cites/cited_by/cites_unmatched so no dangling references remain.
+function deletePaper(paperId) {
+  const raw    = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
+  const papers = raw.papers || {};
+  if (!papers[paperId]) return { error: `Paper '${paperId}' not found.` };
+  delete papers[paperId];
+  for (const other of Object.values(papers)) {
+    for (const field of ['cites', 'cited_by', 'cites_unmatched']) {
+      if (Array.isArray(other[field])) {
+        other[field] = other[field].filter(v => v !== paperId);
+      }
+    }
+  }
+  raw.papers = papers;
+  raw._meta = raw._meta || {};
+  raw._meta.total_papers = Object.keys(papers).length;
+  raw._meta.last_updated = new Date().toISOString().slice(0, 10);
+  fs.writeFileSync(PAPERS_FILE, JSON.stringify(raw, null, 2), 'utf8');
+  return { ok: true };
+}
+
+// Permanent delete of any non-paper graph node (concept/project/endpoint/
+// idea/pool/note) — mirrors papers_api.py's cmd_graph_remove_node: pop the
+// node and drop every edge that touches it.
+function deleteGraphNode(nodeId) {
+  const raw   = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
+  const nodes = raw.nodes || {};
+  if (!nodes[nodeId]) return { error: `Node '${nodeId}' not found.` };
+  delete nodes[nodeId];
+  raw.nodes = nodes;
+  raw.edges = (raw.edges || []).filter(e => e.src !== nodeId && e.tgt !== nodeId);
+  fs.writeFileSync(GRAPH_FILE, JSON.stringify(raw, null, 2), 'utf8');
+  return { ok: true };
+}
+
 // Fields a paper can be edited through from the UI. Deliberately excludes
 // cites/cited_by/cites_unmatched/pdf_source/pdf_status/read/hidden — those
 // are system-managed (citation sync, PDF fetch, dedicated toggle buttons)
@@ -570,6 +607,50 @@ const server = http.createServer(function(req, res) {
           return;
         }
         const data = loadData();
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(data));
+      } catch(e) {
+        res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/paper-delete') {
+    let body = '';
+    req.on('data', function(d) { body += d; });
+    req.on('end', function() {
+      try {
+        const id     = JSON.parse(body).id;
+        const result = deletePaper(id);
+        if (result.error) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: result.error }));
+          return;
+        }
+        const data = loadData();
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(data));
+      } catch(e) {
+        res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/node-delete') {
+    let body = '';
+    req.on('data', function(d) { body += d; });
+    req.on('end', function() {
+      try {
+        const id     = JSON.parse(body).id;
+        const result = deleteGraphNode(id);
+        if (result.error) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: result.error }));
+          return;
+        }
+        const data = loadGraph();
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(data));
       } catch(e) {

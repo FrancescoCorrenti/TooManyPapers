@@ -828,6 +828,8 @@ DOI_RE = re.compile(r"10\.\d{4,9}/[^\s\"'<>]+", re.IGNORECASE)
 # semanticscholar.org/paper/... URL, with or without a title slug before it
 # (e.g. .../paper/c83e6fb0... or .../paper/Some-Title/c83e6fb0...).
 S2_ID_RE = re.compile(r"semanticscholar\.org/paper/(?:[^/\s]+/)?([0-9a-f]{40})", re.IGNORECASE)
+# Matches a literal PMCID (e.g. "PMC1234567") in a verbatim field.
+PMCID_RE = re.compile(r"PMC\d{4,9}", re.IGNORECASE)
 
 
 def _as_str(value) -> str:
@@ -885,6 +887,21 @@ def extract_s2_id(paper: dict) -> str | None:
         m = S2_ID_RE.search(h)
         if m:
             return m.group(1)
+    return None
+
+
+def extract_pmcid(paper: dict) -> str | None:
+    """Looks for a literal PMCID (e.g. "PMC1234567") in the paper's verbatim
+    fields. Same no-inference contract as extract_arxiv_id/extract_doi: only
+    a literal PMCID already present in the record is used."""
+    if not isinstance(paper, dict):
+        return None
+    haystacks = [_as_str(paper.get("venue_detail")), _as_str(paper.get("source_verified")),
+                 _as_str(paper.get("url"))]
+    for h in haystacks:
+        m = PMCID_RE.search(h)
+        if m:
+            return m.group(0).upper()
     return None
 
 
@@ -1663,13 +1680,13 @@ def cmd_papers_discover(args):
         print(f"ERROR: {e}"); sys.exit(1)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
-# -- PDF fetching (arXiv / Semantic Scholar / Unpaywall) --------------------
+# -- PDF fetching (arXiv / PMC / bioRxiv / Semantic Scholar / Unpaywall) ----
 #
 # Automatically resolves and downloads an open-access PDF for a paper already
-# in the catalog, using only the three named APIs below — no scraping of
+# in the catalog, using only the named sources below — no scraping of
 # publisher/journal sites, no paywall bypass, no WebFetch/WebSearch. Every
-# URL is either a known-stable pattern (arXiv) or comes from a real API
-# response reporting an open-access location; nothing is guessed. Downloads
+# URL is either a known-stable pattern (arXiv, PMC, bioRxiv) or comes from a
+# real API response reporting an open-access location; nothing is guessed. Downloads
 # are byte-validated (must look like an actual PDF) before the `file` field
 # is ever set, so a redirect/HTML error page can never masquerade as a saved
 # paper.
@@ -1687,7 +1704,16 @@ def resolve_pdf_candidates(paper: dict) -> tuple[list[tuple[str, str]], str | No
     """Builds an ORDERED list of (url, source) candidates to try for `paper`:
       a. arXiv     — the /pdf/{id}.pdf URL pattern is stable and documented,
                       no HTTP call needed to construct it.
-      b. Semantic Scholar — openAccessPdf field, looked up by DOI, or (if no
+      b. PMC       — the pmc.ncbi.nlm.nih.gov/articles/{PMCID}/pdf/ pattern is
+                      stable and documented, no HTTP call needed to construct
+                      it; used only when a literal PMCID is already on file.
+      c. bioRxiv   — the biorxiv.org/content/{doi}v1.full.pdf pattern, used
+                      only when "biorxiv" is literally present in the
+                      paper's own fields (not inferred from the DOI prefix,
+                      which medRxiv also shares) and a DOI is on file. v1 is
+                      always a real, downloadable version of the preprint,
+                      even if later versions exist.
+      d. Semantic Scholar — openAccessPdf field, looked up by DOI, or (if no
                       DOI is on file) directly by Semantic Scholar paper ID
                       when source_verified is a semanticscholar.org/paper/
                       URL — that ID is itself a fully valid, directly
@@ -1695,7 +1721,7 @@ def resolve_pdf_candidates(paper: dict) -> tuple[list[tuple[str, str]], str | No
                       response includes an externalIds.DOI we didn't already
                       have, it's a real value from a live API response (not
                       an inference) and gets used for the Unpaywall step too.
-      c. Unpaywall — best_oa_location, requires a DOI and a contact email.
+      e. Unpaywall — best_oa_location, requires a DOI and a contact email.
     Every source that reports a URL is included (not just the first one) so
     the caller can fall through to the next candidate if an earlier one
     turns out not to be a real PDF when actually downloaded (e.g. a host
@@ -1707,17 +1733,28 @@ def resolve_pdf_candidates(paper: dict) -> tuple[list[tuple[str, str]], str | No
     arxiv_id = extract_arxiv_id(paper)
     doi = extract_doi(paper)
     s2_id = extract_s2_id(paper)
+    pmcid = extract_pmcid(paper)
+    is_biorxiv = any("biorxiv" in _as_str(paper.get(f)).lower()
+                      for f in ("venue_detail", "source_verified", "url"))
 
     # (a) arXiv
     if arxiv_id:
         candidates.append((f"https://arxiv.org/pdf/{arxiv_id}.pdf", "arxiv"))
 
+    # (b) PMC
+    if pmcid:
+        candidates.append((f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/pdf/", "pmc"))
+
+    # (c) bioRxiv
+    if is_biorxiv and doi:
+        candidates.append((f"https://www.biorxiv.org/content/{doi}v1.full.pdf", "biorxiv"))
+
     if not doi and not s2_id:
         if candidates:
             return candidates, None
-        return [], ("no verbatim arXiv ID, DOI, or Semantic Scholar paper URL "
-                     "found in venue_detail/source_verified/url — cannot "
-                     "resolve a PDF without a real identifier.")
+        return [], ("no verbatim arXiv ID, PMCID, DOI, or Semantic Scholar "
+                     "paper URL found in venue_detail/source_verified/url — "
+                     "cannot resolve a PDF without a real identifier.")
 
     # (b) Semantic Scholar — by DOI if we have one, else directly by S2 paper ID.
     if doi:
@@ -1777,7 +1814,7 @@ def resolve_pdf_url(paper: dict) -> tuple[str | None, str, str | None]:
     top choice; _fetch_pdf_for_paper uses resolve_pdf_candidates() directly
     so it can fall through to the next source if the first one's download
     fails validation. Returns (url, source, error) — source is one of
-    "arxiv", "semantic_scholar", "unpaywall", or "none"."""
+    "arxiv", "pmc", "biorxiv", "semantic_scholar", "unpaywall", or "none"."""
     candidates, err = resolve_pdf_candidates(paper)
     if not candidates:
         return None, "none", err
@@ -2203,11 +2240,18 @@ def _generate_node_id(node_type: str, payload: dict, nodes: dict) -> str:
 # -- Graph commands --------------------------------------------------------
 
 def cmd_graph_status(args):
-    """Overview of graph: node counts by type, edges, interactions."""
+    """Overview of graph: node counts by type, edges, interactions.
+
+    Also reports the total paper count from the separate paper catalog
+    (_papers.json) alongside the graph's own node/edge counts — papers are
+    tracked in their own file and don't need a graph node or edge to exist,
+    so without this a catalog full of papers with no graph connections yet
+    would otherwise look here like "no papers registered"."""
     graph = load_graph()
     nodes = graph.get("nodes", {})
     edges = graph.get("edges", [])
     interactions = graph.get("interactions", [])
+    total_papers = len(load_papers().get("papers", {}))
 
     type_counts = {}
     for n in nodes.values():
@@ -2216,6 +2260,7 @@ def cmd_graph_status(args):
 
     print("GRAPH STATUS")
     print(SEP_HEAVY * 50)
+    print(f"Total papers (catalog, independent of graph nodes/edges): {total_papers}")
     print(f"Total nodes: {len(nodes)}")
     for t, c in sorted(type_counts.items()):
         print(f"  {t:<15} {c}")
@@ -2698,11 +2743,16 @@ def cmd_graph_engagement(args):
 
 def cmd_graph_lint(args):
     """Health-check the graph and paper catalog for common hygiene issues.
-    Read-only — reports problems, never fixes them automatically. Run this
-    occasionally to catch orphaned nodes, dead references, and stale ideas
-    before they pile up."""
+    Read-only by default — reports problems, never fixes them automatically
+    — except with --fix, which additionally removes nodes/edges whose type
+    isn't in the centralized GRAPH_NODE_TYPES/GRAPH_EDGE_TYPES sets (a type
+    that could only have gotten there by bypassing the normal add-node/
+    add-edge validation, e.g. a direct file edit). Run this occasionally to
+    catch orphaned nodes, dead references, and stale ideas before they pile
+    up."""
     stale_idea_days = 90
     quiet_days = 45
+    do_fix = "--fix" in args
     if "--stale-days" in args:
         idx = args.index("--stale-days")
         if idx + 1 < len(args):
@@ -2736,8 +2786,24 @@ def cmd_graph_lint(args):
     issues = {
         "orphan_nodes": [], "projects_without_papers": [], "orphan_papers": [],
         "stale_ideas": [], "broken_venue_refs": [], "dangling_citations": [],
-        "quiet_concepts": [],
+        "quiet_concepts": [], "invalid_type_nodes": [], "invalid_type_edges": [],
     }
+
+    # Nodes/edges whose type isn't in the centralized GRAPH_NODE_TYPES/
+    # GRAPH_EDGE_TYPES sets — the single source of truth for what's
+    # "official" (also enforced by graph-add-node/graph-add-edge). Anything
+    # outside these sets could only have gotten into _graph.json by
+    # bypassing that validation (e.g. a direct file edit).
+    for nid, n in nodes.items():
+        t = n.get("type")
+        if t not in GRAPH_NODE_TYPES:
+            issues["invalid_type_nodes"].append({"id": nid, "type": t, "name": n.get("name", "")})
+    invalid_node_ids = {i["id"] for i in issues["invalid_type_nodes"]}
+    for e in edges:
+        t = e.get("type")
+        if t not in GRAPH_EDGE_TYPES:
+            issues["invalid_type_edges"].append(
+                {"src": e.get("src"), "tgt": e.get("tgt"), "type": t})
 
     touched = set()
     incoming_by_tgt = {}
@@ -2840,6 +2906,8 @@ def cmd_graph_lint(args):
         "broken_venue_refs": "Papers pointing to a missing venue",
         "dangling_citations": "cites/cited_by pointing to a missing paper",
         "quiet_concepts": f"Concepts with no interaction in {quiet_days}+ days",
+        "invalid_type_nodes": "Nodes with a type outside GRAPH_NODE_TYPES (not official)",
+        "invalid_type_edges": "Edges with a type outside GRAPH_EDGE_TYPES (not official)",
     }
     for key, label in labels.items():
         items = issues[key]
@@ -2848,6 +2916,32 @@ def cmd_graph_lint(args):
         print(f"\n[{label}] ({len(items)})")
         for it in items:
             print(f"  {json.dumps(it, ensure_ascii=False)}")
+
+    if not do_fix:
+        if issues["invalid_type_nodes"] or issues["invalid_type_edges"]:
+            print("\nRun graph-lint --fix to remove the non-official nodes/edges above.")
+        return
+
+    if not issues["invalid_type_nodes"] and not issues["invalid_type_edges"]:
+        print("\n--fix: nothing to remove (no non-official nodes/edges).")
+        return
+
+    edges_before = len(edges)
+    fixed_edges = [
+        e for e in edges
+        if e.get("type") in GRAPH_EDGE_TYPES
+        and e.get("src") not in invalid_node_ids
+        and e.get("tgt") not in invalid_node_ids
+    ]
+    for nid in invalid_node_ids:
+        nodes.pop(nid, None)
+    graph["nodes"] = nodes
+    graph["edges"] = fixed_edges
+    save_graph(graph)
+    _log_event("graph_lint_fix", nodes_removed=len(invalid_node_ids),
+               edges_removed=edges_before - len(fixed_edges))
+    print(f"\n--fix: removed {len(invalid_node_ids)} non-official node(s) and "
+          f"{edges_before - len(fixed_edges)} non-official/dangling edge(s).")
 
 
 def cmd_graph_search(args):

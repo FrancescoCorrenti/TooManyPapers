@@ -125,6 +125,8 @@ All types are enforced by the server. The LLM cannot invent new types.
 
 **Edge types:** `connected_to` . `uses_concept` . `part_of` . `inspired_by` . `relevant_to` . `derived_from` . `enables`
 
+**Never create a `uses_concept`/`relevant_to` edge from a paper to a concept it's already tagged with in its `concepts` field.** The paper's `concepts` array is already the paper-to-concept link (rendered as the graph's `concept_tag` edges) — adding an explicit graph edge for the same pair is a pure duplicate. Reserve `uses_concept` for non-paper nodes (project/idea/pool → concept) or for a paper-concept link that is deliberately NOT already covered by the `concepts` field.
+
 **Interaction types:** `discussed` (w=3) . `deepened` (w=5) . `paper_requested` (w=10) . `read` (w=2) . `linked` (w=8)
 
 **Engagement decay:** 0.7^weeks. Recent activity is weighted more heavily.

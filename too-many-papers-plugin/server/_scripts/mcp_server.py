@@ -9,10 +9,12 @@ from mcp.server.fastmcp import FastMCP
 import io
 import contextlib
 import json
+import platform
 import shutil
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # Add script dir to path so we can import papers_api
@@ -367,8 +369,8 @@ def citations_sync() -> str:
 @mcp.tool()
 def papers_fetch_pdf(id: str) -> str:
     """Resolve and download an open-access PDF for a single paper (tries
-    arXiv, then Semantic Scholar, then Unpaywall, in that order — no
-    scraping, no paywall bypass). On success, sets `file`/`pdf_source` on
+    arXiv, then PMC, then bioRxiv, then Semantic Scholar, then Unpaywall, in
+    that order — no scraping, no paywall bypass). On success, sets `file`/`pdf_source` on
     the paper. On failure, sets `pdf_status` to "unavailable" (no
     open-access source found) or "error: <reason>" (a source was found but
     download/validation failed) instead — never invents a `file` value."""
@@ -798,22 +800,28 @@ def graph_search(query: str) -> str:
 
 
 @mcp.tool()
-def graph_lint(stale_days: int = 90, quiet_days: int = 45) -> str:
+def graph_lint(stale_days: int = 90, quiet_days: int = 45, fix: bool = False) -> str:
     """Health-check the graph and paper catalog for hygiene issues. Read-only
-    — reports problems, never fixes them automatically. Checks: orphan nodes
-    (no edges), projects with no papers linked, papers with no concept/edge,
-    ideas untouched for stale_days+ and not closed, papers pointing at a
-    missing venue, cites/cited_by pointing at a missing paper, and concepts
-    with no interaction in quiet_days+. Run this occasionally, or when the
-    user asks to check the graph's health — never automatically without
-    being asked.
+    by default — reports problems, never fixes them automatically — except
+    with fix=True, which additionally removes nodes/edges whose type isn't
+    in the graph's official type list (GRAPH_NODE_TYPES/GRAPH_EDGE_TYPES),
+    the same list graph_add_node/graph_add_edge validate against. Checks:
+    orphan nodes (no edges), projects with no papers linked, papers with no
+    concept/edge, ideas untouched for stale_days+ and not closed, papers
+    pointing at a missing venue, cites/cited_by pointing at a missing paper,
+    concepts with no interaction in quiet_days+, and nodes/edges with a
+    non-official type. Run this occasionally, or when the user asks to
+    check the graph's health — never automatically without being asked, and
+    never pass fix=True without the user asking for the cleanup.
 
     Args:
         stale_days: Age threshold (days) for flagging an open idea as stale (default 90).
         quiet_days: Days without interaction before a concept is flagged as quiet (default 45).
+        fix: If True, remove nodes/edges with a non-official type (default False).
     """
+    fix_args = ["--fix"] if fix else []
     return _capture(papers_api.cmd_graph_lint,
-                     ["--stale-days", str(stale_days), "--quiet-days", str(quiet_days)])
+                     ["--stale-days", str(stale_days), "--quiet-days", str(quiet_days)] + fix_args)
 
 
 # =============================================================================
@@ -826,12 +834,47 @@ def _port_in_use(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
+def _kill_process_on_port(port: int) -> bool:
+    """Finds and kills whatever process is listening on `port`, so
+    webui_launch can restart a stale/stuck server instead of just reporting
+    it's already running. Shells out to platform-native tools (no extra
+    dependency like psutil) — netstat/taskkill on Windows, lsof/kill
+    elsewhere. Returns True if a process was found and killed."""
+    try:
+        if platform.system() == "Windows":
+            out = subprocess.run(
+                ["netstat", "-ano"], capture_output=True, text=True, timeout=5
+            ).stdout
+            pids = set()
+            for line in out.splitlines():
+                parts = line.split()
+                if len(parts) >= 5 and parts[0] == "TCP" and f":{port}" in parts[1] \
+                        and parts[3] == "LISTENING":
+                    pids.add(parts[-1])
+            for pid in pids:
+                subprocess.run(["taskkill", "/F", "/PID", pid],
+                                capture_output=True, timeout=5)
+            return bool(pids)
+        else:
+            out = subprocess.run(
+                ["lsof", "-ti", f"tcp:{port}"], capture_output=True, text=True, timeout=5
+            ).stdout
+            pids = [p for p in out.split() if p]
+            for pid in pids:
+                subprocess.run(["kill", "-9", pid], capture_output=True, timeout=5)
+            return bool(pids)
+    except Exception:
+        return False
+
+
 @mcp.tool()
 def webui_launch() -> str:
     """Start the local Too Many Papers web UI (search, filters, PDF viewer,
     citation graph) and return its URL. Runs entirely from files already
     inside the installed plugin — no separate download or repo clone
-    needed. Requires Node.js. Safe to call even if it's already running."""
+    needed. Requires Node.js. If the server is already running, it is
+    killed and restarted fresh (picks up any updated web UI files and
+    clears a stuck/stale instance) rather than left as-is."""
     if not WEBUI_SERVER.exists():
         return f"Error: web UI files not found at {WEBUI_SERVER}."
 
@@ -841,8 +884,19 @@ def webui_launch() -> str:
             "https://nodejs.org, then try again."
         )
 
+    restarted = False
     if _port_in_use(WEBUI_PORT):
-        return f"Too Many Papers is already running at http://localhost:{WEBUI_PORT}"
+        if not _kill_process_on_port(WEBUI_PORT):
+            return (
+                f"Too Many Papers is already running at http://localhost:{WEBUI_PORT} "
+                "but the existing process could not be found/killed to restart it "
+                "(close it manually and try again)."
+            )
+        restarted = True
+        for _ in range(20):
+            if not _port_in_use(WEBUI_PORT):
+                break
+            time.sleep(0.2)
 
     import os
 
@@ -858,8 +912,9 @@ def webui_launch() -> str:
         start_new_session=True,
     )
 
+    action = "restarted" if restarted else "starting"
     return (
-        f"Too Many Papers starting at http://localhost:{WEBUI_PORT} "
+        f"Too Many Papers {action} at http://localhost:{WEBUI_PORT} "
         "— open that URL in your browser. "
         f"Data directory: {papers_api.DATA_DIR}"
     )

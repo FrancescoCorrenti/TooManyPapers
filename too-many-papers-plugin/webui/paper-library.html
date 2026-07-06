@@ -287,13 +287,19 @@
     border-radius: var(--radius);
     transition: all .2s ease;
     opacity: 0.6;
+    color: var(--text-dim);
     display: flex;
     align-items: center;
     justify-content: center;
   }
   
-  .read-toggle:hover, .pin-btn:hover, .hide-btn:hover { 
-    opacity: 1; 
+  .read-toggle:hover, .pin-btn:hover, .hide-btn:hover, .cite-btn:hover {
+    opacity: 1;
+    background: var(--surface2);
+  }
+  .delete-btn:hover {
+    opacity: 1;
+    color: #e5534b;
     background: var(--surface2);
   }
   .read-toggle.loading { animation: pulse 1s ease-in-out infinite; opacity: .5; }
@@ -1583,6 +1589,7 @@
 <script>
 const API = 'http://localhost:3737/api';
 const PENCIL_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
+const TRASH_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 
 let allPapers   = [];
 let allVenues   = {};
@@ -1787,6 +1794,55 @@ async function toggleHidden(id) {
   }
 }
 
+// Permanent delete (unlike toggleHidden above, which only soft-hides) —
+// asks for confirmation since, unlike a hide, this can't be undone from the UI.
+async function deletePaper(id) {
+  if (!confirm(`Permanently delete paper ${id}? This cannot be undone.`)) return;
+  try {
+    const res = await fetch(`${API}/paper-delete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (data.error) { toast(`Error: ${data.error}`); return; }
+    allPapers   = data.papers   || [];
+    allVenues   = data.venues   || {};
+    allConcepts = data.concepts || {};
+    if (activeSub.paper === id) { activeSub.paper = 'list'; renderSubTabBar('paper'); }
+    populateFilters();
+    render();
+    invalidateGraphCache();
+    toast(`Deleted ${id}`);
+  } catch (e) {
+    toast('Error deleting');
+  }
+}
+
+// Permanent delete for any non-paper, non-venue graph node (concept/
+// project/endpoint/idea/pool/note) — mirrors deletePaper above.
+async function deleteGraphNode(type, id) {
+  if (!confirm(`Permanently delete ${id}? This cannot be undone.`)) return;
+  try {
+    const res = await fetch(`${API}/node-delete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (data.error) { toast(`Error: ${data.error}`); return; }
+    GraphNodes = data.nodes || {};
+    GraphEdges = data.edges || [];
+    if (activeSub[type] === id) { activeSub[type] = 'list'; renderSubTabBar(type); }
+    resetAllTypeToolbars();
+    renderTypeGrid(type);
+    populatePaperLinkedToFilter();
+    invalidateGraphCache();
+    graphLoadPromise = Promise.resolve({ nodes: GraphNodes, edges: GraphEdges }); // already fresh, avoid a redundant fetch
+    toast(`Deleted ${id}`);
+  } catch (e) {
+    toast('Error deleting');
+  }
+}
+
 // ── Filters ──────────────────────────────────────────────────────────────────
 
 function populateFilters() {
@@ -1911,6 +1967,9 @@ function render() {
   grid.querySelectorAll('.hide-btn').forEach(btn => {
     btn.addEventListener('click', () => toggleHidden(btn.dataset.id));
   });
+  grid.querySelectorAll('[data-delete-paper]').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); deletePaper(btn.dataset.deletePaper); });
+  });
   grid.querySelectorAll('.cite-link').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); openDetail('paper', el.dataset.goto); });
   });
@@ -1964,11 +2023,27 @@ function downloadBibtex(ids) {
 }
 
 async function copyBibtex(ids) {
+  // navigator.clipboard.writeText() requires the call to still be within the
+  // click's "user activation" window — awaiting the fetch first (as this
+  // used to do) can run out that window by the time the text is ready,
+  // especially since the export shells out to a Python subprocess and isn't
+  // instant, causing the write to silently fail or grab stale/partial
+  // clipboard state. Using clipboard.write() with a Promise-based
+  // ClipboardItem instead issues the write immediately (preserving
+  // activation) and lets the content resolve asynchronously — the
+  // Chrome-documented way to do an async clipboard write.
+  const textPromise = fetch(bibtexUrl(ids, false)).then(async res => {
+    if (!res.ok) throw new Error((await res.text()).slice(0, 120));
+    return res.text();
+  });
   try {
-    const res = await fetch(bibtexUrl(ids, false));
-    if (!res.ok) { toast('Export failed: ' + (await res.text()).slice(0, 120)); return; }
-    const text = await res.text();
-    await navigator.clipboard.writeText(text);
+    if (window.ClipboardItem) {
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'text/plain': textPromise.then(t => new Blob([t], { type: 'text/plain' })) }),
+      ]);
+    } else {
+      await navigator.clipboard.writeText(await textPromise);
+    }
     toast('Citation copied to clipboard');
   } catch (e) {
     toast('Copy failed: ' + e.message);
@@ -2042,6 +2117,7 @@ function cardHTML(p) {
         <button class="read-toggle" data-id="${esc(p.id)}" title="${isRead ? 'Mark as unread' : 'Mark as read'}">
           ${isRead ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>'}
         </button>
+        <button class="delete-btn" data-delete-paper="${esc(p.id)}" title="Delete permanently">${TRASH_SVG}</button>
       </div>
     </div>
     <div class="paper-title">${esc(p.titolo)}</div>
@@ -2709,6 +2785,9 @@ function renderTypeGrid(type) {
   grid.querySelectorAll('[data-edit-node]').forEach(btn => {
     btn.addEventListener('click', e => { e.stopPropagation(); openEditModal('node', btn.dataset.editNode); });
   });
+  grid.querySelectorAll('[data-delete-node]').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); deleteGraphNode(type, btn.dataset.deleteNode); });
+  });
 }
 
 function typeCardHTML(id, n) {
@@ -2718,7 +2797,10 @@ function typeCardHTML(id, n) {
   <div class="type-card" data-id="${esc(id)}">
     <div class="type-card-header">
       <div class="type-card-id">${esc(id)}</div>
-      <button class="edit-btn" data-edit-node="${esc(id)}" title="Edit">${PENCIL_SVG}</button>
+      <div class="card-actions">
+        <button class="edit-btn" data-edit-node="${esc(id)}" title="Edit">${PENCIL_SVG}</button>
+        <button class="delete-btn" data-delete-node="${esc(id)}" title="Delete permanently">${TRASH_SVG}</button>
+      </div>
     </div>
     <div class="type-card-name">${esc(n.name || id)}</div>
     ${sub ? `<div class="type-card-sub">${esc(sub)}</div>` : ''}
@@ -2930,6 +3012,7 @@ function renderPaperDetail(container, id) {
         <button class="filter-btn detail-hide-toggle" data-id="${esc(p.id)}">${p.hidden ? 'Restore' : 'Hide'}</button>
         ${extLink ? `<a class="filter-btn" href="${esc(extLink)}" target="_blank" rel="noopener">Open source ↗</a>` : ''}
         <button class="edit-btn detail-edit-btn" data-edit-paper="${esc(p.id)}" title="Edit">${PENCIL_SVG}</button>
+        <button class="delete-btn detail-edit-btn" data-delete-paper="${esc(p.id)}" title="Delete permanently">${TRASH_SVG}</button>
       </div>
     </div>
     <div class="card-meta" style="margin-top:14px;">
@@ -2957,6 +3040,8 @@ function renderPaperDetail(container, id) {
   if (hideBtn) hideBtn.addEventListener('click', () => toggleHidden(p.id).then(() => renderPaperDetail(container, id)));
   const editBtn = container.querySelector('[data-edit-paper]');
   if (editBtn) editBtn.addEventListener('click', () => openEditModal('paper', editBtn.dataset.editPaper));
+  const deleteBtn = container.querySelector('[data-delete-paper]');
+  if (deleteBtn) deleteBtn.addEventListener('click', () => deletePaper(deleteBtn.dataset.deletePaper));
 
   wirePdfSection(container, p);
 }
@@ -3285,6 +3370,7 @@ function renderNodeDetail(container, type, id) {
       </div>
       <div class="detail-actions">
         <button class="edit-btn detail-edit-btn" data-edit-node="${esc(id)}" title="Edit">${PENCIL_SVG}</button>
+        <button class="delete-btn detail-edit-btn" data-delete-node="${esc(id)}" title="Delete permanently">${TRASH_SVG}</button>
       </div>
     </div>
     ${fields.length ? `<div class="detail-section">${fields.join('')}</div>` : ''}
@@ -3301,6 +3387,8 @@ function renderNodeDetail(container, type, id) {
     el.addEventListener('click', () => openDetail(el.dataset.openType, el.dataset.openId)));
   const editBtn = container.querySelector('[data-edit-node]');
   if (editBtn) editBtn.addEventListener('click', () => openEditModal('node', editBtn.dataset.editNode));
+  const deleteBtn = container.querySelector('[data-delete-node]');
+  if (deleteBtn) deleteBtn.addEventListener('click', () => deleteGraphNode(type, deleteBtn.dataset.deleteNode));
 }
 
 // ── Edit modal ───────────────────────────────────────────────────────────────
@@ -3734,6 +3822,25 @@ const Graph = (function() {
       .map(e => ({ ...e, a: nodesById.get(e.from), b: nodesById.get(e.to) }))
       .filter(e => e.a && e.b);
 
+    // Per-node degree, used to scale node radius a little in draw(): for
+    // papers it's citation in-degree only (how many other papers cite this
+    // one) rather than total edges, so a heavily-tagged-but-uncited paper
+    // doesn't look more "important" than one lots of others actually cite.
+    // Every other node type just counts all edges touching it.
+    nodes.forEach(n => { n.degree = 0; });
+    edges.forEach(e => {
+      // Source side: papers don't accrue degree for citing/tagging outward,
+      // only for being cited (handled below on the target side).
+      if (e.a.type !== 'paper') e.a.degree++;
+      // Target side: a paper's degree is citation in-degree only; every
+      // other node type counts any incoming edge.
+      if (e.b.type === 'paper') {
+        if (e.type === 'cites') e.b.degree++;
+      } else {
+        e.b.degree++;
+      }
+    });
+
     populateConceptLegend(rawNodes, conceptColorById);
     populateConceptFilter();
     populateEdgeTypeFilters();
@@ -3746,14 +3853,16 @@ const Graph = (function() {
     startSimulation();
   }
 
-  // The simulation only ever contains nodes we intend to lay out. Ghost
-  // nodes (papers cited but not in the library) are excluded unless the
-  // "Missing" toggle is on — there are typically thousands of them, and
-  // simulating leaf nodes nobody's looking at just makes the default view
-  // slower and drags the real papers toward invisible anchors.
+  // The simulation only ever contains nodes whose type is currently
+  // checked — unchecking any type (Papers, Concepts, Missing, ...) both
+  // hides it and re-lays-out the rest around what's left, rather than just
+  // hiding it in place while the layout still accounts for it. Ghosts in
+  // particular default to excluded since there are typically thousands of
+  // them, and simulating leaf nodes nobody's looking at would otherwise
+  // slow down the default view and drag real papers toward invisible
+  // anchors — but the rule is the same one applied to every type.
   function rebuildSimMembership() {
-    const showGhosts = typeFilter.has('ghost');
-    simNodes = nodes.filter(n => showGhosts || n.type !== 'ghost');
+    simNodes = nodes.filter(n => typeFilter.has(n.type));
     const inSim = new Set(simNodes);
     simLinks = edges
       .filter(e => inSim.has(e.a) && inSim.has(e.b))
@@ -4095,11 +4204,46 @@ const Graph = (function() {
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
 
+    // Citation arrowheads — "cites" is the one edge type where direction
+    // actually matters (who cites whom); drawn as small filled triangles
+    // pointing at the cited paper, on top of the plain lines above, using
+    // the same visibility/dim/culling rules so they never appear detached
+    // from their line.
+    ctx.setLineDash([]);
+    const citeStyle = EDGE_STYLE.cites || DEFAULT_EDGE_STYLE;
+    ctx.fillStyle = citeStyle.color;
+    [...edges, ...(hoverEdge ? [hoverEdge] : [])].forEach(e => {
+      if (e.type !== 'cites') return;
+      if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeTypeVisible(e)) return;
+      if (!inView(e.a) && !inView(e.b)) return;
+      const dim = hasSearch && !(nodeMatchesSearch(e.a) && nodeMatchesSearch(e.b));
+      const rb = (e.b.type === 'paper' ? 6 : 8) + Math.min(4, Math.sqrt(e.b.degree || 0));
+      const dx = e.b.x - e.a.x, dy = e.b.y - e.a.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const ux = dx / dist, uy = dy / dist;
+      const tipX = e.b.x - ux * rb, tipY = e.b.y - uy * rb;
+      const arrowLen = 6 / zoom, arrowHalfWidth = 2.5 / zoom;
+      const baseX = tipX - ux * arrowLen, baseY = tipY - uy * arrowLen;
+      const perpX = -uy * arrowHalfWidth, perpY = ux * arrowHalfWidth;
+      ctx.globalAlpha = (dim ? citeStyle.alpha * 0.15 : citeStyle.alpha) * (e === hoverEdge ? 1 : 0.9);
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(baseX + perpX, baseY + perpY);
+      ctx.lineTo(baseX - perpX, baseY - perpY);
+      ctx.closePath();
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
     // Nodes
     nodes.forEach(n => {
       if (!nodeVisible(n)) return;
       if (!inView(n)) return;
-      const r = n.type === 'paper' ? 6 : (n.type === 'concept' ? 8 : 8);
+      const baseR = n.type === 'paper' ? 6 : (n.type === 'concept' ? 8 : 8);
+      // Subtle degree-based growth, capped so a handful of highly-connected
+      // hubs don't dwarf everything else — sqrt keeps it a gentle curve
+      // instead of linear.
+      const r = baseR + Math.min(4, Math.sqrt(n.degree || 0));
       const dim = hasSearch && !nodeMatchesSearch(n);
       ctx.globalAlpha = dim ? 0.15 : 1;
       if (n.type === 'concept') {
@@ -4352,19 +4496,15 @@ const Graph = (function() {
 
     document.querySelectorAll('.gtype').forEach(cb => {
       cb.addEventListener('change', () => {
-        const hadGhosts = typeFilter.has('ghost');
         typeFilter = new Set([...document.querySelectorAll('.gtype:checked')].map(c => c.value));
-        // Toggling "Missing" changes which nodes are in the simulation at
-        // all (ghosts are excluded by default), so the layout must be
-        // rebuilt. Other type toggles only change what's drawn, not laid
-        // out — a redraw is enough.
-        if (typeFilter.has('ghost') !== hadGhosts) {
-          rebuildSimMembership();
-          buildEdgeIndex();
-          needsInitialFit = true;
-          startSimulation();
-          simulation.alpha(0.6).restart();
-        }
+        // Any type toggle changes which nodes are in the simulation, so the
+        // layout is rebuilt from what's left every time — not just hidden
+        // in place while the old layout still accounts for it.
+        rebuildSimMembership();
+        buildEdgeIndex();
+        needsInitialFit = true;
+        startSimulation();
+        simulation.alpha(0.6).restart();
         // The "linked to" subgraph (if any) depends on which types are
         // currently visible — recompute it, not just the rendering.
         recomputeConceptLinkSet();
@@ -4408,6 +4548,12 @@ const Graph = (function() {
       // type defaults to visible.
       document.querySelectorAll('.gtype').forEach(cb => { cb.checked = cb.value !== 'ghost'; });
       typeFilter = new Set(['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
+      // Resetting types changes sim membership just like any other type
+      // toggle — rebuild the layout from what's left.
+      rebuildSimMembership();
+      buildEdgeIndex();
+      startSimulation();
+      simulation.alpha(0.6).restart();
       linkedToMS.clear();
       conceptsMS.clear();
       conceptLinkDepth = 2;
@@ -4455,16 +4601,15 @@ const Graph = (function() {
   }
 
   function applyFilterState(state) {
-    const hadGhosts = typeFilter.has('ghost');
     typeFilter = new Set(state.types || ['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
     document.querySelectorAll('.gtype').forEach(cb => { cb.checked = typeFilter.has(cb.value); });
-    // Restoring a preset that (un)includes ghosts changes sim membership.
-    if (typeFilter.has('ghost') !== hadGhosts) {
-      rebuildSimMembership();
-      buildEdgeIndex();
-      startSimulation();
-      simulation.alpha(0.6).restart();
-    }
+    // Restoring a preset changes which types are checked, which changes sim
+    // membership — rebuild the layout from what's left, same as any other
+    // type toggle.
+    rebuildSimMembership();
+    buildEdgeIndex();
+    startSimulation();
+    simulation.alpha(0.6).restart();
 
     // Back-compat: older presets stored linkedTo as a single id string.
     const linkedIds = Array.isArray(state.linkedTo) ? state.linkedTo
