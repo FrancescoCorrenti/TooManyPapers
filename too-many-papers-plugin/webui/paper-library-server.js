@@ -304,6 +304,33 @@ function deletePaper(paperId) {
   return { ok: true };
 }
 
+// Bulk version of deletePaper() — reads/writes _papers.json once for the
+// whole batch instead of once per ID.
+function deletePapersBulk(ids) {
+  const raw    = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
+  const papers = raw.papers || {};
+  const idSet  = new Set(ids);
+  const deleted = [];
+  const notFound = [];
+  for (const id of ids) {
+    if (papers[id]) { delete papers[id]; deleted.push(id); }
+    else notFound.push(id);
+  }
+  for (const other of Object.values(papers)) {
+    for (const field of ['cites', 'cited_by', 'cites_unmatched']) {
+      if (Array.isArray(other[field])) {
+        other[field] = other[field].filter(v => !idSet.has(v));
+      }
+    }
+  }
+  raw.papers = papers;
+  raw._meta = raw._meta || {};
+  raw._meta.total_papers = Object.keys(papers).length;
+  raw._meta.last_updated = new Date().toISOString().slice(0, 10);
+  fs.writeFileSync(PAPERS_FILE, JSON.stringify(raw, null, 2), 'utf8');
+  return { ok: true, deleted, notFound };
+}
+
 // Permanent delete of any non-paper graph node (concept/project/endpoint/
 // idea/pool/note) — mirrors papers_api.py's cmd_graph_remove_node: pop the
 // node and drop every edge that touches it.
@@ -640,6 +667,28 @@ const server = http.createServer(function(req, res) {
           res.end(JSON.stringify({ error: result.error }));
           return;
         }
+        const data = loadData();
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(data));
+      } catch(e) {
+        res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/paper-delete-bulk') {
+    let body = '';
+    req.on('data', function(d) { body += d; });
+    req.on('end', function() {
+      try {
+        const ids = JSON.parse(body).ids;
+        if (!Array.isArray(ids) || !ids.length) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'ids must be a non-empty array.' }));
+          return;
+        }
+        deletePapersBulk(ids);
         const data = loadData();
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(data));

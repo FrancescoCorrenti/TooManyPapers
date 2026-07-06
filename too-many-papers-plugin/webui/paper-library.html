@@ -1391,6 +1391,9 @@
   }
   .menu button:hover:not(:disabled) { background: var(--surface); }
   .menu button:disabled { color: var(--text-dim); cursor: default; }
+  .menu button.danger { color: #e5534b; }
+  .menu button.danger:hover:not(:disabled) { background: rgba(229, 83, 75, 0.12); }
+  .menu .menu-sep { height: 1px; background: var(--border-light); margin: 6px 4px; }
 
   /* Per-card "more actions" overflow menu (Edit/Cite/Source/Hide/Delete) —
      keeps the always-visible icon row down to pin + read-toggle so the
@@ -1492,11 +1495,13 @@
       <button class="filter-btn" id="paper-reset-filters">Reset filters</button>
 
       <div class="menu-wrap">
-        <button class="filter-btn" id="paper-export-btn" title="Export citations as BibTeX">Export &#9662;</button>
-        <div class="menu" id="paper-export-menu" style="display:none;">
+        <button class="filter-btn" id="paper-actions-btn" title="Bulk actions on selected papers">Actions &#9662;</button>
+        <div class="menu" id="paper-actions-menu" style="display:none;">
           <button data-export="all-download">Download all (.bib)</button>
           <button data-export="sel-download">Download selected (<span id="export-sel-count">0</span>) (.bib)</button>
           <button data-export="sel-copy">Copy selected to clipboard</button>
+          <div class="menu-sep"></div>
+          <button class="danger" data-action="sel-delete">Delete selected (<span id="actions-sel-count">0</span>)&hellip;</button>
         </div>
       </div>
     </div>
@@ -1901,6 +1906,33 @@ async function deletePaper(id) {
   }
 }
 
+// Bulk permanent delete of the current Actions-menu selection — same
+// irreversibility and confirm() pattern as deletePaper() above, just for N IDs.
+async function deleteSelectedPapers() {
+  const ids = [...selectedForExport];
+  if (!ids.length) return;
+  if (!confirm(`Permanently delete ${ids.length} selected paper(s)? This cannot be undone.`)) return;
+  try {
+    const res = await fetch(`${API}/paper-delete-bulk`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    const data = await res.json();
+    if (data.error) { toast(`Error: ${data.error}`); return; }
+    allPapers   = data.papers   || [];
+    allVenues   = data.venues   || {};
+    allConcepts = data.concepts || {};
+    if (ids.includes(activeSub.paper)) { activeSub.paper = 'list'; renderSubTabBar('paper'); }
+    selectedForExport.clear();
+    populateFilters();
+    render();
+    invalidateGraphCache();
+    toast(`Deleted ${ids.length} paper(s)`);
+  } catch (e) {
+    toast('Error deleting');
+  }
+}
+
 // Permanent delete for any non-paper, non-venue graph node (concept/
 // project/endpoint/idea/pool/note) — mirrors deletePaper above.
 async function deleteGraphNode(type, id) {
@@ -2100,11 +2132,15 @@ function bibtexUrl(ids, download) {
 function updateExportCount() {
   const el = document.getElementById('export-sel-count');
   if (el) el.textContent = String(selectedForExport.size);
+  const actionsEl = document.getElementById('actions-sel-count');
+  if (actionsEl) actionsEl.textContent = String(selectedForExport.size);
   const selDl = document.querySelector('[data-export="sel-download"]');
   const selCopy = document.querySelector('[data-export="sel-copy"]');
+  const selDelete = document.querySelector('[data-action="sel-delete"]');
   const none = selectedForExport.size === 0;
   if (selDl) selDl.disabled = none;
   if (selCopy) selCopy.disabled = none;
+  if (selDelete) selDelete.disabled = none;
 }
 
 function downloadBibtex(ids) {
@@ -2414,10 +2450,10 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.card-menu-wrap')) closeCardMenus();
 });
 
-// ── Export menu ────────────────────────────────────────────────────────────
-(function initExportMenu() {
-  const btn = document.getElementById('paper-export-btn');
-  const menu = document.getElementById('paper-export-menu');
+// ── Actions menu ───────────────────────────────────────────────────────────
+(function initActionsMenu() {
+  const btn = document.getElementById('paper-actions-btn');
+  const menu = document.getElementById('paper-actions-menu');
   btn.addEventListener('click', e => {
     e.stopPropagation();
     const open = menu.style.display !== 'none';
@@ -2434,6 +2470,13 @@ document.addEventListener('click', e => {
       if (action === 'all-download') downloadBibtex('');
       else if (action === 'sel-download' && ids) downloadBibtex(ids);
       else if (action === 'sel-copy' && ids) copyBibtex(ids);
+      menu.style.display = 'none';
+    });
+  });
+  menu.querySelectorAll('button[data-action]').forEach(b => {
+    b.addEventListener('click', () => {
+      const action = b.dataset.action;
+      if (action === 'sel-delete' && selectedForExport.size) deleteSelectedPapers();
       menu.style.display = 'none';
     });
   });
