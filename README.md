@@ -53,9 +53,9 @@ Replace the path with where you cloned this repo. Skills and slash commands are 
 Just talk about papers:
 
 - "I just read this paper: [link], add it to my library"
-- "What should I read next on segmentation?"
+- "What should I read next on transformers?"
 - "Give me today's paper briefing"
-- "Connect this paper to my FCD project"
+- "Connect this paper to my RAG project"
 
 On first use, the AI asks what you're currently working on and drafts a starting set of concepts and projects for you to confirm.
 
