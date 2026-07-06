@@ -4253,6 +4253,16 @@ const Graph = (function() {
   let conceptLinkDepth = 2;
   let conceptLinkSet = null; // Set of node ids, or null when no filter active
   let edgeTypeFilter = null; // Set of allowed edge types, or null = all allowed
+  // Right-click isolation history: the node id last isolated via right-click
+  // stays visually "selected" (a halo ring) until another node is isolated
+  // or the view is reset. previousTrail holds a node-id -> hop-distance map
+  // from whichever node was isolated *before* the current one, so that
+  // stepping from A to B doesn't just erase A's neighborhood — it lingers,
+  // dimmed, fading out the further a node is from A, and vanishes entirely
+  // beyond depth*2 hops.
+  let selectedNodeId = null;
+  let previousTrail = null;
+  let cameraAnimFrame = null; // rAF handle for an in-flight pan/zoom animation
 
   const EDGE_STYLE = {
     cites:        { dash: [6, 4], alpha: 0.55, color: '#BA7C65' },
@@ -4418,12 +4428,12 @@ const Graph = (function() {
     spatialGrid = buildSpatialGrid();
     // Track the growing layout in-frame while it settles, until the user
     // takes over the view (needsInitialFit is cleared on first interaction).
-    if (needsInitialFit && !dragNode && !panStart) fitView();
+    if (needsInitialFit && !dragNode && !panStart && !cameraAnimFrame) fitView();
     draw();
   }
 
   function onSimEnd() {
-    if (needsInitialFit && !dragNode && !panStart) fitView();
+    if (needsInitialFit && !dragNode && !panStart && !cameraAnimFrame) fitView();
     needsInitialFit = false;
     draw();
   }
@@ -4444,21 +4454,53 @@ const Graph = (function() {
   // because everything ended up outside the viewport. Fitting to the
   // actual bounds instead of assuming a fixed zoom is what makes this work
   // at any graph size instead of only the size it happened to be tuned for.
-  function fitView() {
-    if (width === 0 || height === 0) return; // canvas not sized yet
+  function computeFitTarget() {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     nodes.forEach(n => {
       if (!nodeVisible(n)) return;
       minX = Math.min(minX, n.x); maxX = Math.max(maxX, n.x);
       minY = Math.min(minY, n.y); maxY = Math.max(maxY, n.y);
     });
-    if (!isFinite(minX)) { zoom = 1; panX = 0; panY = 0; return; }
+    if (!isFinite(minX)) return { zoom: 1, panX: 0, panY: 0 };
     const boundsW = Math.max(1, maxX - minX), boundsH = Math.max(1, maxY - minY);
     const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
     const padding = 0.85; // leave breathing room around the fitted bounds
-    zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(width / boundsW, height / boundsH) * padding));
-    panX = -cx * zoom;
-    panY = -cy * zoom;
+    const z = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(width / boundsW, height / boundsH) * padding));
+    return { zoom: z, panX: -cx * z, panY: -cy * z };
+  }
+
+  function fitView() {
+    if (width === 0 || height === 0) return; // canvas not sized yet
+    const t = computeFitTarget();
+    zoom = t.zoom; panX = t.panX; panY = t.panY;
+  }
+
+  function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+
+  // Smoothly interpolates pan/zoom toward a target instead of snapping —
+  // used for every deliberate "jump" (isolate, reset) so the graph reads as
+  // a camera moving through the layout rather than a cut. Cancels any
+  // animation already in flight (e.g. jumping again before the last one
+  // finished) rather than fighting it.
+  function animateCamera(target, duration = 450) {
+    if (cameraAnimFrame) cancelAnimationFrame(cameraAnimFrame);
+    const from = { panX, panY, zoom };
+    const start = performance.now();
+    function step(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const e = easeInOutCubic(t);
+      panX = from.panX + (target.panX - from.panX) * e;
+      panY = from.panY + (target.panY - from.panY) * e;
+      zoom = from.zoom + (target.zoom - from.zoom) * e;
+      scheduleDraw();
+      cameraAnimFrame = t < 1 ? requestAnimationFrame(step) : null;
+    }
+    cameraAnimFrame = requestAnimationFrame(step);
+  }
+
+  function animateFitView() {
+    if (width === 0 || height === 0) return;
+    animateCamera(computeFitTarget());
   }
 
   // Feeds both "Linked to" (any node) and "Concepts" (concepts only)
@@ -4496,6 +4538,14 @@ const Graph = (function() {
   // so depth/edge types are immediately visible and adjustable — the panel
   // doesn't stay hidden with an invisible filter active.
   function isolateNode(nodeId) {
+    // Only treat the current seed as a "previous isolation" to trail if it
+    // really was one (a single right-click seed, not a multi-select pick),
+    // and it isn't the same node being re-isolated.
+    const prevSeeds = [...linkSeeds];
+    previousTrail = (prevSeeds.length === 1 && prevSeeds[0] !== nodeId)
+      ? computeHopMap(prevSeeds[0], conceptLinkDepth * 2)
+      : null;
+    selectedNodeId = nodeId;
     conceptsMS.clear();
     linkedToMS.setSelected([nodeId]);
     const panel = document.getElementById('graph-filters-panel');
@@ -4504,6 +4554,8 @@ const Graph = (function() {
     toggle.setAttribute('aria-expanded', 'true');
     toggle.innerHTML = 'Filters &#9662;';
     updateLinkSeeds();
+    needsInitialFit = false; // this is a deliberate jump, not the initial layout settle
+    animateFitView();
   }
 
   function populateEdgeTypeFilters() {
@@ -4590,8 +4642,48 @@ const Graph = (function() {
 
   function nodeVisible(n) {
     if (!typeFilter.has(n.type)) return false;
-    if (conceptLinkSet && !conceptLinkSet.has(n.id)) return false;
+    if (conceptLinkSet && !conceptLinkSet.has(n.id)) {
+      // Not part of the active isolation — but let it through if it's still
+      // within the fading trail of the previously isolated node.
+      return !!(previousTrail && previousTrail.has(n.id));
+    }
     return true;
+  }
+
+  // BFS hop-distance map from a seed node, respecting the same type/edge
+  // filters as recomputeConceptLinkSet — used to fade out the previously
+  // isolated node's neighborhood rather than cutting it off abruptly.
+  function computeHopMap(seedId, maxHops) {
+    const dist = new Map();
+    const typeOk = id => { const n = nodesById.get(id); return n && typeFilter.has(n.type); };
+    if (!typeOk(seedId)) return dist;
+    dist.set(seedId, 0);
+    let frontier = [seedId];
+    for (let hop = 0; hop < maxHops && frontier.length; hop++) {
+      const next = [];
+      frontier.forEach(id => {
+        edges.forEach(e => {
+          if (!edgeTypeVisible(e)) return;
+          const other = e.from === id ? e.to : (e.to === id ? e.from : null);
+          if (!other || dist.has(other) || !typeOk(other)) return;
+          dist.set(other, hop + 1);
+          next.push(other);
+        });
+      });
+      frontier = next;
+    }
+    return dist;
+  }
+
+  // Opacity for a node kept visible only via the fading trail (null if the
+  // node isn't a trail-only node — i.e. it's part of the active isolation,
+  // or there's no trail at all). Fades linearly with hop distance.
+  function trailAlpha(n) {
+    if (!previousTrail || !previousTrail.has(n.id)) return null;
+    if (conceptLinkSet && conceptLinkSet.has(n.id)) return null;
+    const d = previousTrail.get(n.id);
+    const maxHops = Math.max(1, conceptLinkDepth * 2);
+    return Math.max(0.12, 0.5 * (1 - d / (maxHops + 1)));
   }
 
   function edgeTypeVisible(e) {
@@ -4773,7 +4865,8 @@ const Graph = (function() {
       // instead of linear.
       const r = baseR + Math.min(4, Math.sqrt(n.degree || 0));
       const dim = hasSearch && !nodeMatchesSearch(n);
-      ctx.globalAlpha = dim ? 0.15 : 1;
+      const tAlpha = trailAlpha(n);
+      ctx.globalAlpha = tAlpha !== null ? Math.min(dim ? 0.15 : 1, tAlpha) : (dim ? 0.15 : 1);
       if (n.type === 'concept') {
         // The stipple pattern is imperceptible once the node is only a few
         // screen pixels across — skip straight to a flat fill there rather
@@ -4811,6 +4904,18 @@ const Graph = (function() {
         : n.color);
       ctx.stroke();
       ctx.setLineDash([]);
+      // The right-click-isolated node stays visibly "selected" — a halo
+      // ring independent of hover — until another node is isolated or the
+      // view is reset, so isolation reads as a persistent focus, not just a
+      // filter that happened to run.
+      if (n.id === selectedNodeId) {
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 2 / zoom;
+        ctx.strokeStyle = '#f3c944';
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r + 5 / zoom, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     });
     ctx.globalAlpha = 1;
 
@@ -4923,6 +5028,7 @@ const Graph = (function() {
       dragDistance = 0;
       mouseDownAt = { x: e.clientX, y: e.clientY };
       needsInitialFit = false; // user has taken over the view
+      if (cameraAnimFrame) { cancelAnimationFrame(cameraAnimFrame); cameraAnimFrame = null; }
       if (n) {
         dragNode = n;
         dragging = true;
@@ -5008,6 +5114,7 @@ const Graph = (function() {
 
     canvas.addEventListener('wheel', e => {
       e.preventDefault();
+      if (cameraAnimFrame) { cancelAnimationFrame(cameraAnimFrame); cameraAnimFrame = null; }
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
       const before = screenToWorld(sx, sy);
@@ -5070,8 +5177,9 @@ const Graph = (function() {
 
     document.getElementById('graph-reset').addEventListener('click', () => {
       needsInitialFit = false;
-      fitView();
-      scheduleDraw();
+      selectedNodeId = null;
+      previousTrail = null;
+      animateFitView();
     });
 
     document.getElementById('graph-legend-toggle').addEventListener('click', () => {
@@ -5134,6 +5242,8 @@ const Graph = (function() {
       panel.style.display = 'none';
       toggleBtn.setAttribute('aria-expanded', 'false');
       toggleBtn.innerHTML = 'Filters &#9656;';
+      selectedNodeId = null;
+      previousTrail = null;
       updateLinkSeeds();
     });
 
