@@ -203,9 +203,11 @@ function loadData() {
 
 function loadGraph() {
   const papersDb = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
+  const venuesDb = JSON.parse(fs.readFileSync(VENUES_FILE, 'utf8'));
   const graphDb  = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
 
   const papers = papersDb.papers || {};
+  const venues = venuesDb.venues || {};
   const graphNodes = graphDb.nodes || {};
   const graphEdges = graphDb.edges || [];
 
@@ -214,12 +216,18 @@ function loadGraph() {
     nodes[id] = Object.assign({ id }, node);
   }
   for (const [id, p] of Object.entries(papers)) {
+    const venue = venues[p.venue_id] || {};
+    const authors = Array.isArray(p.authors)
+      ? p.authors.filter(a => a && a !== '[non disponibile]').join(', ')
+      : (p.authors || '');
     nodes[id] = {
       id,
       type:     'paper',
       title:    p.title    || '',
       year:     p.year     || '',
       concepts: p.concepts || [],
+      authors:  authors,
+      venue:    venue.name || p.venue_detail || p.venue_id || '',
     };
   }
 
@@ -433,7 +441,7 @@ const NODE_REQUIRED_FIELDS = {
   note:     ['name', 'created'],
 };
 const NODE_OPTIONAL_FIELDS = {
-  concept:  ['description'],
+  concept:  ['description', 'color'],
   project:  ['description'],
   endpoint: ['description'],
   idea:     ['description', 'source'],
@@ -513,6 +521,13 @@ function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Every route here reads straight off disk on every request — the data
+  // can change from one request to the next (edits, hides, PDF fetches,
+  // graph updates). Without this, the browser's HTTP cache can serve a
+  // stale response for a plain fetch() to the same URL (e.g. /api/graph),
+  // showing outdated fields until a hard reload. Applies to the static
+  // HTML too, for the same reason (served fresh from disk every request).
+  res.setHeader('Cache-Control', 'no-store');
 }
 
 const server = http.createServer(function(req, res) {

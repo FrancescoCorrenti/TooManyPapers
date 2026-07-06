@@ -2153,7 +2153,10 @@ NODE_REQUIRED_FIELDS = {
 }
 
 NODE_OPTIONAL_FIELDS = {
-    "concept": {"description"},
+    # `color` is a user-chosen hex color (e.g. "#4a90d9") overriding the
+    # default hash-derived color the web UI otherwise assigns per concept
+    # name — set from the Concepts tab, never inferred.
+    "concept": {"description", "color"},
     "project": {"description"},
     "endpoint": {"description"},
     "idea": {"description", "source"},

@@ -693,12 +693,29 @@
     font-size: 0.8rem;
     color: var(--text);
     max-width: 280px;
+    max-height: calc(100% - 8px);
+    overflow-y: auto;
     box-shadow: var(--shadow);
     display: none;
     z-index: 50;
     line-height: 1.4;
   }
   #graph-tooltip b { color: var(--accent2); }
+
+  #graph-alt-hint {
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    padding: 4px 8px;
+    pointer-events: none;
+    display: none;
+    z-index: 50;
+  }
 
   #graph-legend-toggle {
     position: absolute;
@@ -861,6 +878,14 @@
     letter-spacing: 0.05em;
     color: var(--accent2);
     text-transform: uppercase;
+  }
+  .concept-swatch {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
   }
   .type-card-name {
     font-family: var(--font-heading);
@@ -1332,6 +1357,24 @@
   .menu button:hover:not(:disabled) { background: var(--surface); }
   .menu button:disabled { color: var(--text-dim); cursor: default; }
 
+  /* Per-card "more actions" overflow menu (Edit/Cite/Source/Hide/Delete) —
+     keeps the always-visible icon row down to pin + read-toggle so the
+     card header doesn't turn into a wall of small icons. */
+  .card-menu-toggle {
+    font-size: 1.3rem;
+    line-height: 1;
+  }
+  .card-menu { right: 0; left: auto; min-width: 190px; }
+  a.card-menu-item {
+    display: block; width: 100%; text-align: left;
+    padding: 8px 10px; border-radius: 6px;
+    background: none; color: var(--text); font-size: 0.85rem;
+    text-decoration: none; box-sizing: border-box;
+  }
+  a.card-menu-item:hover { background: var(--surface); }
+  .card-menu-item.danger { color: #e5534b; }
+  .card-menu-item.danger:hover { background: rgba(229, 83, 75, 0.12); }
+
   /* Per-card export selection checkbox */
   .card-select { cursor: pointer; margin-right: 2px; flex-shrink: 0; }
   .card.export-selected { border-color: var(--accent); }
@@ -1540,6 +1583,7 @@
   <div id="graph-wrap">
     <canvas id="graph-canvas"></canvas>
     <div id="graph-tooltip"></div>
+    <div id="graph-alt-hint">Hold ALT for more info</div>
     <button id="graph-legend-toggle" title="Show legend">?</button>
     <div id="graph-legend">
       <div class="legend-title">Legend <button id="graph-legend-close" title="Close">✕</button></div>
@@ -1962,13 +2006,13 @@ function render() {
     btn.addEventListener('click', () => togglePin(btn.dataset.id));
   });
   grid.querySelectorAll('[data-edit-paper]').forEach(btn => {
-    btn.addEventListener('click', e => { e.stopPropagation(); openEditModal('paper', btn.dataset.editPaper); });
+    btn.addEventListener('click', e => { e.stopPropagation(); closeCardMenus(); openEditModal('paper', btn.dataset.editPaper); });
   });
-  grid.querySelectorAll('.hide-btn').forEach(btn => {
-    btn.addEventListener('click', () => toggleHidden(btn.dataset.id));
+  grid.querySelectorAll('[data-action="hide"]').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); closeCardMenus(); toggleHidden(btn.dataset.id); });
   });
   grid.querySelectorAll('[data-delete-paper]').forEach(btn => {
-    btn.addEventListener('click', e => { e.stopPropagation(); deletePaper(btn.dataset.deletePaper); });
+    btn.addEventListener('click', e => { e.stopPropagation(); closeCardMenus(); deletePaper(btn.dataset.deletePaper); });
   });
   grid.querySelectorAll('.cite-link').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); openDetail('paper', el.dataset.goto); });
@@ -1982,8 +2026,17 @@ function render() {
       updateExportCount();
     });
   });
-  grid.querySelectorAll('.cite-btn').forEach(btn => {
-    btn.addEventListener('click', e => { e.stopPropagation(); copyBibtex(btn.dataset.cite); });
+  grid.querySelectorAll('[data-cite]').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); closeCardMenus(); copyBibtex(btn.dataset.cite); });
+  });
+  grid.querySelectorAll('.card-menu-toggle').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const menu = btn.nextElementSibling;
+      const willOpen = menu.style.display === 'none';
+      closeCardMenus();
+      if (willOpen) menu.style.display = 'block';
+    });
   });
   grid.querySelectorAll('.card:not(.ghost-card)').forEach(card => {
     card.addEventListener('click', e => {
@@ -2072,14 +2125,8 @@ function cardHTML(p) {
     `<span class="tag concept" title="${esc(c.area)}">${esc(c.name)}</span>`
   ).join('');
 
-  const sourceBtn = hasLink
-    ? `<a class="source-link" href="${esc(extLink)}" target="_blank" rel="noopener"
-          title="Open source">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
-          <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-        </svg>
-      </a>`
+  const sourceMenuItem = hasLink
+    ? `<a class="card-menu-item" href="${esc(extLink)}" target="_blank" rel="noopener">Open source ↗</a>`
     : '';
 
   // Cites / Cited by — only papers actually present in the local catalog
@@ -2109,15 +2156,20 @@ function cardHTML(p) {
         <span class="paper-id ${isOut ? 'outside' : ''} ${isHidden ? 'hidden-tag' : ''}">${esc(p.id)}${isOut ? ' ↗' : ''}${isHidden ? ' (Hidden)' : ''}</span>
       </div>
       <div class="card-actions">
-        <button class="cite-btn" data-cite="${esc(p.id)}" title="Copy BibTeX citation">&#8220;&#8221;</button>
-        <button class="edit-btn" data-edit-paper="${esc(p.id)}" title="Edit">${PENCIL_SVG}</button>
         <button class="pin-btn ${isPinnedCard ? 'pinned' : ''}" data-id="${esc(p.id)}" title="${isPinnedCard ? 'Unpin' : 'Pin to top'}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.68V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3v4.68a2 2 0 0 1-1.11 1.87l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg></button>
-        ${sourceBtn}
-        <button class="hide-btn" data-id="${esc(p.id)}" title="${isHidden ? 'Restore (remove from Hidden)' : 'Hide'}">${isHidden ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'}</button>
         <button class="read-toggle" data-id="${esc(p.id)}" title="${isRead ? 'Mark as unread' : 'Mark as read'}">
           ${isRead ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>'}
         </button>
-        <button class="delete-btn" data-delete-paper="${esc(p.id)}" title="Delete permanently">${TRASH_SVG}</button>
+        <div class="menu-wrap card-menu-wrap">
+          <button class="card-menu-toggle" title="More actions">&#8942;</button>
+          <div class="menu card-menu" style="display:none;">
+            <button class="card-menu-item" data-cite="${esc(p.id)}">Copy BibTeX citation</button>
+            <button class="card-menu-item" data-edit-paper="${esc(p.id)}">Edit</button>
+            ${sourceMenuItem}
+            <button class="card-menu-item" data-id="${esc(p.id)}" data-action="hide">${isHidden ? 'Restore (remove from Hidden)' : 'Hide'}</button>
+            <button class="card-menu-item danger" data-delete-paper="${esc(p.id)}">Delete permanently</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="paper-title">${esc(p.titolo)}</div>
@@ -2244,6 +2296,14 @@ document.querySelectorAll('.filter-btns .filter-btn').forEach(btn => {
     saveUI();
     render();
   });
+});
+
+// ── Per-card "more actions" overflow menu ───────────────────────────────────
+function closeCardMenus() {
+  document.querySelectorAll('.card-menu').forEach(m => { m.style.display = 'none'; });
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.card-menu-wrap')) closeCardMenus();
 });
 
 // ── Export menu ────────────────────────────────────────────────────────────
@@ -2793,10 +2853,15 @@ function renderTypeGrid(type) {
 function typeCardHTML(id, n) {
   const sub = n.area || n.status || (n.type === 'note' && n.page ? `p.${n.page}` : n.created) || '';
   const desc = n.description || n.text || n.quote || '';
+  // Only shown once the user has actually picked a color (edit modal, concept
+  // type) — the hash-based default lives inside the Graph module and isn't
+  // duplicated here just to preview it on a card.
+  const swatch = (n.type === 'concept' && n.color)
+    ? `<span class="concept-swatch" style="background:${esc(n.color)}" title="${esc(n.color)}"></span>` : '';
   return `
   <div class="type-card" data-id="${esc(id)}">
     <div class="type-card-header">
-      <div class="type-card-id">${esc(id)}</div>
+      <div class="type-card-id">${swatch}${esc(id)}</div>
       <div class="card-actions">
         <button class="edit-btn" data-edit-node="${esc(id)}" title="Edit">${PENCIL_SVG}</button>
         <button class="delete-btn" data-delete-node="${esc(id)}" title="Delete permanently">${TRASH_SVG}</button>
@@ -3603,6 +3668,14 @@ function nodeEditFormHTML(n) {
     <div class="form-field"><label>${esc(FIELD_LABELS[f] || f)}</label>
       <input type="text" id="ef-node-${f}" value="${esc(n[f] || '')}"></div>
   `).join('');
+  // Concepts default to a hash-derived color (see conceptColor()) unless
+  // the user has picked one here — stored as a plain hex string on the
+  // node, same as any other optional field.
+  const colorField = n.type === 'concept' ? `
+    <div class="form-field"><label>Color</label>
+      <input type="color" id="ef-node-color" value="${esc(n.color || Graph.conceptColor(n.name || n.id))}"
+             style="width:60px;height:32px;padding:2px;cursor:pointer;">
+    </div>` : '';
   if (n.type === 'note') {
     return `
       <div class="form-field"><label>Name</label><input type="text" id="ef-node-name" value="${esc(n.name || '')}"></div>
@@ -3615,6 +3688,7 @@ function nodeEditFormHTML(n) {
   return `
     <div class="form-field"><label>Name</label><input type="text" id="ef-node-name" value="${esc(n.name || '')}"></div>
     ${extra}
+    ${colorField}
     <div class="form-field"><label>Description</label><textarea id="ef-node-description" rows="4">${esc(n.description || '')}</textarea></div>
     ${connectionsSectionHTML(n.id)}
   `;
@@ -3631,6 +3705,10 @@ function collectNodeFormPatch(type) {
     patch.text = document.getElementById('ef-node-text').value.trim();
   } else {
     patch.description = document.getElementById('ef-node-description').value.trim();
+  }
+  if (type === 'concept') {
+    const colorEl = document.getElementById('ef-node-color');
+    if (colorEl) patch.color = colorEl.value;
   }
   return patch;
 }
@@ -3698,7 +3776,8 @@ const Graph = (function() {
   let nodes = [];        // array of simulation nodes {id, type, name, x, y, vx, vy, ...raw}
   let nodesById = new Map();
   let edges = [];         // {from, to, type, note, a, b} (a/b = resolved node refs)
-  let canvas, ctx, tooltip;
+  let canvas, ctx, tooltip, altHint;
+  let altPressed = false;
   let width = 0, height = 0;
   let panX = 0, panY = 0, zoom = 1;
   // The layout engine: a d3-force simulation (vendored). It owns node
@@ -3728,6 +3807,7 @@ const Graph = (function() {
   let dragNode = null, dragging = false, panStart = null;
   let dragDistance = 0, mouseDownAt = null;
   let hoverNode = null, hoverEdge = null;
+  let lastMouseX = 0, lastMouseY = 0;
   let typeFilter = new Set(['paper', 'concept', 'project', 'endpoint', 'idea', 'pool', 'note']);
   let searchQ = '';
   // "Linked to" filter: shows only nodes reachable from a chosen set of seed
@@ -3763,6 +3843,7 @@ const Graph = (function() {
   async function init() {
     canvas  = document.getElementById('graph-canvas');
     tooltip = document.getElementById('graph-tooltip');
+    altHint = document.getElementById('graph-alt-hint');
     ctx     = canvas.getContext('2d');
 
     // The "Linked to" / "Concepts" multi-selects must exist before buildSim
@@ -3794,10 +3875,12 @@ const Graph = (function() {
     const rawNodes = data.nodes || {};
     const rawEdges = data.edges || [];
 
-    // Concept color lookup: id -> color, based on concept name (or area) hash.
+    // Concept color lookup: id -> color — the user's own pick (n.color, set
+    // from the Concepts tab edit form) if there is one, else the usual
+    // name/area hash.
     const conceptColorById = {};
     for (const [id, n] of Object.entries(rawNodes)) {
-      if (n.type === 'concept') conceptColorById[id] = conceptColor(n.name || n.area || id);
+      if (n.type === 'concept') conceptColorById[id] = n.color || conceptColor(n.name || n.area || id);
     }
 
     nodes = Object.entries(rawNodes).map(([id, n]) => {
@@ -4427,12 +4510,35 @@ const Graph = (function() {
         const prevNode = hoverNode, prevEdge = hoverEdge;
         hoverNode = nodeAt(sx, sy);
         hoverEdge = hoverNode ? null : edgeAt(sx, sy);
+        lastMouseX = sx; lastMouseY = sy;
         updateTooltip(sx, sy);
+        updateAltHint();
         // Only the hover highlight changes the canvas — skip redrawing on
         // every pixel of mouse movement when the hovered node/edge is the
         // same as last time.
         if (hoverNode !== prevNode || hoverEdge !== prevEdge) scheduleDraw();
       }
+    });
+
+    // ALT reveals extra detail (year/authors/venue) for the currently
+    // hovered paper node — tracked globally since the key can be pressed
+    // without the mouse moving first.
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Alt' && !altPressed) {
+        altPressed = true;
+        updateTooltip(lastMouseX, lastMouseY);
+      }
+    });
+    window.addEventListener('keyup', e => {
+      if (e.key === 'Alt') {
+        altPressed = false;
+        updateTooltip(lastMouseX, lastMouseY);
+      }
+    });
+    // Blur (e.g. alt-tabbing away) never fires keyup — treat losing window
+    // focus as releasing ALT so the tooltip doesn't get stuck expanded.
+    window.addEventListener('blur', () => {
+      if (altPressed) { altPressed = false; updateTooltip(lastMouseX, lastMouseY); }
     });
 
     window.addEventListener('mouseup', () => {
@@ -4685,20 +4791,56 @@ const Graph = (function() {
     openDetail(n.type, n.id);
   }
 
+  // Shown only while ALT is held, appended to the normal tooltip — the
+  // fields a node's card/detail view already leads with, so this is a
+  // "peek" rather than a full duplicate of openDetail().
+  function altDetailHTML(n) {
+    const raw = n.raw || {};
+    if (n.type === 'paper') {
+      const rows = [];
+      if (raw.year) rows.push(`Year: ${esc(String(raw.year))}`);
+      if (raw.authors) rows.push(`Authors: ${esc(truncate(raw.authors, 160))}`);
+      if (raw.venue) rows.push(`Venue: ${esc(raw.venue)}`);
+      return rows.length ? `<br>${rows.join('<br>')}` : '';
+    }
+    const rows = [];
+    if (raw.area) rows.push(`Area: ${esc(raw.area)}`);
+    if (raw.status) rows.push(`Status: ${esc(raw.status)}`);
+    if (raw.description) rows.push(`${esc(truncate(raw.description, 140))}`);
+    return rows.length ? `<br>${rows.join('<br>')}` : '';
+  }
+
+  function updateAltHint() {
+    if (!altHint) return;
+    altHint.style.display = hoverNode ? 'block' : 'none';
+  }
+
+  // #graph-wrap clips its children (overflow: hidden), and the ALT-expanded
+  // tooltip (year/authors/venue) can be tall/wide enough — especially with
+  // a long author list — to run past the container's right/bottom edge
+  // near the cursor and get silently cut off there, looking like only the
+  // first line ever rendered. Clamp the placed position back inside the
+  // container once we know the tooltip's actual (post-content) size.
+  function placeTooltip(sx, sy) {
+    const maxLeft = Math.max(0, width - tooltip.offsetWidth - 4);
+    const maxTop = Math.max(0, height - tooltip.offsetHeight - 4);
+    tooltip.style.left = Math.min(sx + 14, maxLeft) + 'px';
+    tooltip.style.top = Math.min(sy + 14, maxTop) + 'px';
+  }
+
   function updateTooltip(sx, sy) {
     if (hoverNode) {
       const hint = hoverNode.type === 'ghost' ? ' (not in library — click to search)' : '';
-      tooltip.innerHTML = `<b>${esc(hoverNode.name)}</b><br>${esc(hoverNode.type)}${esc(hint)}`;
+      const extra = altPressed ? altDetailHTML(hoverNode) : '';
+      tooltip.innerHTML = `<b>${esc(hoverNode.name)}</b><br>${esc(hoverNode.type)}${esc(hint)}${extra}`;
       tooltip.style.display = 'block';
-      tooltip.style.left = (sx + 14) + 'px';
-      tooltip.style.top = (sy + 14) + 'px';
+      placeTooltip(sx, sy);
     } else if (hoverEdge) {
       let html = `<b>${esc(hoverEdge.type)}</b><br>${esc(hoverEdge.a.name)} → ${esc(hoverEdge.b.name)}`;
       if (hoverEdge.note) html += `<br><i>${esc(hoverEdge.note)}</i>`;
       tooltip.innerHTML = html;
       tooltip.style.display = 'block';
-      tooltip.style.left = (sx + 14) + 'px';
-      tooltip.style.top = (sy + 14) + 'px';
+      placeTooltip(sx, sy);
     } else {
       tooltip.style.display = 'none';
     }
@@ -4712,7 +4854,7 @@ const Graph = (function() {
     scheduleDraw();
   }
 
-  return { init, resize, loaded: false };
+  return { init, resize, loaded: false, conceptColor };
 })();
 
 // ── Init ──────────────────────────────────────────────────────────────────────
