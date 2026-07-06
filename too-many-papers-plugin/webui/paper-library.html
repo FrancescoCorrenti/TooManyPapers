@@ -4262,7 +4262,6 @@ const Graph = (function() {
   // beyond depth*2 hops.
   let selectedNodeId = null;
   let previousTrail = null;
-  let cameraAnimFrame = null; // rAF handle for an in-flight pan/zoom animation
 
   const EDGE_STYLE = {
     cites:        { dash: [6, 4], alpha: 0.55, color: '#BA7C65' },
@@ -4428,12 +4427,12 @@ const Graph = (function() {
     spatialGrid = buildSpatialGrid();
     // Track the growing layout in-frame while it settles, until the user
     // takes over the view (needsInitialFit is cleared on first interaction).
-    if (needsInitialFit && !dragNode && !panStart && !cameraAnimFrame) fitView();
+    if (needsInitialFit && !dragNode && !panStart) fitView();
     draw();
   }
 
   function onSimEnd() {
-    if (needsInitialFit && !dragNode && !panStart && !cameraAnimFrame) fitView();
+    if (needsInitialFit && !dragNode && !panStart) fitView();
     needsInitialFit = false;
     draw();
   }
@@ -4473,34 +4472,6 @@ const Graph = (function() {
     if (width === 0 || height === 0) return; // canvas not sized yet
     const t = computeFitTarget();
     zoom = t.zoom; panX = t.panX; panY = t.panY;
-  }
-
-  function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
-
-  // Smoothly interpolates pan/zoom toward a target instead of snapping —
-  // used for every deliberate "jump" (isolate, reset) so the graph reads as
-  // a camera moving through the layout rather than a cut. Cancels any
-  // animation already in flight (e.g. jumping again before the last one
-  // finished) rather than fighting it.
-  function animateCamera(target, duration = 450) {
-    if (cameraAnimFrame) cancelAnimationFrame(cameraAnimFrame);
-    const from = { panX, panY, zoom };
-    const start = performance.now();
-    function step(now) {
-      const t = Math.min(1, (now - start) / duration);
-      const e = easeInOutCubic(t);
-      panX = from.panX + (target.panX - from.panX) * e;
-      panY = from.panY + (target.panY - from.panY) * e;
-      zoom = from.zoom + (target.zoom - from.zoom) * e;
-      scheduleDraw();
-      cameraAnimFrame = t < 1 ? requestAnimationFrame(step) : null;
-    }
-    cameraAnimFrame = requestAnimationFrame(step);
-  }
-
-  function animateFitView() {
-    if (width === 0 || height === 0) return;
-    animateCamera(computeFitTarget());
   }
 
   // Feeds both "Linked to" (any node) and "Concepts" (concepts only)
@@ -4554,8 +4525,6 @@ const Graph = (function() {
     toggle.setAttribute('aria-expanded', 'true');
     toggle.innerHTML = 'Filters &#9662;';
     updateLinkSeeds();
-    needsInitialFit = false; // this is a deliberate jump, not the initial layout settle
-    animateFitView();
   }
 
   function populateEdgeTypeFilters() {
@@ -5028,7 +4997,6 @@ const Graph = (function() {
       dragDistance = 0;
       mouseDownAt = { x: e.clientX, y: e.clientY };
       needsInitialFit = false; // user has taken over the view
-      if (cameraAnimFrame) { cancelAnimationFrame(cameraAnimFrame); cameraAnimFrame = null; }
       if (n) {
         dragNode = n;
         dragging = true;
@@ -5114,7 +5082,6 @@ const Graph = (function() {
 
     canvas.addEventListener('wheel', e => {
       e.preventDefault();
-      if (cameraAnimFrame) { cancelAnimationFrame(cameraAnimFrame); cameraAnimFrame = null; }
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
       const before = screenToWorld(sx, sy);
@@ -5179,7 +5146,8 @@ const Graph = (function() {
       needsInitialFit = false;
       selectedNodeId = null;
       previousTrail = null;
-      animateFitView();
+      fitView();
+      scheduleDraw();
     });
 
     document.getElementById('graph-legend-toggle').addEventListener('click', () => {
