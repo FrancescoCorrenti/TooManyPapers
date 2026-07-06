@@ -146,6 +146,15 @@
     transition: all .2s ease;
     white-space: nowrap;
   }
+  /* Compact icon-only variant of .filter-btn (Reset filters / Reset view in
+     the graph toolbar) — a text label there was one of the main reasons
+     that toolbar wrapped onto a second line. */
+  .icon-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+  }
   .filter-btn.active {
     background: var(--surface2);
     color: var(--accent);
@@ -572,19 +581,19 @@
 
   /* ── Graph view ───────────────────────────────── */
   .graph-toolbar {
-    padding: 16px 40px;
+    padding: 10px 20px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     display: flex;
-    gap: 20px;
+    gap: 14px;
     flex-wrap: wrap;
     align-items: center;
   }
   .graph-types {
     display: flex;
-    gap: 14px;
+    gap: 10px;
     flex-wrap: wrap;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     color: var(--text-dim);
   }
   .graph-types label {
@@ -1545,8 +1554,12 @@
       <label title="Papers referenced by something in your library but not in it themselves"><input type="checkbox" class="gtype" value="ghost"> Missing</label>
     </div>
     <button id="graph-filters-toggle" class="filter-btn" aria-expanded="false">Filters &#9656;</button>
-    <button id="graph-reset-filters" class="filter-btn">Reset filters</button>
-    <button id="graph-reset" class="filter-btn" title="Reset zoom/pan">Reset view</button>
+    <button id="graph-reset-filters" class="filter-btn icon-filter-btn" title="Reset filters">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
+    </button>
+    <button id="graph-reset" class="filter-btn icon-filter-btn" title="Reset zoom/pan (fit view)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+    </button>
   </div>
   <div id="graph-filters-panel" class="advanced-panel" style="display:none; padding: 0 40px 16px; background: var(--surface); border-bottom: 1px solid var(--border); margin-top: -1px;">
     <div class="filter-inline">
