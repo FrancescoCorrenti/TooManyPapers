@@ -143,6 +143,7 @@ All types are enforced by the server. The LLM cannot invent new types.
 6. **Engagement drives recommendations.** Use `graph_engagement` to understand what the user cares about most right now.
 7. **Never search the web for papers.** `papers_discover` (arXiv + Semantic Scholar + OpenAlex, with dedup) is the only sanctioned way to find new papers, whether for the morning briefing or a normal "find me something on X" request. WebSearch/WebFetch defeat the anti-hallucination guarantees this plugin exists to provide.
 8. **Confirm before permanent deletion.** `papers_delete`, `venues_delete`, and `graph_remove_node`/`graph_remove_edge` cannot be undone. Always get explicit confirmation from the user before calling any of them — don't infer consent from an ambiguous request like "clean this up."
+9. **Write `description`/`notes`/`text` fields in markdown.** The web UI renders these fields as markdown (headers, `**bold**`, `*italic*`, lists, `` `code` ``, blockquotes, links, code blocks) wherever they're shown — a paper's notes/abstract, and a concept/project/endpoint/idea/pool's description, plus a note's own text. Use that formatting where it actually helps readability (e.g. a short list of open questions, a key term in bold) — don't force structure onto a one-line description that doesn't need it.
 
 ## Too Many Papers Web UI
 
