@@ -2551,7 +2551,8 @@ function showError(html) {
 // ── UI state persistence ──────────────────────────────────────────────────────
 
 function saveUI() {
-  const state = { filterMode, searchQ, conceptF, venueF, sortMode, sortAscend };
+  const state = { filterMode, searchQ, conceptF, venueF, sortMode, sortAscend,
+    currentTopTab, openTabs, activeSub };
   document.cookie = `paperLibUI=${encodeURIComponent(JSON.stringify(state))};path=/;max-age=${60*60*24*365}`;
 }
 
@@ -2566,6 +2567,17 @@ function loadUI() {
     venueF     = s.venueF      || '';
     sortMode   = s.sortMode    || 'discovered';
     sortAscend = !!s.sortAscend;
+    if (s.currentTopTab && TOP_TABS.includes(s.currentTopTab)) currentTopTab = s.currentTopTab;
+    if (s.openTabs) {
+      Object.keys(openTabs).forEach(t => {
+        if (Array.isArray(s.openTabs[t])) openTabs[t] = s.openTabs[t];
+      });
+    }
+    if (s.activeSub) {
+      Object.keys(activeSub).forEach(t => {
+        if (typeof s.activeSub[t] === 'string') activeSub[t] = s.activeSub[t];
+      });
+    }
   } catch(e) {}
 }
 
@@ -2734,6 +2746,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
 function switchTopTab(type) {
   currentTopTab = type;
+  saveUI();
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === type));
   TOP_TABS.forEach(t => {
     const el = document.getElementById(`view-${t}`);
@@ -2767,6 +2780,7 @@ function openDetail(type, id) {
   activeSub[type] = id;
   switchTopTab(type);
   window.scrollTo(0, 0); // the page keeps whatever scroll position the list view was at otherwise
+  saveUI();
 }
 
 function closeDetail(type, id) {
@@ -2774,6 +2788,7 @@ function closeDetail(type, id) {
   if (activeSub[type] === id) activeSub[type] = 'list';
   renderSubTabBar(type);
   renderActivePane(type);
+  saveUI();
 }
 
 function selectSubTab(type, sub) {
@@ -2781,6 +2796,7 @@ function selectSubTab(type, sub) {
   renderSubTabBar(type);
   renderActivePane(type);
   if (sub !== 'list') window.scrollTo(0, 0);
+  saveUI();
 }
 
 function tabLabelFor(type, id) {
@@ -5616,9 +5632,13 @@ const Graph = (function() {
 loadPins();
 loadUI();
 applyUIToDOM();
-loadPapers();
-ensureGraphLoaded().then(populatePaperLinkedToFilter); // kick off early so switching tabs feels instant
+const restoreTab = currentTopTab;
+const papersReady = loadPapers();
+const graphReady  = ensureGraphLoaded().then(populatePaperLinkedToFilter); // kick off early so switching tabs feels instant
 renderSubTabBar('paper');
+Promise.all([papersReady, graphReady]).then(() => {
+  switchTopTab(restoreTab);
+});
 </script>
 </body>
 </html
