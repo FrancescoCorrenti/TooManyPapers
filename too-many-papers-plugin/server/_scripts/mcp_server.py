@@ -683,7 +683,8 @@ def graph_add_edge(src: str, tgt: str, edge_type: str, note: str = "") -> str:
         edge_type: Must be one of: connected_to, uses_concept, part_of,
             inspired_by, relevant_to, derived_from, enables, leads_to. A
             project can only connect to concept/idea/waypoint/endpoint nodes
-            (never a paper). leads_to must go waypoint -> waypoint or
+            (never a paper). A paper can only connect to a concept via
+            uses_concept. leads_to must go waypoint -> waypoint or
             waypoint -> endpoint (the project's chain toward its goal); a
             waypoint can have at most one outgoing leads_to edge.
         note: Optional free-text annotation for the edge.

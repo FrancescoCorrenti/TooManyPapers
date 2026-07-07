@@ -43,44 +43,70 @@
 
   /* ── Header ───────────────────────────────────── */
   header {
-    padding: 12px 24px;
+    padding: 0 20px;
+    height: 52px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 12px;
+    align-items: center;
+    gap: 22px;
     position: sticky;
     top: 0;
     z-index: 100;
+    overflow: hidden;
   }
 
+  .header-left {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
   .header-left h1 {
     font-family: var(--font-heading);
-    font-size: 1.3rem;
+    font-size: 1.12rem;
     font-weight: 600;
     letter-spacing: 0.02em;
     color: var(--text);
+    white-space: nowrap;
   }
   .header-left h1 span {
     color: var(--accent);
     font-style: italic;
   }
 
+  /* Tabs now live inline in the header, replacing the old stacked tab-bar */
+  header .tab-bar {
+    flex: 1 1 0%;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    background: none;
+    border-bottom: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  header .tab-bar::-webkit-scrollbar { display: none; }
+
   .stats {
     display: flex;
-    gap: 18px;
-    font-size: 0.78rem;
+    gap: 14px;
+    font-size: 0.72rem;
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    flex-shrink: 0;
+    padding-left: 16px;
+    border-left: 1px solid var(--border);
   }
   .stats b {
     color: var(--text);
-    font-size: 0.92rem;
+    font-size: 0.85rem;
     font-weight: 500;
     font-family: var(--font-heading);
+  }
+  @media (max-width: 760px) {
+    .stats { display: none; }
   }
 
   /* ── Toolbar ──────────────────────────────────── */
@@ -575,17 +601,38 @@
     font-weight: 500;
     cursor: pointer;
     transition: all .2s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .tab-btn:hover { color: var(--text); }
   .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  header .tab-btn { height: 52px; border-bottom-width: 2px; }
 
   /* ── Graph view ───────────────────────────────── */
+  /* The graph now owns the full viewport below the header; toolbar and
+     filters float as a HUD over the canvas instead of pushing it down. */
+  #view-graph {
+    position: relative;
+    height: calc(100vh - 52px);
+    overflow: hidden;
+  }
   .graph-toolbar {
-    padding: 10px 24px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    right: 14px;
+    z-index: 40;
+    width: max-content;
+    max-width: calc(100% - 28px);
+    padding: 8px 10px;
+    background: rgba(28,31,38,0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
     display: flex;
-    gap: 14px;
+    gap: 12px;
     flex-wrap: wrap;
     align-items: center;
   }
@@ -603,6 +650,115 @@
     cursor: pointer;
     user-select: none;
   }
+
+  /* Unified right-side panel — node-type visibility chips plus the legend
+     content that used to float separately (bottom-right "?" button). One
+     panel, one place to look, and it collapses to an icon rail when the
+     canvas needs the room back. */
+  #graph-side-panel {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    z-index: 38;
+    width: 190px;
+    max-height: calc(100% - 28px);
+    display: flex;
+    flex-direction: column;
+    background: rgba(28,31,38,0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    transition: width .18s ease;
+  }
+  .side-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 6px 4px 10px;
+    flex-shrink: 0;
+  }
+  .side-panel-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  #side-panel-collapse svg { transition: transform .18s ease; }
+  .side-panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 8px 10px;
+    overflow-y: auto;
+  }
+  #graph-side-panel.collapsed { width: 44px; }
+  #graph-side-panel.collapsed .side-panel-title,
+  #graph-side-panel.collapsed .chip-label,
+  #graph-side-panel.collapsed .legend-section { display: none; }
+  #graph-side-panel.collapsed .gtype-chip { justify-content: center; padding: 6px 0; }
+  #graph-side-panel.collapsed .side-panel-head { justify-content: center; padding: 8px 0 4px; }
+  #graph-side-panel.collapsed #side-panel-collapse svg { transform: rotate(180deg); }
+
+  .gtype-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+    transition: background .15s, color .15s;
+    white-space: nowrap;
+  }
+  .gtype-chip:hover { background: var(--surface2); color: var(--text); }
+  .gtype-chip input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .gtype-chip input:checked ~ .chip-dot { opacity: 1; }
+  .gtype-chip input:not(:checked) ~ .chip-dot { opacity: 0.3; }
+  .gtype-chip:has(input:checked) { color: var(--text); }
+  .gtype-chip-sep { height: 1px; margin: 4px 4px; background: var(--border); }
+
+  /* Active chips read as "on" via the same green used elsewhere for a
+     healthy/reached state, instead of just a brighter version of the
+     unchecked gray-blue. */
+  .gtype-chip input:checked ~ .chip-dot:not(.triangle):not(.hollow):not(.ring):not(.dithered) { background: var(--green); }
+  .gtype-chip input:checked ~ .chip-dot.triangle { border-bottom-color: var(--green); }
+  .gtype-chip input:checked ~ .chip-dot.hollow { border-color: var(--green); }
+  .gtype-chip input:checked ~ .chip-dot.ring { border-color: var(--green); }
+  .gtype-chip input:checked ~ .chip-dot.dithered { background-image: radial-gradient(circle, var(--green) 1.4px, transparent 1.6px); }
+
+  .chip-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    flex-shrink: 0;
+    background: var(--accent2);
+    transition: opacity .15s, background-color .15s, border-color .15s;
+  }
+  .chip-dot.circle { border-radius: 50%; }
+  .chip-dot.square { border-radius: 2px; }
+  .chip-dot.diamond { transform: rotate(45deg); border-radius: 2px; }
+  .chip-dot.triangle {
+    width: 0; height: 0; background: none;
+    border-left: 4.5px solid transparent; border-right: 4.5px solid transparent; border-bottom: 8px solid var(--accent2);
+  }
+  .chip-dot.dot { width: 5px; height: 5px; border-radius: 50%; align-self: center; }
+  .chip-dot.star {
+    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  }
+  .chip-dot.dithered {
+    background-image: radial-gradient(circle, var(--accent2) 1.4px, transparent 1.6px);
+    background-size: 4px 4px;
+    background-color: transparent;
+  }
+  .chip-dot.hollow { background: none; border: 1.5px dashed var(--text-dim); }
+  /* "Isolated" is structural, not a node type — a plain ring keeps it
+     visually distinct from the shape/type dots above it. */
+  .chip-dot.ring { background: none; border: 1.5px solid var(--accent2); border-radius: 50%; }
   .filter-inline {
     display: flex;
     align-items: center;
@@ -619,6 +775,26 @@
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px dashed var(--border);
+  }
+
+  /* Graph filters float as a HUD card under the toolbar instead of a
+     full-width bar, so they never eat into the canvas. */
+  #graph-filters-panel {
+    position: absolute !important;
+    top: 62px;
+    left: 14px;
+    z-index: 39;
+    width: max-content !important;
+    max-width: calc(100% - 230px);
+    background: rgba(28,31,38,0.95) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--border-light) !important;
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 14px 16px !important;
+    margin-top: 0 !important;
+    gap: 14px 24px;
   }
 
   /* Searchable multi-select (graph "Linked to" / "Concepts" filters) */
@@ -678,9 +854,10 @@
   }
   .ms-clear:hover { color: var(--text); border-color: var(--border-light); }
   #graph-wrap {
-    position: relative;
+    position: absolute;
+    inset: 0;
     width: 100%;
-    height: calc(100vh - 200px);
+    height: 100%;
     overflow: hidden;
     background: var(--bg);
   }
@@ -726,62 +903,6 @@
     z-index: 50;
   }
 
-  #graph-legend-toggle {
-    position: absolute;
-    bottom: 16px;
-    right: 16px;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background: rgba(28,31,38,0.92);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    font-family: var(--font-heading);
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: color .2s, border-color .2s;
-  }
-  #graph-legend-toggle:hover { color: var(--accent); border-color: var(--border-light); }
-
-  #graph-legend {
-    position: absolute;
-    bottom: 16px;
-    right: 16px;
-    background: rgba(28,31,38,0.95);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px 14px;
-    font-size: 0.76rem;
-    color: var(--text-dim);
-    max-width: 210px;
-    max-height: min(70vh, 480px);
-    overflow-y: auto;
-    display: none;
-  }
-  #graph-legend.open { display: block; }
-  .legend-title {
-    font-family: var(--font-heading);
-    font-size: 0.88rem;
-    color: var(--text);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 6px;
-  }
-  .legend-title button {
-    background: none;
-    border: none;
-    color: var(--text-dim);
-    cursor: pointer;
-    font-size: 0.9rem;
-    line-height: 1;
-    padding: 2px;
-  }
-  .legend-title button:hover { color: var(--accent); }
   .legend-section + .legend-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
   .legend-subtitle { color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; font-size: 0.68rem; margin-bottom: 5px; }
   .legend-row {
@@ -1465,24 +1586,23 @@
   <div class="header-left">
     <h1>📚 Too Many <span>Papers</span></h1>
   </div>
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="paper" title="A paper in your library.">Papers</button>
+    <button class="tab-btn" data-tab="concept" title="A research area you care about.">Concepts</button>
+    <button class="tab-btn" data-tab="project" title="An active research project with goals.">Projects</button>
+    <button class="tab-btn" data-tab="endpoint" title="A specific milestone within a project.">Endpoints</button>
+    <button class="tab-btn" data-tab="idea" title="A concrete idea connected to a project.">Ideas</button>
+    <button class="tab-btn" data-tab="waypoint" title="An intermediate node in a project's chain toward an endpoint.">Waypoints</button>
+    <button class="tab-btn" data-tab="note" title="A reading annotation — a quoted excerpt and/or comment, usually tied to a paper page.">Notes</button>
+    <button class="tab-btn" data-tab="venue" title="Where a paper was published (journal, conference, preprint server). Not part of the knowledge graph — usable only as a filter.">Venues</button>
+    <button class="tab-btn" data-tab="graph" title="Force-directed view of the whole knowledge graph.">Graph</button>
+  </div>
   <div class="stats">
     <div>Total <b id="stat-total">—</b></div>
     <div>Read <b id="stat-read" style="color:var(--green)">—</b></div>
     <div>Unread <b id="stat-unread" style="color:var(--accent)">—</b></div>
   </div>
 </header>
-
-<div class="tab-bar">
-  <button class="tab-btn active" data-tab="paper" title="A paper in your library.">Papers</button>
-  <button class="tab-btn" data-tab="concept" title="A research area you care about.">Concepts</button>
-  <button class="tab-btn" data-tab="project" title="An active research project with goals.">Projects</button>
-  <button class="tab-btn" data-tab="endpoint" title="A specific milestone within a project.">Endpoints</button>
-  <button class="tab-btn" data-tab="idea" title="A concrete idea connected to a project.">Ideas</button>
-  <button class="tab-btn" data-tab="waypoint" title="An intermediate node in a project's chain toward an endpoint.">Waypoints</button>
-  <button class="tab-btn" data-tab="note" title="A reading annotation — a quoted excerpt and/or comment, usually tied to a paper page.">Notes</button>
-  <button class="tab-btn" data-tab="venue" title="Where a paper was published (journal, conference, preprint server). Not part of the knowledge graph — usable only as a filter.">Venues</button>
-  <button class="tab-btn" data-tab="graph" title="Force-directed view of the whole knowledge graph.">Graph</button>
-</div>
 
 <div id="view-paper">
   <div class="subtab-bar" id="subtabbar-paper"></div>
@@ -1615,16 +1735,6 @@
       </svg>
       <input type="search" id="graph-search" placeholder="Filter graph nodes...">
     </div>
-    <div class="graph-types">
-      <label><input type="checkbox" class="gtype" value="paper" checked> Papers</label>
-      <label><input type="checkbox" class="gtype" value="concept" checked> Concepts</label>
-      <label><input type="checkbox" class="gtype" value="project" checked> Projects</label>
-      <label><input type="checkbox" class="gtype" value="endpoint"> Endpoints</label>
-      <label><input type="checkbox" class="gtype" value="idea" checked> Ideas</label>
-      <label><input type="checkbox" class="gtype" value="waypoint"> Waypoints</label>
-      <label><input type="checkbox" class="gtype" value="note" checked> Notes</label>
-      <label title="Papers referenced by something in your library but not in it themselves"><input type="checkbox" class="gtype" value="ghost"> Missing</label>
-    </div>
     <button id="graph-filters-toggle" class="filter-btn" aria-expanded="false">Filters &#9656;</button>
     <button id="graph-reset-filters" class="filter-btn icon-filter-btn" title="Reset filters">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
@@ -1632,6 +1742,44 @@
     <button id="graph-reset" class="filter-btn icon-filter-btn" title="Reset zoom/pan (fit view)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
     </button>
+  </div>
+  <div id="graph-side-panel">
+    <div class="side-panel-head">
+      <span class="side-panel-title">Layers</span>
+      <button id="side-panel-collapse" class="icon-filter-btn filter-btn" title="Collapse to icons">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+      </button>
+    </div>
+    <div class="side-panel-body">
+      <label class="gtype-chip" title="Papers"><input type="checkbox" class="gtype" value="paper" checked><span class="chip-dot circle"></span><span class="chip-label">Papers</span></label>
+      <label class="gtype-chip" title="Concepts"><input type="checkbox" class="gtype" value="concept" checked><span class="chip-dot circle dithered"></span><span class="chip-label">Concepts</span></label>
+      <label class="gtype-chip" title="Projects"><input type="checkbox" class="gtype" value="project" checked><span class="chip-dot square"></span><span class="chip-label">Projects</span></label>
+      <label class="gtype-chip" title="Endpoints"><input type="checkbox" class="gtype" value="endpoint"><span class="chip-dot triangle"></span><span class="chip-label">Endpoints</span></label>
+      <label class="gtype-chip" title="Ideas"><input type="checkbox" class="gtype" value="idea" checked><span class="chip-dot diamond"></span><span class="chip-label">Ideas</span></label>
+      <label class="gtype-chip" title="Waypoints"><input type="checkbox" class="gtype" value="waypoint"><span class="chip-dot dot"></span><span class="chip-label">Waypoints</span></label>
+      <label class="gtype-chip" title="Notes"><input type="checkbox" class="gtype" value="note" checked><span class="chip-dot star"></span><span class="chip-label">Notes</span></label>
+      <label class="gtype-chip" title="Papers referenced by something in your library but not in it themselves"><input type="checkbox" class="gtype" value="ghost"><span class="chip-dot circle hollow"></span><span class="chip-label">Missing</span></label>
+      <div class="gtype-chip-sep"></div>
+      <label class="gtype-chip" title="Nodes with no connection to anything currently visible">
+        <input type="checkbox" id="graph-show-orphans" checked><span class="chip-dot ring"></span><span class="chip-label">Isolated</span>
+      </label>
+      <div class="legend-section">
+        <div class="legend-subtitle">Status</div>
+        <div class="legend-row"><span class="legend-shape dot" style="background:#8a8f98"></span> <span class="lbl">Pending</span></div>
+        <div class="legend-row"><span class="legend-shape dot" style="background:#4caf7a"></span> <span class="lbl">Reached</span></div>
+        <div class="legend-row"><span class="legend-shape dot" style="background:#c25b5b"></span> <span class="lbl">Failed</span></div>
+      </div>
+      <div class="legend-section">
+        <div class="legend-subtitle">Edges</div>
+        <div class="legend-row"><span class="legend-line solid"></span> <span class="lbl">Graph edge</span></div>
+        <div class="legend-row"><span class="legend-line dashed"></span> <span class="lbl">Citation</span></div>
+        <div class="legend-row"><span class="legend-line dotted"></span> <span class="lbl">Concept tag</span></div>
+      </div>
+      <div class="legend-section" id="legend-concepts">
+        <div class="legend-subtitle">Concept colors</div>
+        <!-- populated dynamically once the graph loads -->
+      </div>
+    </div>
   </div>
   <div id="graph-filters-panel" class="advanced-panel" style="display:none; padding: 0 40px 16px; background: var(--surface); border-bottom: 1px solid var(--border); margin-top: -1px;">
     <div class="filter-inline">
@@ -1669,31 +1817,6 @@
     <canvas id="graph-canvas"></canvas>
     <div id="graph-tooltip"></div>
     <div id="graph-alt-hint">Hold ALT for more info</div>
-    <button id="graph-legend-toggle" title="Show legend">?</button>
-    <div id="graph-legend">
-      <div class="legend-title">Legend <button id="graph-legend-close" title="Close">✕</button></div>
-      <div class="legend-section">
-        <div class="legend-subtitle">Shapes</div>
-        <div class="legend-row"><span class="legend-shape circle" style="background:#8496B0"></span> <span class="lbl">Paper (solid)</span></div>
-        <div class="legend-row"><span class="legend-shape circle dithered" style="background:#8496B0"></span> <span class="lbl">Concept (dithered)</span></div>
-        <div class="legend-row"><span class="legend-shape square"></span> <span class="lbl">Project</span></div>
-        <div class="legend-row"><span class="legend-shape triangle"></span> <span class="lbl">Endpoint (pending gray / reached green / failed red)</span></div>
-        <div class="legend-row"><span class="legend-shape diamond"></span> <span class="lbl">Idea</span></div>
-        <div class="legend-row"><span class="legend-shape dot"></span> <span class="lbl">Waypoint (pending gray / reached green / failed red)</span></div>
-        <div class="legend-row"><span class="legend-shape star"></span> <span class="lbl">Note</span></div>
-        <div class="legend-row"><span class="legend-shape circle" style="background:transparent;border:1px dashed #888;"></span> <span class="lbl">Missing (cited, not in library)</span></div>
-      </div>
-      <div class="legend-section">
-        <div class="legend-subtitle">Edges</div>
-        <div class="legend-row"><span class="legend-line solid"></span> <span class="lbl">Graph edge</span></div>
-        <div class="legend-row"><span class="legend-line dashed"></span> <span class="lbl">Citation</span></div>
-        <div class="legend-row"><span class="legend-line dotted"></span> <span class="lbl">Concept tag</span></div>
-      </div>
-      <div class="legend-section" id="legend-concepts">
-        <div class="legend-subtitle">Concept colors</div>
-        <!-- populated dynamically once the graph loads -->
-      </div>
-    </div>
   </div>
 </div>
 
@@ -4243,6 +4366,11 @@ const Graph = (function() {
   let hoverNode = null, hoverEdge = null;
   let lastMouseX = 0, lastMouseY = 0;
   let typeFilter = new Set(['paper', 'concept', 'project', 'idea', 'note']);
+  // When true, nodes with no edge to another currently-visible node are
+  // hidden — orphans left over after other filters trim their neighbors,
+  // not a type of their own, so it's a draw-time gate like conceptLinkSet
+  // rather than something that touches sim membership.
+  let hideOrphans = false;
   let searchQ = '';
   // "Linked to" filter: shows only nodes reachable from a chosen set of seed
   // nodes within `conceptLinkDepth` hops (BFS over currently-allowed edge
@@ -4255,13 +4383,21 @@ const Graph = (function() {
   let edgeTypeFilter = null; // Set of allowed edge types, or null = all allowed
   // Right-click isolation history: the node id last isolated via right-click
   // stays visually "selected" (a halo ring) until another node is isolated
-  // or the view is reset. previousTrail holds a node-id -> hop-distance map
-  // from whichever node was isolated *before* the current one, so that
-  // stepping from A to B doesn't just erase A's neighborhood — it lingers,
-  // dimmed, fading out the further a node is from A, and vanishes entirely
-  // beyond depth*2 hops.
+  // or the view is reset. Each time isolation jumps to a *different* node,
+  // the id set that was visible just before the jump is pushed onto
+  // isolationHistory (capped at TRAIL_HISTORY_LEN) — just ids, not full hop
+  // maps, so the memory cost stays flat no matter how deep the trail goes.
+  // The trail shown at any moment is the union of all remembered sets,
+  // colored by hop-distance from the *current* node (currentHopMap) rather
+  // than from whichever step they were captured at — so the whole trail
+  // reads as "how far is this from where I am now", not "how long ago was
+  // this on screen". Right-clicking the already-selected node clears the
+  // whole queue instead of adding to it, collapsing back to just its own
+  // hop-neighborhood.
   let selectedNodeId = null;
-  let previousTrail = null;
+  let isolationHistory = []; // array of Set<nodeId>, oldest first
+  let currentHopMap = new Map(); // nodeId -> hop distance from selectedNodeId
+  const TRAIL_HISTORY_LEN = 5;
 
   const EDGE_STYLE = {
     cites:        { dash: [6, 4], alpha: 0.55, color: '#BA7C65' },
@@ -4509,13 +4645,17 @@ const Graph = (function() {
   // so depth/edge types are immediately visible and adjustable — the panel
   // doesn't stay hidden with an invisible filter active.
   function isolateNode(nodeId) {
-    // Only treat the current seed as a "previous isolation" to trail if it
-    // really was one (a single right-click seed, not a multi-select pick),
-    // and it isn't the same node being re-isolated.
-    const prevSeeds = [...linkSeeds];
-    previousTrail = (prevSeeds.length === 1 && prevSeeds[0] !== nodeId)
-      ? computeHopMap(prevSeeds[0], conceptLinkDepth * 2)
-      : null;
+    if (nodeId === selectedNodeId) {
+      // Right-clicking the already-selected node clears the trail queue —
+      // it does not add another step — leaving only the nodes linked by
+      // hops to the current node.
+      isolationHistory = [];
+    } else if (selectedNodeId && conceptLinkSet) {
+      // Jumping to a different node: remember what was illuminated just
+      // before the jump so it lingers in the trail instead of vanishing.
+      isolationHistory.push(new Set(conceptLinkSet));
+      if (isolationHistory.length > TRAIL_HISTORY_LEN) isolationHistory.shift();
+    }
     selectedNodeId = nodeId;
     conceptsMS.clear();
     linkedToMS.setSelected([nodeId]);
@@ -4552,28 +4692,36 @@ const Graph = (function() {
   // directly connect the types still shown (e.g. paper-to-paper citations
   // when only Papers is checked).
   function recomputeConceptLinkSet() {
-    if (!linkSeeds || linkSeeds.size === 0) { conceptLinkSet = null; return; }
-    const allowed = e => !edgeTypeFilter || edgeTypeFilter.has(e.type);
-    const typeOk = id => { const n = nodesById.get(id); return n && typeFilter.has(n.type); };
-    const visited = new Set();
-    let frontier = [];
-    linkSeeds.forEach(id => { if (typeOk(id)) { visited.add(id); frontier.push(id); } });
-    if (!frontier.length) { conceptLinkSet = new Set(); return; }
-    for (let hop = 0; hop < conceptLinkDepth; hop++) {
-      const next = [];
-      for (const id of frontier) {
-        edges.forEach(e => {
-          if (!allowed(e)) return;
-          const other = e.from === id ? e.to : (e.to === id ? e.from : null);
-          if (!other || visited.has(other) || !typeOk(other)) return;
-          visited.add(other);
-          next.push(other);
-        });
+    if (!linkSeeds || linkSeeds.size === 0) {
+      conceptLinkSet = null;
+    } else {
+      const allowed = e => !edgeTypeFilter || edgeTypeFilter.has(e.type);
+      const typeOk = id => { const n = nodesById.get(id); return n && typeFilter.has(n.type); };
+      const visited = new Set();
+      let frontier = [];
+      linkSeeds.forEach(id => { if (typeOk(id)) { visited.add(id); frontier.push(id); } });
+      for (let hop = 0; frontier.length && hop < conceptLinkDepth; hop++) {
+        const next = [];
+        for (const id of frontier) {
+          edges.forEach(e => {
+            if (!allowed(e)) return;
+            const other = e.from === id ? e.to : (e.to === id ? e.from : null);
+            if (!other || visited.has(other) || !typeOk(other)) return;
+            visited.add(other);
+            next.push(other);
+          });
+        }
+        frontier = next;
       }
-      frontier = next;
-      if (!frontier.length) break;
+      conceptLinkSet = visited;
     }
-    conceptLinkSet = visited;
+    // The trail (isolationHistory) is colored by hop-distance from the
+    // *current* node, not from whenever each step was captured — refresh
+    // that map any time the filters it depends on (depth, edge types,
+    // types shown) change, same as conceptLinkSet itself.
+    currentHopMap = selectedNodeId
+      ? computeHopMap(selectedNodeId, Math.max(10, conceptLinkDepth * (TRAIL_HISTORY_LEN + 1) * 2))
+      : new Map();
   }
 
   function populateConceptLegend(rawNodes, conceptColorById) {
@@ -4613,10 +4761,29 @@ const Graph = (function() {
     if (!typeFilter.has(n.type)) return false;
     if (conceptLinkSet && !conceptLinkSet.has(n.id)) {
       // Not part of the active isolation — but let it through if it's still
-      // within the fading trail of the previously isolated node.
-      return !!(previousTrail && previousTrail.has(n.id));
+      // remembered in the trail from one of the last few isolated nodes.
+      return isTrailNode(n.id);
     }
+    if (hideOrphans && !hasVisibleNeighbor(n)) return false;
     return true;
+  }
+
+  function isTrailNode(id) {
+    return isolationHistory.some(set => set.has(id));
+  }
+
+  // A node counts as having a visible neighbor if at least one of its edges
+  // (of a currently-allowed edge type) connects to a node whose type is
+  // currently checked — independent of hideOrphans itself, or every node
+  // would trivially have none.
+  function hasVisibleNeighbor(n) {
+    const es = edgesByNode.get(n.id);
+    if (!es) return false;
+    return es.some(e => {
+      if (!edgeTypeVisible(e)) return false;
+      const other = e.a.id === n.id ? e.b : e.a;
+      return typeFilter.has(other.type);
+    });
   }
 
   // BFS hop-distance map from a seed node, respecting the same type/edge
@@ -4648,10 +4815,14 @@ const Graph = (function() {
   // node isn't a trail-only node — i.e. it's part of the active isolation,
   // or there's no trail at all). Fades linearly with hop distance.
   function trailAlpha(n) {
-    if (!previousTrail || !previousTrail.has(n.id)) return null;
     if (conceptLinkSet && conceptLinkSet.has(n.id)) return null;
-    const d = previousTrail.get(n.id);
+    if (!isTrailNode(n.id)) return null;
     const maxHops = Math.max(1, conceptLinkDepth * 2);
+    // A trail node not reachable from the current node within currentHopMap
+    // (e.g. the current selection excludes a type it needs to route
+    // through) still fades in, just at the dimmest step, rather than
+    // popping at full strength.
+    const d = currentHopMap.has(n.id) ? currentHopMap.get(n.id) : maxHops;
     return Math.max(0.12, 0.5 * (1 - d / (maxHops + 1)));
   }
 
@@ -5093,16 +5264,25 @@ const Graph = (function() {
       scheduleDraw();
     }, { passive: false });
 
+    // A double-click fires as click, click, dblclick — without this delay,
+    // the two leading clicks would each open the node's detail tab (and
+    // navigate away from the graph entirely) before the dblclick handler
+    // ever got a chance to recenter the camera. Deferring the single-click
+    // action and cancelling it if a dblclick follows within the window is
+    // the standard way to let both live on the same element.
+    let pendingClick = null;
     canvas.addEventListener('click', e => {
       if (dragDistance > 4) return; // was a drag, not a click
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
       const n = nodeAt(sx, sy);
       if (!n) return;
-      onNodeClick(n);
+      if (pendingClick) clearTimeout(pendingClick);
+      pendingClick = setTimeout(() => { pendingClick = null; onNodeClick(n); }, 250);
     });
 
     canvas.addEventListener('dblclick', e => {
+      if (pendingClick) { clearTimeout(pendingClick); pendingClick = null; }
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
       const n = nodeAt(sx, sy);
@@ -5142,19 +5322,22 @@ const Graph = (function() {
       });
     });
 
+    document.getElementById('graph-show-orphans').addEventListener('change', e => {
+      hideOrphans = !e.target.checked;
+      scheduleDraw();
+    });
+
     document.getElementById('graph-reset').addEventListener('click', () => {
       needsInitialFit = false;
       selectedNodeId = null;
-      previousTrail = null;
+      isolationHistory = [];
+      currentHopMap = new Map();
       fitView();
       scheduleDraw();
     });
 
-    document.getElementById('graph-legend-toggle').addEventListener('click', () => {
-      document.getElementById('graph-legend').classList.add('open');
-    });
-    document.getElementById('graph-legend-close').addEventListener('click', () => {
-      document.getElementById('graph-legend').classList.remove('open');
+    document.getElementById('side-panel-collapse').addEventListener('click', () => {
+      document.getElementById('graph-side-panel').classList.toggle('collapsed');
     });
 
     // The "Linked to" / "Concepts" multi-selects drive updateLinkSeeds()
@@ -5192,6 +5375,8 @@ const Graph = (function() {
       // is actually being worked on) — every other type defaults to visible.
       document.querySelectorAll('.gtype').forEach(cb => { cb.checked = cb.value !== 'ghost' && cb.value !== 'endpoint' && cb.value !== 'waypoint'; });
       typeFilter = new Set(['paper', 'concept', 'project', 'idea', 'note']);
+      hideOrphans = false;
+      document.getElementById('graph-show-orphans').checked = true;
       // Resetting types changes sim membership just like any other type
       // toggle — rebuild the layout from what's left.
       rebuildSimMembership();
@@ -5211,7 +5396,8 @@ const Graph = (function() {
       toggleBtn.setAttribute('aria-expanded', 'false');
       toggleBtn.innerHTML = 'Filters &#9656;';
       selectedNodeId = null;
-      previousTrail = null;
+      isolationHistory = [];
+      currentHopMap = new Map();
       updateLinkSeeds();
     });
 
@@ -5239,6 +5425,7 @@ const Graph = (function() {
   function currentFilterState() {
     return {
       types: [...typeFilter],
+      hideOrphans,
       linkedTo: [...linkedToMS.getSelected()],
       concepts: [...conceptsMS.getSelected()],
       depth: conceptLinkDepth,
@@ -5249,6 +5436,8 @@ const Graph = (function() {
   function applyFilterState(state) {
     typeFilter = new Set(state.types || ['paper', 'concept', 'project', 'idea', 'note']);
     document.querySelectorAll('.gtype').forEach(cb => { cb.checked = typeFilter.has(cb.value); });
+    hideOrphans = !!state.hideOrphans;
+    document.getElementById('graph-show-orphans').checked = !hideOrphans;
     // Restoring a preset changes which types are checked, which changes sim
     // membership — rebuild the layout from what's left, same as any other
     // type toggle.
@@ -5326,9 +5515,34 @@ const Graph = (function() {
     openDetail(n.type, n.id);
   }
 
+  // Double-click centers the camera on the node instead of opening its
+  // detail pane — single-click already does that, so double-click gets its
+  // own distinct job: recentering after panning/zooming away to explore.
   function onNodeDblClick(n) {
-    if (n.type === 'ghost') { window.open(googleSearchUrl(n.name), '_blank', 'noopener'); return; }
-    openDetail(n.type, n.id);
+    needsInitialFit = false; // user is driving the camera now
+    animatePanTo(n.x, n.y);
+  }
+
+  // Eases the pan so the camera glides to center the given world point
+  // instead of snapping — cancels any animation already in flight.
+  let cameraAnim = null;
+  function animatePanTo(targetX, targetY, duration = 400) {
+    cameraAnim = {
+      startPanX: panX, startPanY: panY,
+      endPanX: -targetX * zoom, endPanY: -targetY * zoom,
+      startTime: performance.now(), duration,
+    };
+    requestAnimationFrame(stepCameraAnim);
+  }
+  function stepCameraAnim(now) {
+    if (!cameraAnim) return;
+    const t = Math.min(1, (now - cameraAnim.startTime) / cameraAnim.duration);
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    panX = cameraAnim.startPanX + (cameraAnim.endPanX - cameraAnim.startPanX) * ease;
+    panY = cameraAnim.startPanY + (cameraAnim.endPanY - cameraAnim.startPanY) * ease;
+    scheduleDraw();
+    if (t < 1) requestAnimationFrame(stepCameraAnim);
+    else cameraAnim = null;
   }
 
   // Shown only while ALT is held, appended to the normal tooltip — the

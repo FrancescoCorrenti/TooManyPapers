@@ -125,7 +125,7 @@ All types are enforced by the server. The LLM cannot invent new types.
 
 **Edge types:** `connected_to` . `uses_concept` . `part_of` . `inspired_by` . `relevant_to` . `derived_from` . `enables` . `leads_to`
 
-**Never create a `uses_concept`/`relevant_to` edge from a paper to a concept it's already tagged with in its `concepts` field.** The paper's `concepts` array is already the paper-to-concept link (rendered as the graph's `concept_tag` edges) — adding an explicit graph edge for the same pair is a pure duplicate. Reserve `uses_concept` for non-paper nodes (project/idea/waypoint → concept) or for a paper-concept link that is deliberately NOT already covered by the `concepts` field.
+**A paper can only connect to a concept via `uses_concept`** — the server rejects any other edge type (e.g. `relevant_to`) between a paper and a concept. Never create that edge for a pair already tagged in the paper's `concepts` field, though: that array is already the paper-to-concept link (rendered as the graph's `concept_tag` edges), so an explicit `uses_concept` edge for the same pair is a pure duplicate. Reserve it for a paper-concept link deliberately NOT already covered by the `concepts` field. `relevant_to` and the other edge types remain available for non-paper nodes (project/idea/waypoint → concept).
 
 **A project connects only to concepts, ideas, waypoints, and endpoints — never directly to a paper.** The server rejects a project↔paper edge. Route paper relevance through a project's ideas or concepts instead.
 

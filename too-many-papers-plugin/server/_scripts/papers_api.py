@@ -2581,6 +2581,14 @@ def cmd_graph_add_edge(args):
               f"nodes, not '{src_type}'.")
         sys.exit(1)
 
+    # A paper may only connect to a concept via uses_concept — that's the
+    # one edge type meant to express "this paper is about this concept";
+    # any other relationship a paper has (citations, notes) is tracked
+    # through its own dedicated mechanism, not a graph edge type.
+    if {src_type, tgt_type} == {"paper", "concept"} and edge_type != "uses_concept":
+        print("ERROR: a paper can only connect to a concept via 'uses_concept'.")
+        sys.exit(1)
+
     # leads_to forms the waypoint chain: waypoint -> waypoint -> ... -> endpoint.
     if edge_type == "leads_to":
         if src_type != "waypoint" or tgt_type not in ("waypoint", "endpoint"):
