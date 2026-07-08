@@ -2174,7 +2174,10 @@ PROJECT_DESCRIPTION_MAX_LEN = 200
 NODE_REQUIRED_FIELDS = {
     "concept": {"name", "area"},
     "project": {"name", "status"},
-    "endpoint": {"name", "status"},
+    # `project` here is the id of the owning project node, not a graph
+    # field: cmd_graph_add_node pops it off and turns it into a `part_of`
+    # edge to that project, since every endpoint must belong to one.
+    "endpoint": {"name", "status", "project"},
     "idea": {"name", "status", "created"},
     "waypoint": {"name"},
     "note": {"name", "created"},
@@ -2431,9 +2434,24 @@ def cmd_graph_add_node(args):
 
     graph = load_graph()
     nodes = graph.setdefault("nodes", {})
+
+    project_id = None
+    if node_type == "endpoint":
+        project_id = payload.pop("project")
+        project_node = _resolve_node_id(project_id, graph)
+        if not project_node:
+            print(f"ERROR: project '{project_id}' not found."); sys.exit(1)
+        if project_node.get("type") != "project":
+            print(f"ERROR: '{project_id}' is not a project node."); sys.exit(1)
+
     new_id = _generate_node_id(node_type, payload, nodes)
     payload["type"] = node_type
     nodes[new_id] = payload
+
+    if project_id:
+        graph.setdefault("edges", []).append(
+            {"src": new_id, "tgt": project_id, "type": "part_of"})
+
     save_graph(graph)
     _log_event("node_added", id=new_id, type=node_type, name=payload.get("name"))
 
@@ -2581,10 +2599,13 @@ def cmd_graph_add_edge(args):
               f"nodes, not '{src_type}'.")
         sys.exit(1)
 
-    # A project/waypoint/endpoint node has only two "chain slots": at most two
-    # edges (either direction, any edge type) to other project/waypoint/endpoint
-    # nodes, since a chain runs through each node as start/passthrough/end and
-    # never branches.
+    # A waypoint has only two "chain slots": at most two edges (either
+    # direction, any edge type) to other project/waypoint/endpoint nodes,
+    # since a chain runs through a waypoint as start/passthrough/end and
+    # never branches there. Projects and endpoints are hubs, not links in
+    # a single chain — a project legitimately fans out to many endpoints,
+    # and an endpoint may have several independent chains converging on
+    # it — so they are exempt from this cap.
     CHAIN_TYPES = {"project", "waypoint", "endpoint"}
     if src_type in CHAIN_TYPES and tgt_type in CHAIN_TYPES:
         def _chain_degree(node_id):
@@ -2601,11 +2622,11 @@ def cmd_graph_add_edge(args):
                 if other_node and other_node.get("type") in CHAIN_TYPES:
                     count += 1
             return count
-        if _chain_degree(src) >= 2:
+        if src_type == "waypoint" and _chain_degree(src) >= 2:
             print(f"ERROR: '{src}' already has 2 project/waypoint/endpoint "
                   f"connections (its chain slots are full).")
             sys.exit(1)
-        if _chain_degree(tgt) >= 2:
+        if tgt_type == "waypoint" and _chain_degree(tgt) >= 2:
             print(f"ERROR: '{tgt}' already has 2 project/waypoint/endpoint "
                   f"connections (its chain slots are full).")
             sys.exit(1)
@@ -2687,6 +2708,26 @@ def cmd_graph_remove_edge(args):
 
     graph = load_graph()
     edges = graph.get("edges", [])
+
+    # Every endpoint must stay connected to a project — block removing its
+    # last remaining part_of link to one.
+    src_node = graph.get("nodes", {}).get(src)
+    if src_node and src_node.get("type") == "endpoint" and (type_filter is None or type_filter == "part_of"):
+        to_remove = [e for e in edges
+                     if e.get("src") == src and e.get("tgt") == tgt and
+                     (type_filter is None or e.get("type") == type_filter)]
+        if any(e.get("type") == "part_of" for e in to_remove):
+            other_project_links = [
+                e for e in edges
+                if e.get("src") == src and e.get("type") == "part_of" and e.get("tgt") != tgt
+                and graph.get("nodes", {}).get(e.get("tgt"), {}).get("type") == "project"
+            ]
+            if not other_project_links:
+                print(f"ERROR: '{src}' is an endpoint and must stay connected to a "
+                      f"project — this is its only 'part_of' link to one. Connect it "
+                      f"to another project first if you want to move it.")
+                sys.exit(1)
+
     before = len(edges)
     graph["edges"] = [e for e in edges
                       if not (e.get("src") == src and e.get("tgt") == tgt and

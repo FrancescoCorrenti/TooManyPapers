@@ -2568,9 +2568,19 @@ function showError(html) {
 
 // ── UI state persistence ──────────────────────────────────────────────────────
 
+// The graph's own filter/selection state (types shown, linked-to/concepts
+// seeds, hop depth, edge types, the right-click-isolated node) is captured
+// separately from the rest of the UI state because the Graph module loads
+// lazily — it may not exist yet when saveUI() runs. `graphSavedState` holds
+// the last known value (restored from the cookie on boot, refreshed by
+// Graph.getFilterState() once the graph tab has been opened) so it survives
+// a reload even if the user never revisits the Graph tab in between.
+let graphSavedState = null;
+
 function saveUI() {
   const state = { filterMode, searchQ, conceptF, venueF, sortMode, sortAscend,
-    currentTopTab, openTabs, activeSub };
+    currentTopTab, openTabs, activeSub,
+    graph: (typeof Graph !== 'undefined' && Graph.loaded) ? Graph.getFilterState() : graphSavedState };
   document.cookie = `paperLibUI=${encodeURIComponent(JSON.stringify(state))};path=/;max-age=${60*60*24*365}`;
 }
 
@@ -2596,6 +2606,7 @@ function loadUI() {
         if (typeof s.activeSub[t] === 'string') activeSub[t] = s.activeSub[t];
       });
     }
+    if (s.graph) graphSavedState = s.graph;
   } catch(e) {}
 }
 
@@ -4483,6 +4494,11 @@ const Graph = (function() {
     }
 
     bindEvents();
+    // Restore whatever filters/selection were active on the graph the last
+    // time this page was open, so a reload doesn't silently reset back to
+    // the defaults. Must run after bindEvents() wires up the multi-selects
+    // and edge-type checkboxes that applyFilterState() drives.
+    if (graphSavedState) applyFilterState(graphSavedState);
     resize();
     Graph.loaded = true;
     // The simulation (started in buildSim) drives the initial layout and
@@ -4672,6 +4688,7 @@ const Graph = (function() {
     linkSeeds = new Set([...linkedToMS.getSelected(), ...conceptsMS.getSelected()]);
     recomputeConceptLinkSet();
     scheduleDraw();
+    if (Graph.loaded) saveUI();
   }
 
   // Right-click (or programmatic call) isolation: jump straight to "linked
@@ -4706,6 +4723,8 @@ const Graph = (function() {
       cb.addEventListener('change', () => {
         edgeTypeFilter = new Set([...box.querySelectorAll('.etype:checked')].map(c => c.value));
         recomputeConceptLinkSet();
+        scheduleDraw();
+        saveUI();
       });
     });
   }
@@ -5376,12 +5395,14 @@ const Graph = (function() {
         // currently visible — recompute it, not just the rendering.
         recomputeConceptLinkSet();
         scheduleDraw();
+        saveUI();
       });
     });
 
     document.getElementById('graph-show-orphans').addEventListener('change', e => {
       hideOrphans = !e.target.checked;
       scheduleDraw();
+      saveUI();
     });
 
     document.getElementById('graph-reset').addEventListener('click', () => {
@@ -5391,6 +5412,7 @@ const Graph = (function() {
       currentHopMap = new Map();
       fitView();
       scheduleDraw();
+      saveUI();
     });
 
     document.getElementById('side-panel-collapse').addEventListener('click', () => {
@@ -5405,6 +5427,7 @@ const Graph = (function() {
       document.getElementById('graph-link-depth').value = String(v);
       recomputeConceptLinkSet();
       scheduleDraw();
+      saveUI();
     }
     document.getElementById('graph-link-depth').addEventListener('change', e => {
       setGraphLinkDepth(parseInt(e.target.value, 10));
@@ -5456,6 +5479,7 @@ const Graph = (function() {
       isolationHistory = [];
       currentHopMap = new Map();
       updateLinkSeeds();
+      saveUI();
     });
 
     initPresets();
@@ -5487,6 +5511,7 @@ const Graph = (function() {
       concepts: [...conceptsMS.getSelected()],
       depth: conceptLinkDepth,
       edgeTypes: edgeTypeFilter ? [...edgeTypeFilter] : null,
+      selectedNodeId,
     };
   }
 
@@ -5517,6 +5542,11 @@ const Graph = (function() {
       cb.checked = !edgeTypeFilter || edgeTypeFilter.has(cb.value);
     });
 
+    // Restore the right-click-isolated node (halo) directly rather than via
+    // isolateNode() — that would push a spurious step onto isolationHistory,
+    // as if the user had just clicked away from some other node.
+    selectedNodeId = state.selectedNodeId || null;
+
     updateLinkSeeds();
   }
 
@@ -5535,7 +5565,7 @@ const Graph = (function() {
     document.getElementById('graph-preset-select').addEventListener('change', e => {
       const presets = loadPresets();
       const state = presets[e.target.value];
-      if (state) applyFilterState(state);
+      if (state) { applyFilterState(state); saveUI(); }
     });
 
     document.getElementById('graph-preset-save').addEventListener('click', () => {
@@ -5665,7 +5695,7 @@ const Graph = (function() {
     scheduleDraw();
   }
 
-  return { init, resize, loaded: false, conceptColor };
+  return { init, resize, loaded: false, conceptColor, getFilterState: currentFilterState };
 })();
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -5675,9 +5705,14 @@ loadUI();
 applyUIToDOM();
 const restoreTab = currentTopTab;
 const papersReady = loadPapers();
-const graphReady  = ensureGraphLoaded().then(populatePaperLinkedToFilter); // kick off early so switching tabs feels instant
+// Kicked off early so switching to the Graph tab (or opening the "linked to"
+// filter) feels instant once the fetch lands, but boot no longer waits on
+// it — /api/graph can be a lot heavier than /api/papers on a big graph, and
+// blocking the whole app behind it just to populate a filter dropdown made
+// the boot spinner drag on far longer than the Papers tab itself needed.
+const graphReady  = ensureGraphLoaded().then(populatePaperLinkedToFilter);
 renderSubTabBar(restoreTab);
-Promise.all([papersReady, graphReady]).then(() => {
+papersReady.then(() => {
   switchTopTab(restoreTab);
   const overlay = document.getElementById('boot-overlay');
   if (overlay) overlay.remove();

@@ -542,16 +542,20 @@ def graph_add_project(name: str, status: str, description: str = "") -> str:
 
 
 @mcp.tool()
-def graph_add_endpoint(name: str, status: str = "pending", description: str = "") -> str:
+def graph_add_endpoint(name: str, project: str, status: str = "pending", description: str = "") -> str:
     """Add an endpoint node — a project's goal/milestone that a chain of
-    waypoints (see graph_add_waypoint) leads to via "leads_to" edges.
+    waypoints (see graph_add_waypoint) leads to via "leads_to" edges. Every
+    endpoint must belong to a project: this creates a "part_of" edge to it
+    immediately, and the server rejects the endpoint if that project doesn't
+    exist (or removing its last such link later).
 
     Args:
         name: Endpoint name.
+        project: ID of the owning project node (required).
         status: One of "pending" (default), "reached", or "failed".
         description: Optional one-sentence description.
     """
-    payload = {"name": name, "status": status}
+    payload = {"name": name, "status": status, "project": project}
     if description:
         payload["description"] = description
     return _add_node("endpoint", payload)
