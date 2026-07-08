@@ -693,7 +693,22 @@
     gap: 2px;
     padding: 0 8px 10px;
     overflow-y: auto;
+    font-family: var(--font-body);
+    font-size: 0.8rem;
   }
+  /* Themed scrollbar (Firefox + WebKit) instead of the raw OS default —
+     thin, and only tinted on hover so it doesn't compete with the panel
+     content at rest. */
+  .side-panel-body { scrollbar-width: thin; scrollbar-color: var(--border-light) transparent; }
+  .side-panel-body::-webkit-scrollbar { width: 7px; }
+  .side-panel-body::-webkit-scrollbar-track { background: transparent; }
+  .side-panel-body::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+  .side-panel-body::-webkit-scrollbar-thumb:hover { background: var(--accent2); }
+  /* Everything below the type chips (status/edges/concept legends) is
+     reference material, not the primary control — mute it a step so the
+     Layers chips above keep the visual lead. */
+  .legend-section { color: var(--text-dim); opacity: 0.72; }
+  .legend-section .legend-subtitle { font-size: 0.8em; }
   #graph-side-panel.collapsed { width: 44px; }
   #graph-side-panel.collapsed .side-panel-title,
   #graph-side-panel.collapsed .chip-label,
@@ -709,6 +724,7 @@
     padding: 5px 8px;
     border-radius: 6px;
     font-size: 0.8rem;
+    font-family: var(--font-body);
     color: var(--text-dim);
     cursor: pointer;
     user-select: none;
@@ -903,13 +919,96 @@
     z-index: 50;
   }
 
+  /* Node info panel — bottom-left, opened by right-click/double-click on a
+     graph node. Absent from the DOM flow (display:none) until the first
+     node is ever selected; once shown it stays anchored bottom-left and
+     only its height changes between collapsed/expanded. */
+  #node-info-panel {
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    z-index: 45;
+    width: 300px;
+    max-width: calc(100% - 28px);
+    max-height: min(340px, calc(100% - 28px));
+    display: flex;
+    flex-direction: column;
+    background: rgba(28,31,38,0.94);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    transform-origin: top left;
+    animation: node-info-drop .2s ease;
+  }
+  @keyframes node-info-drop {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  #node-info-panel.collapsed .node-info-body { display: none; }
+  #node-info-panel.collapsed #node-info-collapse svg { transform: rotate(180deg); }
+  .node-info-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 8px 9px 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  #node-info-panel.collapsed .node-info-head { border-bottom: none; }
+  .node-info-title {
+    flex: 1;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #node-info-collapse svg { transition: transform .18s ease; }
+  .node-info-body {
+    padding: 10px 12px 12px;
+    overflow-y: auto;
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--text-dim);
+    scrollbar-width: thin; scrollbar-color: var(--border-light) transparent;
+  }
+  .node-info-body::-webkit-scrollbar { width: 7px; }
+  .node-info-body::-webkit-scrollbar-track { background: transparent; }
+  .node-info-body::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+  .node-info-body::-webkit-scrollbar-thumb:hover { background: var(--accent2); }
+  .node-info-body .nib-row { margin-bottom: 6px; }
+  .node-info-body .nib-row b { color: var(--text); }
+  .node-info-body .nib-abstract { color: var(--text); white-space: pre-wrap; }
+  .node-info-body .nib-empty { color: var(--text-dim); font-style: italic; }
+  .node-info-spinner {
+    display: flex; align-items: center; justify-content: center;
+    padding: 18px 0;
+  }
+  .node-info-spinner::after {
+    content: '';
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--border-light);
+    border-top-color: var(--accent2);
+    animation: node-info-spin .7s linear infinite;
+  }
+  @keyframes node-info-spin { to { transform: rotate(360deg); } }
+
   .legend-section + .legend-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
-  .legend-subtitle { color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; font-size: 0.68rem; margin-bottom: 5px; }
+  .legend-subtitle { color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; font-size: 0.72rem; margin-bottom: 5px; }
   .legend-row {
     display: flex;
     align-items: center;
     gap: 7px;
     margin-bottom: 5px;
+    font-size: 0.8rem;
+    font-family: var(--font-body);
   }
   .legend-row span.lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .legend-shape { display: inline-block; width: 11px; height: 11px; flex-shrink: 0; background: var(--accent2); }
@@ -1835,6 +1934,16 @@
     <canvas id="graph-canvas"></canvas>
     <div id="graph-tooltip"></div>
     <div id="graph-alt-hint">Hold ALT for more info</div>
+    <div id="node-info-panel" style="display:none;">
+      <div id="node-info-head" class="node-info-head">
+        <span id="node-info-type-dot" class="chip-dot circle"></span>
+        <span id="node-info-title" class="node-info-title"></span>
+        <button id="node-info-collapse" class="icon-filter-btn filter-btn" title="Collapse">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+        </button>
+      </div>
+      <div id="node-info-body" class="node-info-body"></div>
+    </div>
   </div>
 </div>
 
@@ -4720,6 +4829,112 @@ const Graph = (function() {
     updateLinkSeeds();
   }
 
+  // ── Node info panel ────────────────────────────────────────────────────
+  // Bottom-left popover shown on right-click/double-click of a graph node.
+  // infoCollapsed persists across which node is shown (switching selection
+  // doesn't force it open/closed); infoVisible tracks whether the panel
+  // exists on screen at all — false until the very first selection, and
+  // reset back to false by "Reset filters".
+  let infoVisible = false;
+  let infoCollapsed = false;
+  let infoNode = null;
+  let infoFetchToken = 0; // guards against a stale fetch landing after the user moved on
+
+  const NODE_TYPE_DOT = {
+    paper:    'circle',
+    concept:  'circle dithered',
+    project:  'square',
+    endpoint: 'triangle',
+    idea:     'diamond',
+    waypoint: 'dot',
+    note:     'star',
+    ghost:    'circle hollow',
+  };
+
+  function showNodeInfo(n, opts) {
+    opts = opts || {};
+    infoNode = n;
+    infoVisible = true;
+    if (opts.forceExpand) infoCollapsed = false;
+    renderNodeInfo();
+  }
+
+  function renderNodeInfo() {
+    const panel = document.getElementById('node-info-panel');
+    if (!infoVisible || !infoNode) { panel.style.display = 'none'; return; }
+    panel.style.display = 'flex';
+    panel.classList.toggle('collapsed', infoCollapsed);
+
+    const dot = document.getElementById('node-info-type-dot');
+    dot.className = 'chip-dot ' + (NODE_TYPE_DOT[infoNode.type] || 'circle');
+    document.getElementById('node-info-title').textContent =
+      infoNode.title || infoNode.name || infoNode.id;
+
+    const body = document.getElementById('node-info-body');
+    if (infoNode.type === 'paper') {
+      renderPaperInfo(body, infoNode);
+    } else if (infoNode.type === 'ghost') {
+      body.innerHTML = `<div class="nib-row nib-empty">Referenced by a paper in your library, but not itself in the catalog.</div>`;
+    } else {
+      renderGenericNodeInfo(body, infoNode);
+    }
+  }
+
+  function renderGenericNodeInfo(body, n) {
+    const rows = [];
+    if (n.status) rows.push(`<div class="nib-row"><b>Status:</b> ${esc(n.status)}</div>`);
+    if (n.area) rows.push(`<div class="nib-row"><b>Area:</b> ${esc(n.area)}</div>`);
+    if (n.created) rows.push(`<div class="nib-row"><b>Created:</b> ${esc(n.created)}</div>`);
+    if (n.description) {
+      rows.push(`<div class="nib-row nib-abstract">${renderMarkdown(n.description)}</div>`);
+    } else if (n.text || n.quote) {
+      rows.push(`<div class="nib-row nib-abstract">${renderMarkdown(n.text || n.quote)}</div>`);
+    }
+    body.innerHTML = rows.length ? rows.join('') : `<div class="nib-row nib-empty">No description yet.</div>`;
+  }
+
+  function renderPaperInfo(body, n) {
+    const p = allPapers.find(x => x.id === n.id);
+    const head = [];
+    if (p && p.autori) head.push(`<div class="nib-row"><b>Authors:</b> ${esc(p.autori)}</div>`);
+    if (p && (p.annoPub || p.venueName)) {
+      head.push(`<div class="nib-row"><b>${esc(p.venueName || '')}</b>${p.venueName && p.annoPub ? ' &middot; ' : ''}${esc(p.annoPub || '')}</div>`);
+    }
+
+    if (p && p.abstract) {
+      body.innerHTML = head.join('') + `<div class="nib-row nib-abstract">${esc(p.abstract)}</div>`;
+      return;
+    }
+
+    // No abstract on file yet — show what we have plus a spinner, then try
+    // to fetch and cache one. Never invents text: a miss just says so.
+    body.innerHTML = head.join('') + `<div class="node-info-spinner"></div>`;
+    const token = ++infoFetchToken;
+    fetch(`${API}/paper-abstract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: n.id }),
+    }).then(r => r.json()).then(result => {
+      if (token !== infoFetchToken || !infoVisible || !infoNode || infoNode.id !== n.id) return; // user moved on
+      if (result.abstract) {
+        const idx = allPapers.findIndex(x => x.id === n.id);
+        if (idx !== -1) allPapers[idx].abstract = result.abstract;
+        body.innerHTML = head.join('') + `<div class="nib-row nib-abstract">${esc(result.abstract)}</div>`;
+      } else {
+        body.innerHTML = head.join('') + `<div class="nib-row nib-empty">No abstract available [unavailable].</div>`;
+      }
+    }).catch(() => {
+      if (token !== infoFetchToken || !infoVisible || !infoNode || infoNode.id !== n.id) return;
+      body.innerHTML = head.join('') + `<div class="nib-row nib-empty">Couldn't fetch an abstract right now.</div>`;
+    });
+  }
+
+  function hideNodeInfo() {
+    infoVisible = false;
+    infoNode = null;
+    document.getElementById('node-info-panel').style.display = 'none';
+  }
+
   function populateEdgeTypeFilters() {
     const box = document.getElementById('graph-edge-type-filters');
     const types = [...new Set(edges.map(e => e.type))].sort();
@@ -5349,6 +5564,13 @@ const Graph = (function() {
         altPressed = true;
         updateTooltip(lastMouseX, lastMouseY);
       }
+      // Bare Alt is the browser's own "focus the menu/toolbar" accelerator
+      // (Firefox/Edge highlight the menu bar, Chrome does something similar
+      // with alt-accesskeys) — that stole focus out of the page, so a second
+      // Alt press without first re-clicking the canvas did nothing. Suppress
+      // the default only for the bare key (no other modifier riding with it,
+      // so Alt+Tab/Alt+F4 etc. are untouched).
+      if (e.key === 'Alt' && !e.ctrlKey && !e.shiftKey && !e.metaKey) e.preventDefault();
     });
     window.addEventListener('keyup', e => {
       if (e.key === 'Alt') {
@@ -5423,6 +5645,18 @@ const Graph = (function() {
       if (!n) return;
       e.preventDefault();
       isolateNode(n.id);
+      if (n.type !== 'ghost') showNodeInfo(n, { forceExpand: false });
+    });
+
+    document.getElementById('node-info-head').addEventListener('click', e => {
+      if (e.target.closest('#node-info-collapse')) return; // its own handler toggles + stops propagation
+      infoCollapsed = !infoCollapsed;
+      renderNodeInfo();
+    });
+    document.getElementById('node-info-collapse').addEventListener('click', e => {
+      e.stopPropagation();
+      infoCollapsed = !infoCollapsed;
+      renderNodeInfo();
     });
 
     document.getElementById('graph-search').addEventListener('input', e => {
@@ -5529,6 +5763,8 @@ const Graph = (function() {
       isolationHistory = [];
       currentHopMap = new Map();
       updateLinkSeeds();
+      infoCollapsed = false;
+      hideNodeInfo();
       saveUI();
     });
 
@@ -5658,6 +5894,7 @@ const Graph = (function() {
   function onNodeDblClick(n) {
     needsInitialFit = false; // user is driving the camera now
     animatePanTo(n.x, n.y);
+    if (n.type !== 'ghost') showNodeInfo(n, { forceExpand: true });
   }
 
   // Eases the pan so the camera glides to center the given world point

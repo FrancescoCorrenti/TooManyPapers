@@ -7,10 +7,11 @@
  * Exposes papers via API and updates _papers.json on "read" toggle.
  */
 
-const http = require('http');
-const fs   = require('fs');
-const path = require('path');
-const os   = require('os');
+const http  = require('http');
+const https = require('https');
+const fs    = require('fs');
+const path  = require('path');
+const os    = require('os');
 const { spawnSync } = require('child_process');
 
 // The BibTeX exporter is the Python one in papers_api.py — the single source
@@ -185,6 +186,7 @@ function loadData() {
       fileExists:  !!resolvePdfPath(p.file),
       outsideZone: p.outside_zone     || false,
       notes:       p.notes            || '',
+      abstract:    p.abstract         || '',
       read:        p.read             || false,
       hidden:      p.hidden           || false,
       cites:       cites,
@@ -354,6 +356,88 @@ const PAPER_EDITABLE_FIELDS = new Set([
   'title', 'authors', 'year', 'discovered', 'venue_id', 'venue_detail',
   'source_verified', 'concepts', 'file', 'outside_zone', 'notes', 'url',
 ]);
+
+// -- Abstract auto-fetch -----------------------------------------------------
+// Best-effort lookup, used only by the graph's node info panel: arXiv first
+// (free, no key, works straight off the paper's own arXiv link), then
+// Semantic Scholar by title as a fallback for everything else. Never
+// invents anything — a miss just leaves `abstract` unset, same as before.
+
+function httpsGetText(url, headers) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers: Object.assign({ 'User-Agent': 'too-many-papers-webui' }, headers || {}) }, res => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        resolve(httpsGetText(res.headers.location, headers));
+        return;
+      }
+      let data = '';
+      res.on('data', d => { data += d; });
+      res.on('end', () => {
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error('HTTP ' + res.statusCode));
+          return;
+        }
+        resolve(data);
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(10000, () => req.destroy(new Error('Request timed out')));
+  });
+}
+
+function extractArxivId(str) {
+  if (!str) return null;
+  const m = /arxiv\.org\/(?:abs|pdf)\/([\w.\-]+?)(?:v\d+)?(?:\.pdf)?(?:[?#].*)?$/i.exec(String(str).trim());
+  return m ? m[1] : null;
+}
+
+async function fetchAbstractFromArxiv(arxivId) {
+  const xml = await httpsGetText(`https://export.arxiv.org/api/query?id_list=${encodeURIComponent(arxivId)}`);
+  const m = /<summary>([\s\S]*?)<\/summary>/.exec(xml);
+  return m ? m[1].replace(/\s+/g, ' ').trim() : null;
+}
+
+async function fetchAbstractFromSemanticScholar(title) {
+  const headers = {};
+  if (process.env.S2_API_KEY) headers['x-api-key'] = process.env.S2_API_KEY;
+  const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(title)}&fields=title,abstract&limit=1`;
+  const raw = await httpsGetText(url, headers);
+  const json = JSON.parse(raw);
+  const hit = json.data && json.data[0];
+  return (hit && hit.abstract) ? hit.abstract.trim() : null;
+}
+
+// Fetches (and persists, so future opens skip the network entirely) the
+// abstract for a paper already in the catalog. Returns the cached value
+// immediately if one is already on file.
+async function fetchAbstractForPaper(paperId) {
+  const raw    = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
+  const papers = raw.papers || {};
+  const p = papers[paperId];
+  if (!p) return { error: `Paper '${paperId}' not found.` };
+  if (p.abstract) return { abstract: p.abstract, cached: true };
+
+  const arxivId = extractArxivId(p.source_verified) || extractArxivId(p.url);
+  let abstract = null, source = null;
+  try {
+    if (arxivId) {
+      abstract = await fetchAbstractFromArxiv(arxivId);
+      if (abstract) source = 'arxiv';
+    }
+    if (!abstract && p.title) {
+      abstract = await fetchAbstractFromSemanticScholar(p.title);
+      if (abstract) source = 'semanticscholar';
+    }
+  } catch (e) {
+    return { error: e.message };
+  }
+  if (!abstract) return { abstract: null };
+
+  p.abstract = abstract;
+  raw.papers = papers;
+  fs.writeFileSync(PAPERS_FILE, JSON.stringify(raw, null, 2), 'utf8');
+  return { abstract, source };
+}
 
 // PDF notes are first-class graph citizens: each one is a `note` node
 // (mirrors papers_api.py's NODE_REQUIRED_FIELDS/NODE_OPTIONAL_FIELDS for
@@ -846,6 +930,27 @@ const server = http.createServer(function(req, res) {
         const data = loadData();
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(data));
+      } catch(e) {
+        res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/api/paper-abstract') {
+    let body = '';
+    req.on('data', function(d) { body += d; });
+    req.on('end', async function() {
+      try {
+        const id     = JSON.parse(body).id;
+        const result = await fetchAbstractForPaper(id);
+        if (result.error) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: result.error }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(result));
       } catch(e) {
         res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
       }

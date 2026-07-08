@@ -510,7 +510,7 @@ PAPER_REQUIRED_FIELDS = {"title", "authors", "year", "discovered", "venue_id",
                          "venue_detail", "source_verified", "concepts",
                          "file", "outside_zone", "notes"}
 PAPER_OPTIONAL_FIELDS = {"url", "hidden", "cites", "cited_by", "cites_unmatched",
-                          "pdf_status", "pdf_source", "pdf_notes", "cite_key"}
+                          "pdf_status", "pdf_source", "pdf_notes", "cite_key", "abstract"}
 PAPER_ALLOWED_FIELDS = PAPER_REQUIRED_FIELDS | PAPER_OPTIONAL_FIELDS
 
 def validate_paper_payload(payload: dict) -> list[str]:
