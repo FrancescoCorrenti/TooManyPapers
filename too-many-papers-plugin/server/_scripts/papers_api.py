@@ -2581,6 +2581,35 @@ def cmd_graph_add_edge(args):
               f"nodes, not '{src_type}'.")
         sys.exit(1)
 
+    # A project/waypoint/endpoint node has only two "chain slots": at most two
+    # edges (either direction, any edge type) to other project/waypoint/endpoint
+    # nodes, since a chain runs through each node as start/passthrough/end and
+    # never branches.
+    CHAIN_TYPES = {"project", "waypoint", "endpoint"}
+    if src_type in CHAIN_TYPES and tgt_type in CHAIN_TYPES:
+        def _chain_degree(node_id):
+            count = 0
+            for e in graph.get("edges", []):
+                other_id = None
+                if e.get("src") == node_id:
+                    other_id = e.get("tgt")
+                elif e.get("tgt") == node_id:
+                    other_id = e.get("src")
+                if other_id is None:
+                    continue
+                other_node = _resolve_node_id(other_id, graph)
+                if other_node and other_node.get("type") in CHAIN_TYPES:
+                    count += 1
+            return count
+        if _chain_degree(src) >= 2:
+            print(f"ERROR: '{src}' already has 2 project/waypoint/endpoint "
+                  f"connections (its chain slots are full).")
+            sys.exit(1)
+        if _chain_degree(tgt) >= 2:
+            print(f"ERROR: '{tgt}' already has 2 project/waypoint/endpoint "
+                  f"connections (its chain slots are full).")
+            sys.exit(1)
+
     # A paper may only connect to a concept via uses_concept — that's the
     # one edge type meant to express "this paper is about this concept";
     # any other relationship a paper has (citations, notes) is tracked

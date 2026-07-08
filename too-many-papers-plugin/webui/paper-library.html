@@ -4729,6 +4729,34 @@ const Graph = (function() {
         }
         frontier = next;
       }
+      // A selected project's waypoint->...->endpoint chains must show in
+      // full regardless of hop depth, since they represent one continuous
+      // path rather than fanning-out neighbors — so walk them unbounded,
+      // restricted to project/waypoint/endpoint nodes only.
+      const chainTypes = new Set(['project', 'waypoint', 'endpoint']);
+      const projectSeeds = [...linkSeeds].filter(id => {
+        const n = nodesById.get(id);
+        return n && n.type === 'project';
+      });
+      if (projectSeeds.length) {
+        const chainVisited = new Set(projectSeeds);
+        let chainFrontier = projectSeeds;
+        while (chainFrontier.length) {
+          const next = [];
+          for (const id of chainFrontier) {
+            edges.forEach(e => {
+              const other = e.from === id ? e.to : (e.to === id ? e.from : null);
+              if (!other || chainVisited.has(other)) return;
+              const n = nodesById.get(other);
+              if (!n || !chainTypes.has(n.type)) return;
+              chainVisited.add(other);
+              next.push(other);
+            });
+          }
+          chainFrontier = next;
+        }
+        chainVisited.forEach(id => visited.add(id));
+      }
       conceptLinkSet = visited;
     }
     // The trail (isolationHistory) is colored by hop-distance from the
