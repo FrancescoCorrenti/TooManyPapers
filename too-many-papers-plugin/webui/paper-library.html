@@ -4442,6 +4442,13 @@ const Graph = (function() {
   let selectedNodeId = null;
   let isolationHistory = []; // array of Set<nodeId>, oldest first
   let currentHopMap = new Map(); // nodeId -> hop distance from selectedNodeId
+  // Node ids pulled in by a selected project's unbounded waypoint/endpoint
+  // chain walk (see recomputeConceptLinkSet) — shown regardless of the
+  // Waypoints/Endpoints type checkboxes, since right-clicking a project
+  // should reveal its whole chain even when those types are unchecked by
+  // default. Both nodeVisible() and rebuildSimMembership() bypass typeFilter
+  // for ids in this set.
+  let chainForcedIds = new Set();
   const TRAIL_HISTORY_LEN = 5;
 
   const EDGE_STYLE = {
@@ -4579,7 +4586,7 @@ const Graph = (function() {
   // slow down the default view and drag real papers toward invisible
   // anchors — but the rule is the same one applied to every type.
   function rebuildSimMembership() {
-    simNodes = nodes.filter(n => typeFilter.has(n.type));
+    simNodes = nodes.filter(n => typeFilter.has(n.type) || chainForcedIds.has(n.id));
     const inSim = new Set(simNodes);
     simLinks = edges
       .filter(e => inSim.has(e.a) && inSim.has(e.b))
@@ -4740,6 +4747,10 @@ const Graph = (function() {
   // directly connect the types still shown (e.g. paper-to-paper citations
   // when only Papers is checked).
   function recomputeConceptLinkSet() {
+    // Rebuilt from scratch every call (not just extended) so switching from
+    // one selected project to another — or deselecting entirely — drops the
+    // previous project's forced-visible chain instead of accumulating it.
+    chainForcedIds = new Set();
     if (!linkSeeds || linkSeeds.size === 0) {
       conceptLinkSet = null;
     } else {
@@ -4788,8 +4799,26 @@ const Graph = (function() {
           chainFrontier = next;
         }
         chainVisited.forEach(id => visited.add(id));
+        // Every waypoint/endpoint the chain walk pulled in must render even
+        // if its type checkbox is unchecked — that's the whole point of
+        // showing "the full chain regardless of hop depth". Project seeds
+        // themselves are excluded since their type is on by default anyway.
+        chainVisited.forEach(id => {
+          const n = nodesById.get(id);
+          if (n && (n.type === 'waypoint' || n.type === 'endpoint')) chainForcedIds.add(id);
+        });
       }
       conceptLinkSet = visited;
+    }
+    // A project's forced-visible chain changes which nodes belong in the
+    // simulation, same as toggling a type checkbox — rebuild membership so
+    // newly-revealed waypoints/endpoints actually get laid out instead of
+    // sitting stacked at their spawn point.
+    if (typeof simulation !== 'undefined' && simulation) {
+      rebuildSimMembership();
+      buildEdgeIndex();
+      startSimulation();
+      simulation.alpha(0.5).restart();
     }
     // The trail (isolationHistory) is colored by hop-distance from the
     // *current* node, not from whenever each step was captured — refresh
@@ -4834,7 +4863,7 @@ const Graph = (function() {
   }
 
   function nodeVisible(n) {
-    if (!typeFilter.has(n.type)) return false;
+    if (!typeFilter.has(n.type) && !chainForcedIds.has(n.id)) return false;
     if (conceptLinkSet && !conceptLinkSet.has(n.id)) {
       // Not part of the active isolation — but let it through if it's still
       // remembered in the trail from one of the last few isolated nodes.
@@ -4858,7 +4887,7 @@ const Graph = (function() {
     return es.some(e => {
       if (!edgeTypeVisible(e)) return false;
       const other = e.a.id === n.id ? e.b : e.a;
-      return typeFilter.has(other.type);
+      return typeFilter.has(other.type) || chainForcedIds.has(other.id);
     });
   }
 
@@ -4904,6 +4933,27 @@ const Graph = (function() {
 
   function edgeTypeVisible(e) {
     return !edgeTypeFilter || edgeTypeFilter.has(e.type);
+  }
+
+  // An endpoint's direct `part_of` edge to its project is real data (every
+  // endpoint must belong to one) but drawing it as a straight line makes the
+  // graph look like endpoints connect to the project directly, bypassing
+  // the waypoint chain that actually leads to them. So it's only drawn when
+  // that chain is empty (a zero-waypoint endpoint, where part_of is the only
+  // way to see the connection at all) — otherwise the chain edges alone
+  // carry the connection visually.
+  function endpointHasWaypointChain(endpointId) {
+    return edges.some(e => e.type === 'leads_to' && e.to === endpointId && e.a && e.a.type === 'waypoint');
+  }
+
+  function edgeVisible(e) {
+    if (!edgeTypeVisible(e)) return false;
+    if (e.type === 'part_of') {
+      const epNode = e.a.type === 'endpoint' ? e.a : (e.b.type === 'endpoint' ? e.b : null);
+      const projNode = e.a.type === 'project' ? e.a : (e.b.type === 'project' ? e.b : null);
+      if (epNode && projNode && endpointHasWaypointChain(epNode.id)) return false;
+    }
+    return true;
   }
 
   function nodeMatchesSearch(n) {
@@ -5001,7 +5051,7 @@ const Graph = (function() {
     const edgeGroups = new Map();
     edges.forEach(e => {
       if (e === hoverEdge) return;
-      if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeTypeVisible(e)) return;
+      if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeVisible(e)) return;
       if (!inView(e.a) && !inView(e.b)) return;
       const dim = hasSearch && !(nodeMatchesSearch(e.a) && nodeMatchesSearch(e.b));
       const key = e.type + '|' + dim;
@@ -5019,7 +5069,7 @@ const Graph = (function() {
       ctx.lineWidth = 1 / zoom;
       ctx.stroke();
     });
-    if (hoverEdge && nodeVisible(hoverEdge.a) && nodeVisible(hoverEdge.b) && edgeTypeVisible(hoverEdge)) {
+    if (hoverEdge && nodeVisible(hoverEdge.a) && nodeVisible(hoverEdge.b) && edgeVisible(hoverEdge)) {
       const style = EDGE_STYLE[hoverEdge.type] || DEFAULT_EDGE_STYLE;
       const dim = hasSearch && !(nodeMatchesSearch(hoverEdge.a) && nodeMatchesSearch(hoverEdge.b));
       ctx.beginPath();
@@ -5197,7 +5247,7 @@ const Graph = (function() {
     const tol = 6 / zoom;
 
     function test(e) {
-      if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeTypeVisible(e)) return null;
+      if (!nodeVisible(e.a) || !nodeVisible(e.b) || !edgeVisible(e)) return null;
       const { a, b } = e;
       const dx = b.x - a.x, dy = b.y - a.y;
       const lenSq = dx * dx + dy * dy || 1;
