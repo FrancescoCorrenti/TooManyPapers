@@ -1578,9 +1578,27 @@
   /* Per-card export selection checkbox */
   .card-select { cursor: pointer; margin-right: 2px; flex-shrink: 0; }
   .card.export-selected { border-color: var(--accent); }
+
+  /* Boot overlay: hides the app until the persisted UI state (tab, filters,
+     search, etc.) has actually been restored, so the user never sees a
+     flash of default state before the real one snaps in. */
+  #boot-overlay {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg, #14161a);
+  }
+  #boot-overlay .spinner {
+    width: 34px; height: 34px;
+    border: 3px solid var(--border, #333);
+    border-top-color: var(--accent, #6c8cff);
+    border-radius: 50%;
+    animation: boot-spin .8s linear infinite;
+  }
+  @keyframes boot-spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
+<div id="boot-overlay"><div class="spinner"></div></div>
 
 <header>
   <div class="header-left">
@@ -4657,9 +4675,9 @@ const Graph = (function() {
   }
 
   // Right-click (or programmatic call) isolation: jump straight to "linked
-  // to <this node>" at the currently-set depth, opening the filters panel
-  // so depth/edge types are immediately visible and adjustable — the panel
-  // doesn't stay hidden with an invisible filter active.
+  // to <this node>" at the currently-set depth. Shared with plain node
+  // selection — the two are the same action and neither should force the
+  // filters panel open.
   function isolateNode(nodeId) {
     if (nodeId === selectedNodeId) {
       // Right-clicking the already-selected node clears the trail queue —
@@ -4675,11 +4693,6 @@ const Graph = (function() {
     selectedNodeId = nodeId;
     conceptsMS.clear();
     linkedToMS.setSelected([nodeId]);
-    const panel = document.getElementById('graph-filters-panel');
-    const toggle = document.getElementById('graph-filters-toggle');
-    panel.style.display = 'flex';
-    toggle.setAttribute('aria-expanded', 'true');
-    toggle.innerHTML = 'Filters &#9662;';
     updateLinkSeeds();
   }
 
@@ -5663,9 +5676,11 @@ applyUIToDOM();
 const restoreTab = currentTopTab;
 const papersReady = loadPapers();
 const graphReady  = ensureGraphLoaded().then(populatePaperLinkedToFilter); // kick off early so switching tabs feels instant
-renderSubTabBar('paper');
+renderSubTabBar(restoreTab);
 Promise.all([papersReady, graphReady]).then(() => {
   switchTopTab(restoreTab);
+  const overlay = document.getElementById('boot-overlay');
+  if (overlay) overlay.remove();
 });
 </script>
 </body>
