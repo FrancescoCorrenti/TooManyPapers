@@ -7,6 +7,12 @@ dependencies = [
     "mcp>=1.0.0",
 ]
 
+[project.optional-dependencies]
+# Enables get-pdf-markdown / papers_get_pdf_markdown, which converts a
+# paper's PDF to markdown text. Optional because markitdown pulls in
+# pdfminer and other heavy deps that most installs won't need.
+markdown = ["markitdown>=0.0.1a2"]
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"

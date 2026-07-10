@@ -378,6 +378,28 @@ def papers_fetch_pdf(id: str) -> str:
 
 
 @mcp.tool()
+def papers_get_pdf(id: str) -> str:
+    """Get the absolute, on-disk path to a paper's PDF, fetching it first
+    (same open-access sources as papers_fetch_pdf) only if it isn't already
+    on disk. Prefer this over guessing at the data directory layout — if a
+    PDF already exists this is a free, no-network call; if not, it fetches
+    then returns the path so it can be opened directly."""
+    return _capture(papers_api.cmd_get_pdf, [id])
+
+
+@mcp.tool()
+def papers_get_pdf_markdown(id: str) -> str:
+    """Get a paper's PDF converted to markdown text (tables, headings, etc.
+    preserved better than raw text extraction), fetching the PDF first only
+    if it isn't already on disk. Requires the optional `markitdown` package
+    to be installed in this MCP server's Python environment (`pip install
+    too-many-papers[markdown]`) — if it isn't, returns a message saying so
+    instead of the markdown; fall back to papers_get_pdf in that case.
+    Conversion is cached, so repeat calls for the same paper are free."""
+    return _capture(papers_api.cmd_get_pdf_markdown, [id])
+
+
+@mcp.tool()
 def papers_sync_pdfs() -> str:
     """Run fetch-pdf on every paper in the catalog. Skips papers that
     already have a PDF on disk (idempotent). May take a while due to

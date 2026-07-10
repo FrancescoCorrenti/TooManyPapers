@@ -1958,6 +1958,120 @@ def cmd_fetch_pdf(args):
             print(f"[PDF] {pid}: {result['status']}")
 
 
+def _ensure_pdf_on_disk(pid: str, paper: dict, data: dict) -> tuple[Path | None, str | None]:
+    """Returns (absolute_path, None) for a paper's PDF, fetching it first
+    (same resolution chain as fetch-pdf) only if it isn't already on disk.
+    On failure returns (None, reason). Mutates and saves `data` exactly like
+    cmd_fetch_pdf when a fetch actually happens; does nothing to `data` when
+    the file was already present (no wasted writes on the common/cached
+    path). Shared by get-pdf and get-pdf-markdown so both have identical
+    "check first, fetch only if missing" semantics."""
+    existing_file = paper.get("file")
+    if existing_file and (DATA_DIR / existing_file).exists():
+        return (DATA_DIR / existing_file).resolve(), None
+
+    result = _fetch_pdf_for_paper(pid, paper)
+    if result["ok"]:
+        paper["file"] = result["file"]
+        paper["pdf_source"] = result["source"]
+        paper.pop("pdf_status", None)
+        data["_meta"]["last_updated"] = str(date.today())
+        save_papers(data)
+        _log_event("pdf_fetched", id=pid, source=result["source"])
+        return (DATA_DIR / result["file"]).resolve(), None
+
+    paper["pdf_status"] = result["status"]
+    data["_meta"]["last_updated"] = str(date.today())
+    save_papers(data)
+    _log_event("pdf_fetch_failed", id=pid, status=result["status"])
+    if result["status"] == "unavailable":
+        return None, (f"no open-access PDF found ({result['reason']}). Not "
+                       f"paywall-bypassable; if you have the PDF yourself, place it at "
+                       f"{(PDF_DIR / f'{pid}.pdf').resolve()} and set `file` on the paper.")
+    return None, result["status"]
+
+
+def cmd_get_pdf(args):
+    """Return the absolute, on-disk path to a paper's PDF — fetching it
+    first only if it isn't already on disk. Unlike fetch-pdf (which always
+    attempts a fresh download), this is the read path: if `file` is already
+    set and the file actually exists, it's returned as-is with no network
+    call, so repeated calls are free."""
+    if not args:
+        print("Usage: get-pdf <ID>  e.g. get-pdf P014"); return
+    pid = args[0].upper()
+    data = load_papers()
+    paper = data["papers"].get(pid)
+    if not paper:
+        print(f"Paper '{pid}' not found."); return
+
+    path, err = _ensure_pdf_on_disk(pid, paper, data)
+    if path:
+        print(f"[PDF] {pid}: {path}")
+    else:
+        print(f"[PDF] {pid}: {err}")
+
+
+MARKDOWN_DIR = DATA_DIR / "markdown"
+
+
+def _markitdown_available() -> bool:
+    """markitdown is an optional dependency (see pyproject.toml's
+    [project.optional-dependencies] "markdown" extra) — pulling it in for
+    everyone would drag pdfminer/etc. into installs that never use PDF
+    text extraction. Callers must check this and report plainly when it's
+    missing rather than silently falling back, so the tool's behavior
+    doesn't vary invisibly across environments."""
+    try:
+        import markitdown  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def cmd_get_pdf_markdown(args):
+    """Return the paper's PDF converted to markdown text (via the optional
+    `markitdown` package), fetching the PDF first only if it isn't already
+    on disk. The conversion itself is cached to MARKDOWN_DIR/{ID}.md keyed
+    off the PDF's mtime, so re-reading the same paper is free after the
+    first call. Requires `markitdown` to be installed in the MCP server's
+    Python environment (`pip install too-many-papers[markdown]`) — if it
+    isn't, says so explicitly instead of silently returning the raw PDF."""
+    if not args:
+        print("Usage: get-pdf-markdown <ID>  e.g. get-pdf-markdown P014"); return
+    if not _markitdown_available():
+        print("markitdown is not installed in this environment. Install it with "
+              "`pip install too-many-papers[markdown]` (or `pip install markitdown`) "
+              "to enable PDF-to-markdown conversion, or use get-pdf to get the raw PDF path.")
+        return
+
+    pid = args[0].upper()
+    data = load_papers()
+    paper = data["papers"].get(pid)
+    if not paper:
+        print(f"Paper '{pid}' not found."); return
+
+    pdf_path, err = _ensure_pdf_on_disk(pid, paper, data)
+    if not pdf_path:
+        print(f"[PDF] {pid}: {err}"); return
+
+    md_path = MARKDOWN_DIR / f"{pid}.md"
+    if md_path.exists() and md_path.stat().st_mtime >= pdf_path.stat().st_mtime:
+        print(md_path.read_text(encoding="utf-8"))
+        return
+
+    from markitdown import MarkItDown
+    try:
+        result = MarkItDown().convert(str(pdf_path))
+    except Exception as e:
+        print(f"[PDF] {pid}: markitdown conversion failed: {type(e).__name__}: {e}")
+        return
+
+    MARKDOWN_DIR.mkdir(parents=True, exist_ok=True)
+    md_path.write_text(result.text_content, encoding="utf-8")
+    print(result.text_content)
+
+
 def cmd_sync_pdfs(args):
     """Run fetch-pdf logic on every paper in the catalog. Skips papers that
     already have a `file` pointing at a file that actually exists on disk
@@ -3604,6 +3718,8 @@ COMMANDS = {
     "apply-citations": cmd_apply_citations,
     "sync-citations":  cmd_sync_citations,
     "fetch-pdf":       cmd_fetch_pdf,
+    "get-pdf":         cmd_get_pdf,
+    "get-pdf-markdown": cmd_get_pdf_markdown,
     "sync-pdfs":       cmd_sync_pdfs,
     "export":          cmd_export,
     "briefing":        cmd_briefing,
