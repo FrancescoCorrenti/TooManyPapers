@@ -207,6 +207,32 @@
   }
   select.sel:focus { border-color: var(--accent); }
 
+  /* ── Paper filters (year range) ────────────────── */
+  .year-range {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .year-range .year-sep { color: var(--text-dim); font-size: 0.8rem; }
+  .year-input {
+    width: 68px;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 0.85rem;
+    font-family: var(--font-body);
+    outline: none;
+    text-align: center;
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  .year-input::-webkit-outer-spin-button,
+  .year-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .year-input:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .year-input::placeholder { color: var(--text-dim); font-style: italic; }
+
   /* ── Sort ────────────────────────────────────── */
   .sort-wrap {
     display: flex;
@@ -1768,9 +1794,13 @@
         <option value="">All concepts</option>
       </select>
 
-      <select class="sel" id="venue-filter">
-        <option value="">All venues</option>
-      </select>
+      <div class="year-range" title="Filter by publication year">
+        <input type="number" class="year-input" id="paper-year-min" placeholder="Year min" inputmode="numeric">
+        <span class="year-sep">&ndash;</span>
+        <input type="number" class="year-input" id="paper-year-max" placeholder="Year max" inputmode="numeric">
+      </div>
+
+      <span id="paper-venue-ms" style="min-width:170px;"></span>
 
       <div class="sort-wrap">
         <span>Sort:</span>
@@ -1945,6 +1975,18 @@
       <span>Edge types:</span>
       <span id="graph-edge-type-filters" class="graph-types"></span>
     </div>
+    <div class="filter-inline">
+      <span>Paper year:</span>
+      <div class="year-range" title="Only affects paper nodes">
+        <input type="number" class="year-input" id="graph-year-min" placeholder="Min">
+        <span class="year-sep">&ndash;</span>
+        <input type="number" class="year-input" id="graph-year-max" placeholder="Max">
+      </div>
+    </div>
+    <div class="filter-inline">
+      <span>Paper venue:</span>
+      <span id="graph-venue-ms"></span>
+    </div>
     <div class="filter-inline" id="graph-preset-row">
       <span>Preset:</span>
       <select class="sel" id="graph-preset-select">
@@ -2004,9 +2046,12 @@ let selectedForExport = new Set(); // paper IDs ticked for BibTeX export
 let filterMode  = 'all';
 let searchQ     = '';
 let conceptF    = '';
-let venueF      = '';
+let venueF      = new Set(); // set of venue ids
+let yearMinF    = null;
+let yearMaxF    = null;
 let linkedToF   = new Set(); // advanced filter: paper linked (any edge) to ANY of these node ids
 let paperLinkedMS = null;    // the searchable multi-select instance for it
+let paperVenueMS  = null;    // the searchable multi-select instance for venueF
 let sortMode    = 'discovered';
 let sortAscend  = false;
 let pinnedOrder = []; // ordered array of pinned IDs
@@ -2293,23 +2338,26 @@ function populateFilters() {
     cSel.appendChild(opt);
   });
 
-  // Venues — real name
+  // Venues — real name, searchable multi-select
   const venueSeen = new Map();
   allPapers.forEach(p => {
     if (p.venueId && !venueSeen.has(p.venueId)) venueSeen.set(p.venueId, p.venueName);
   });
-  const vSel = document.getElementById('venue-filter');
-  while (vSel.options.length > 1) vSel.remove(1);
-  [...venueSeen.entries()].sort((a,b) => a[1].localeCompare(b[1])).forEach(([id, name]) => {
-    const opt = document.createElement('option');
-    opt.value = id;
-    opt.textContent = name;
-    vSel.appendChild(opt);
-  });
+  const venueOpts = [...venueSeen.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([id, name]) => ({ id, label: name }));
+  if (!paperVenueMS) {
+    paperVenueMS = createMultiSelect(document.getElementById('paper-venue-ms'), {
+      placeholder: 'All venues',
+      onChange: sel => { venueF = sel; saveUI(); render(); },
+    });
+  }
+  const prevVenue = [...venueF];
+  paperVenueMS.setOptions(venueOpts);
+  paperVenueMS.setSelected(prevVenue);
 
   // Restore saved selections from cookie
   if (conceptF && [...cSel.options].some(o => o.value === conceptF)) cSel.value = conceptF;
-  if (venueF   && [...vSel.options].some(o => o.value === venueF))   vSel.value = venueF;
 }
 
 // ── Sort ─────────────────────────────────────────────────────────────────────
@@ -2339,7 +2387,9 @@ function render() {
     if (filterMode === 'read'   && !p.read) return false;
     if (filterMode === 'unread' &&  p.read) return false;
     if (conceptF && !(p.concepts || []).some(c => c.id === conceptF)) return false;
-    if (venueF   && p.venueId !== venueF) return false;
+    if (venueF.size && !venueF.has(p.venueId)) return false;
+    if (yearMinF != null && (!p.annoPub || p.annoPub < yearMinF)) return false;
+    if (yearMaxF != null && (!p.annoPub || p.annoPub > yearMaxF)) return false;
     if (linkedToF.size && !GraphEdges.some(e =>
         (e.from === p.id && linkedToF.has(e.to)) || (e.to === p.id && linkedToF.has(e.from)))) return false;
     if (q) {
@@ -2712,7 +2762,7 @@ function showError(html) {
 let graphSavedState = null;
 
 function saveUI() {
-  const state = { filterMode, searchQ, conceptF, venueF, sortMode, sortAscend,
+  const state = { filterMode, searchQ, conceptF, venueF: [...venueF], yearMinF, yearMaxF, sortMode, sortAscend,
     currentTopTab, openTabs, activeSub,
     graph: (typeof Graph !== 'undefined' && Graph.loaded) ? Graph.getFilterState() : graphSavedState };
   document.cookie = `paperLibUI=${encodeURIComponent(JSON.stringify(state))};path=/;max-age=${60*60*24*365}`;
@@ -2726,7 +2776,9 @@ function loadUI() {
     filterMode = s.filterMode  || 'all';
     searchQ    = s.searchQ     || '';
     conceptF   = s.conceptF    || '';
-    venueF     = s.venueF      || '';
+    venueF     = new Set(Array.isArray(s.venueF) ? s.venueF : (s.venueF ? [s.venueF] : []));
+    yearMinF   = (typeof s.yearMinF === 'number') ? s.yearMinF : null;
+    yearMaxF   = (typeof s.yearMaxF === 'number') ? s.yearMaxF : null;
     sortMode   = s.sortMode    || 'discovered';
     sortAscend = !!s.sortAscend;
     if (s.currentTopTab && TOP_TABS.includes(s.currentTopTab)) currentTopTab = s.currentTopTab;
@@ -2760,6 +2812,8 @@ function applyUIToDOM() {
   sortBtn.style.color       = sortAscend ? '#fff' : 'var(--text)';
   sortBtn.style.borderColor = sortAscend ? 'var(--accent)' : 'var(--border)';
   // Concept and venue selects are populated after fetch, applied in populateFilters
+  document.getElementById('paper-year-min').value = yearMinF != null ? String(yearMinF) : '';
+  document.getElementById('paper-year-max').value = yearMaxF != null ? String(yearMaxF) : '';
 }
 
 
@@ -2827,8 +2881,14 @@ document.getElementById('concept-filter').addEventListener('change', e => {
   render();
 });
 
-document.getElementById('venue-filter').addEventListener('change', e => {
-  venueF = e.target.value;
+document.getElementById('paper-year-min').addEventListener('change', e => {
+  yearMinF = e.target.value === '' ? null : parseInt(e.target.value, 10);
+  saveUI();
+  render();
+});
+
+document.getElementById('paper-year-max').addEventListener('change', e => {
+  yearMaxF = e.target.value === '' ? null : parseInt(e.target.value, 10);
   saveUI();
   render();
 });
@@ -2848,10 +2908,10 @@ document.getElementById('paper-advanced-toggle').addEventListener('click', () =>
 });
 
 document.getElementById('paper-reset-filters').addEventListener('click', () => {
-  searchQ = ''; filterMode = 'all'; conceptF = ''; venueF = ''; linkedToF = new Set();
+  searchQ = ''; filterMode = 'all'; conceptF = ''; venueF = new Set(); yearMinF = null; yearMaxF = null; linkedToF = new Set();
   sortMode = 'discovered'; sortAscend = false; showGhosts = false;
   document.getElementById('concept-filter').value = '';
-  document.getElementById('venue-filter').value = '';
+  if (paperVenueMS) paperVenueMS.clear();
   if (paperLinkedMS) paperLinkedMS.clear();
   document.getElementById('paper-show-ghosts').checked = false;
   applyUIToDOM();
@@ -3546,8 +3606,10 @@ function renderVenueDetail(container, id) {
   if (filterBtn) filterBtn.addEventListener('click', () => {
     switchTopTab('paper');
     selectSubTab('paper', 'list');
-    const sel = document.getElementById('venue-filter');
-    if (sel) { sel.value = id; sel.dispatchEvent(new Event('change')); }
+    venueF = new Set([id]);
+    if (paperVenueMS) paperVenueMS.setSelected([id]);
+    saveUI();
+    render();
   });
 }
 
@@ -4609,6 +4671,11 @@ const Graph = (function() {
   let hoverNode = null, hoverEdge = null;
   let lastMouseX = 0, lastMouseY = 0;
   let typeFilter = new Set(['paper', 'concept', 'project', 'idea', 'note']);
+  // Paper-only filters (year range, venue) — a draw-time gate like
+  // hideOrphans, not a type of their own, so it doesn't touch sim membership.
+  let paperYearMin = null, paperYearMax = null;
+  let paperVenueFilter = new Set(); // set of venue name strings
+  let venueMS = null;
   // When true, nodes with no edge to another currently-visible node are
   // hidden — orphans left over after other filters trim their neighbors,
   // not a type of their own, so it's a draw-time gate like conceptLinkSet
@@ -4687,6 +4754,8 @@ const Graph = (function() {
         { placeholder: 'Any', onChange: updateLinkSeeds });
       conceptsMS = createMultiSelect(document.getElementById('graph-concepts-ms'),
         { placeholder: 'Any', onChange: updateLinkSeeds });
+      venueMS = createMultiSelect(document.getElementById('graph-venue-ms'),
+        { placeholder: 'Any', onChange: sel => { paperVenueFilter = sel; scheduleDraw(); saveUI(); } });
     }
 
     try {
@@ -4739,6 +4808,15 @@ const Graph = (function() {
       };
     });
     nodesById = new Map(nodes.map(n => [n.id, n]));
+
+    // Distinct venue names across paper nodes, for the "Paper venue" filter.
+    const venueNames = new Set();
+    nodes.forEach(n => { if (n.type === 'paper' && n.raw.venue) venueNames.add(n.raw.venue); });
+    const prevVenues = venueMS ? [...venueMS.getSelected()] : [];
+    if (venueMS) {
+      venueMS.setOptions([...venueNames].sort().map(v => ({ id: v, label: v })));
+      venueMS.setSelected(prevVenues);
+    }
 
     edges = rawEdges
       .map(e => ({ ...e, a: nodesById.get(e.from), b: nodesById.get(e.to) }))
@@ -5166,8 +5244,20 @@ const Graph = (function() {
     });
   }
 
+  // Paper-only year/venue filter — same shape as hideOrphans: a draw-time
+  // gate that never touches sim membership. Non-paper nodes always pass.
+  function paperFilterPasses(n) {
+    if (n.type !== 'paper') return true;
+    const raw = n.raw || {};
+    if (paperYearMin != null && (!raw.year || Number(raw.year) < paperYearMin)) return false;
+    if (paperYearMax != null && (!raw.year || Number(raw.year) > paperYearMax)) return false;
+    if (paperVenueFilter.size && !paperVenueFilter.has(raw.venue || '')) return false;
+    return true;
+  }
+
   function nodeVisible(n) {
     if (!typeFilter.has(n.type) && !chainForcedIds.has(n.id)) return false;
+    if (!paperFilterPasses(n)) return false;
     if (conceptLinkSet && !conceptLinkSet.has(n.id)) {
       // Not part of the active isolation — but let it through if it's still
       // remembered in the trail from one of the last few isolated nodes.
@@ -5262,7 +5352,8 @@ const Graph = (function() {
 
   function nodeMatchesSearch(n) {
     if (!searchQ) return true;
-    return n.name.toLowerCase().includes(searchQ) || n.id.toLowerCase().includes(searchQ);
+    if (n.name.toLowerCase().includes(searchQ) || n.id.toLowerCase().includes(searchQ)) return true;
+    return n.type === 'paper' && !!n.raw.authors && n.raw.authors.toLowerCase().includes(searchQ);
   }
 
   function shapePath(ctx, type, x, y, r) {
@@ -5757,6 +5848,17 @@ const Graph = (function() {
       scheduleDraw();
     });
 
+    document.getElementById('graph-year-min').addEventListener('change', e => {
+      paperYearMin = e.target.value === '' ? null : parseInt(e.target.value, 10);
+      scheduleDraw();
+      saveUI();
+    });
+    document.getElementById('graph-year-max').addEventListener('change', e => {
+      paperYearMax = e.target.value === '' ? null : parseInt(e.target.value, 10);
+      scheduleDraw();
+      saveUI();
+    });
+
     document.querySelectorAll('.gtype').forEach(cb => {
       cb.addEventListener('change', () => {
         typeFilter = new Set([...document.querySelectorAll('.gtype:checked')].map(c => c.value));
@@ -5842,6 +5944,11 @@ const Graph = (function() {
       simulation.alpha(0.6).restart();
       linkedToMS.clear();
       conceptsMS.clear();
+      venueMS.clear();
+      paperVenueFilter = new Set();
+      paperYearMin = null; paperYearMax = null;
+      document.getElementById('graph-year-min').value = '';
+      document.getElementById('graph-year-max').value = '';
       conceptLinkDepth = 2;
       document.getElementById('graph-link-depth').value = '2';
       edgeTypeFilter = null;
@@ -5891,6 +5998,8 @@ const Graph = (function() {
       depth: conceptLinkDepth,
       edgeTypes: edgeTypeFilter ? [...edgeTypeFilter] : null,
       selectedNodeId,
+      paperYearMin, paperYearMax,
+      paperVenues: [...paperVenueFilter],
     };
   }
 
@@ -5925,6 +6034,13 @@ const Graph = (function() {
     // isolateNode() — that would push a spurious step onto isolationHistory,
     // as if the user had just clicked away from some other node.
     selectedNodeId = state.selectedNodeId || null;
+
+    paperYearMin = (typeof state.paperYearMin === 'number') ? state.paperYearMin : null;
+    paperYearMax = (typeof state.paperYearMax === 'number') ? state.paperYearMax : null;
+    document.getElementById('graph-year-min').value = paperYearMin != null ? String(paperYearMin) : '';
+    document.getElementById('graph-year-max').value = paperYearMax != null ? String(paperYearMax) : '';
+    paperVenueFilter = new Set(state.paperVenues || []);
+    venueMS.setSelected([...paperVenueFilter]);
 
     updateLinkSeeds();
   }
