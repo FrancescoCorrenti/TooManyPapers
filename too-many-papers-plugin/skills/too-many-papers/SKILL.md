@@ -2,153 +2,89 @@
 name: too-many-papers
 description: >
   This skill should be used when the user wants to discuss academic papers,
-  manage a personal research reading list, or maintain a knowledge graph of
-  research concepts and projects. Trigger on requests like "add this paper",
-  "what should I read next", "give me today's paper briefing", "log that I
-  read/discussed this paper", "what are my research concepts", "connect this
-  paper to my project", or any conversation about papers the user is reading
-  or wants to track. Also trigger when the user asks to set up their research
-  graph for the first time, or to open the Too Many Papers web UI.
+  manage a personal research reading list, or keep track of which papers
+  matter to which of their projects and why. Trigger on requests like "add
+  this paper", "what should I read next", "find recent work on X", "is this
+  paper useful for my project", "what do I have for project Y", "which
+  analyses are out of date", or any conversation about papers the user is
+  reading or wants to track. Also trigger when the user sets up their library
+  for the first time, or asks to open the Too Many Papers web UI.
 metadata:
-  version: "0.1.0"
+  version: "0.3.0"
 ---
 
-# Too Many Papers — Knowledge Graph Research Assistant
+# Too Many Papers
 
-A personal academic reading system built around a knowledge graph. All data lives in three JSON files (`_papers.json`, `_venues.json`, `_graph.json`) plus an append-only audit log (`_log.jsonl`) inside the MCP server's data directory. All writes go through the `too-many-papers` MCP tools. Never edit these files directly.
+A local paper library that answers one question well: **for each of my projects, which papers matter, why, and is that analysis still current?**
 
-`_log.jsonl` is written automatically by the server itself, one line per mutation (paper added, edge created, node deleted, etc.) — you never call anything to produce it, it's a side effect of the tool you already called. It's a plain mechanical record ("what changed, when"), distinct from `graph_interact`, which is about something different: your judgment of what the user is engaged with. See "Behavioral Rules" below for the distinction.
+All data lives in `_papers.json`, `_venues.json` and `_graph.json` in the server's data directory, with an automatic audit log `_log.jsonl`. Every write goes through the `too-many-papers` MCP tools; never edit these files directly.
 
-## Anti-Hallucination Protocol (absolute, never override)
+## Anti-hallucination protocol (absolute)
 
-Never invent titles, authors, years, venues, DOI/URL, abstracts, numerical results, or connections between papers. Every bibliographic fact must come from a primary source retrieved **in this session** (arXiv, CrossRef, PubMed, Semantic Scholar, OpenAlex, or the existing data via the `papers_*` tools). Mark inferences with `[inference]`.
+Never invent titles, authors, years, venues, DOI/URL, abstracts, results, or links between papers. Every bibliographic fact comes from a primary source retrieved **in this session** (`papers_discover`, arXiv, CrossRef, PubMed, Semantic Scholar, OpenAlex) or from the catalog via the `papers_*` tools. Mark inferences with `[inference]`.
 
-- `source_verified` (URL) is mandatory for every paper. Reject if missing.
-- Authors must be verbatim and complete. Reject "et al." or truncated lists.
-- If a fact cannot be verified, write `[unavailable]`. Never guess.
+- `source_verified` (the URL you read) is mandatory on every paper.
+- Authors are verbatim and complete: never "et al.".
+- Unverifiable facts are written `[unavailable]`, never guessed.
+- Never present unread material as read. If only the abstract was available, say so.
 
-## First Run — Onboarding
+## The building blocks
 
-When the knowledge graph is empty (check via `graph_status`: no nodes), run the onboarding flow. It has exactly one form-like question (Step 3) plus the briefing question (Step 5) — everything else is conversational, driven by what the user tells you.
+- **paper**: a verified bibliographic record, with its open-access PDF fetched automatically and citation links to other catalog papers.
+- **project**: something the user is working on. Projects connect **only to papers**, and only through an analysis.
+- **idea**: the analysis of one paper for one project: why it is relevant, the relevant findings only, evidence with section/page references, limitations. Created by `graph_link_project_paper`, never by hand.
+- **concept**: a research area the user keeps an eye on. Concepts tag papers (the paper's `concepts` field) and seed `papers_discover`.
+- **note**: a reading annotation from the web UI's PDF reader.
 
-**Step 1. Introduce yourself, briefly, but explain the graph's building blocks clearly.** Keep the overall tone minimal — don't over-explain the whole system, the tools, or the anti-hallucination rules — but do take a few lines to make sure the user actually understands what the graph is made of, since that's what they'll be describing in Step 2. Something like:
+## Core workflow: paper → project
 
-> Welcome to Too Many Papers — your research assistant maintains a knowledge graph of your research as you go, so it can track what you're working on and suggest what to read next. Everything's stored locally; I only touch it through validated tools.
->
-> The graph has a few building blocks:
-> - **concept** — a research area you care about (e.g. "Brain Lesion Segmentation")
-> - **project** — an active research project with a goal
-> - **idea** — a concrete idea connected to a project
-> - **waypoint** — an intermediate node in a project's chain of work toward an endpoint
-> - **endpoint** — a project's goal/milestone, tracked as pending / reached / failed
->
-> A project connects to concepts and ideas, and reaches its endpoints through chains of waypoints (never directly to a paper). These connections grow the graph into a map of how your research fits together.
+1. `graph_project_context(project_id, paper_id)` returns the project, the paper record, existing analyses and a `context_token`.
+2. **Read the paper** with `papers_get_pdf_markdown`. If there is no PDF, limit the analysis to the abstract and say so in `limitations`.
+3. `graph_link_project_paper(project_id, paper_id, name, relevance, relevant_summary, evidence, limitations, context_token)`. Every field is mandatory: why it matters for **this** project, only the findings that are useful, where they are in the paper, what the analysis does not cover.
+4. Linking the same pair again refreshes the **same idea** and keeps its history. `graph_project_context(project_id)` alone lists everything a project has.
 
-Adapt the wording, but keep the five node types and one-line definitions — the user needs this to give a useful answer in Step 3.
+When a paper comes up in conversation, check the active projects (`graph_nodes("project")`) and point out likely connections. Link only after reading and analysing, never on title alone.
 
-**Step 2. Immediately tell the user about the two free API keys that make paper discovery reliable.** Do this now, in the same first message or the very next one — not later, not only if/when a search fails. Say something like:
+## Keeping analyses current
 
-> One quick setup tip: paper search (`papers_discover`) works out of the box, but two providers rate-limit anonymous access hard. Two free API keys make it reliable:
-> - **Semantic Scholar** — get one at https://www.semanticscholar.org/product/api#api-key-form, then set it as an environment variable named exactly `S2_API_KEY`
-> - **OpenAlex** — get one at https://openalex.org/settings/api, then set it as an environment variable named exactly `OPENALEX_API_KEY`
->
-> Both take under a minute and are free for personal use. Set them as system/user environment variables (not just in one terminal session), then restart Claude so the plugin picks them up. You can skip this for now and do it later — search will just be slower and more likely to hit rate limits until you do.
+`graph_review_queue()` lists what needs attention:
 
-Get the exact variable names right — `S2_API_KEY` and `OPENALEX_API_KEY`, spelled exactly like that — the code looks them up by that literal name and won't find them under any other spelling (e.g. `SEMANTIC_SCHOLAR_KEY` or `OPENALEX_KEY` won't work). Do not skip this step or push it to later just because the graph is still empty — it's independent of everything else in onboarding.
+- `stale`: the project's name/description, the paper's content/source, or the analysis text changed since it was written. Re-read and call `graph_link_project_paper` again; an ordinary node edit does not clear it.
+- `needs_analysis`: ideas migrated from older data (schema < 3.0, backed up to `_graph.pre-v3.json`) that still have no grounded paper analysis. Read the candidate papers and link with `legacy_idea_ids`; never guess a paper for them.
+- `detached`: the link, project or paper was removed; the text is kept as history.
 
-**Step 3. Ask one open question.** Do not ask the user to fill in a structured list of concepts/projects one field at a time. Instead ask something like:
+Time passing, reading a paper, or changing a project's status never makes an analysis stale. Run the queue when the user maintains a project or asks what is out of date.
 
-> To get started, tell me a bit about what you're working on right now — your general research area(s), any active projects, and anything specific you're focused on. Just describe it in your own words, as much or as little detail as you like.
+## Finding and adding papers
 
-**Step 4. Propose a graph from their description.** Read their free-text answer and draft a proposal yourself:
-- Identify distinct research areas mentioned → propose them as `concept` nodes (`name` + `area`, and an optional one-sentence `description` inferred from their text).
-- Identify concrete ongoing efforts → propose them as `project` nodes (`name`, a reasonable `status` guess, and an optional one-sentence `description` — that's the field for a project's goal/summary, there is no separate "goal" field).
-- Identify plausible relationships between the concepts/projects they described → propose `connected_to` / `uses_concept` edges.
+- `papers_discover(query?, concept_id?, seed_paper_ids?, year_from?)` is the **only** way to find new papers: arXiv, Semantic Scholar and OpenAlex, deduplicated against each other and the catalog. `seed_paper_ids` expands from catalog papers' references. Never use WebSearch/WebFetch to find papers.
+- `papers_check_duplicates` before adding, then `papers_add` with one object or an array. Required: `title`, `authors`, `year`, `source_verified`. Give the venue by name in `venue` (never with the year; edition details go in `venue_detail`): it is matched or created automatically. On add, the server links citations to catalog papers and fetches the open-access PDF.
+- `papers_find(query?, author?, year?, venue?, concept_id?, hidden?)` searches the catalog; with no filter it lists everything visible.
+- `papers_update(id, {...})` edits; `{"hidden": true}` hides a paper without deleting it.
+- PDFs come only from open-access sources (arXiv, the PMC open-data bucket, bioRxiv, Semantic Scholar, OpenAlex, Unpaywall). Many publishers (Cell, PNAS, Science, Wiley) refuse every automated download. When `papers_get_pdf` finds nothing, give the user the exact path it returns so they can drop in a PDF they downloaded themselves; never look for a copy elsewhere.
+- Tools that hit the network stop after a fixed time budget instead of hanging. `papers_sync_pdfs` and `citations_sync` work in chunks of about 100 seconds: if the output says papers are left, call it again.
+- Citations: `citations_get` (read-only), `citations_apply(id)`, `citations_sync()` for the whole catalog.
+- `papers_export(ids?)` gives BibTeX with validation warnings; surface every `% WARN:` line. `library.bib` is also kept up to date automatically.
 
-Present this as a short, readable summary (not raw JSON) and ask for confirmation/edits, e.g. "Here's what I'd set up based on that — anything to add, remove, or rename?" Only call the `graph_add_*` tools (`graph_add_concept`, `graph_add_project`, etc. — one typed tool per node type, each with its own exact parameters) / `graph_add_edge` after the user confirms (or after they give corrections and you re-confirm the final version). Use exactly the parameters each tool defines — do not invent extra fields; unrecognized fields are rejected. Keep the proposal reasonably sized — a handful of concepts and projects, not an exhaustive taxonomy; the graph is meant to grow organically afterward, not be fully specified on day one.
+**API keys.** Semantic Scholar and OpenAlex rate-limit anonymous use hard. If a provider returns a rate-limit error and its key is missing, tell the user once: free keys go in the environment variables `S2_API_KEY` (https://www.semanticscholar.org/product/api#api-key-form) and `OPENALEX_API_KEY` (https://openalex.org/settings/api), spelled exactly like that, and Claude must be restarted afterwards.
 
-**Step 5. Offer the daily briefing — but only in Cowork.** Scheduling a recurring briefing only works in Cowork, because a scheduled task in Claude Code runs in a cloud environment that cannot reach this plugin's local MCP server.
+## First run
 
-- **If you are running in Cowork:** ask "Would you like a daily paper briefing? If so, what time works best?" If yes, set up a Cowork scheduled routine whose whole job is to call `briefing_generate` (see "Daily Briefing" below). Also mention a briefing can be requested any time by asking "give me today's paper briefing".
-- **If you are running in Claude Code (or anywhere that isn't Cowork):** do NOT offer to schedule anything and do not ask the briefing question at all — skip straight to Step 6. If the user later asks to schedule a briefing, tell them plainly that scheduled briefings are a Cowork-only feature (Claude Code's scheduled tasks can't use this plugin's tools), and that meanwhile they can ask for one on demand any time.
+When `graph_status` shows an empty library:
 
-**Step 6. Confirm setup.** Show the graph status and explain that interactions will now be logged automatically, new concepts proposed when they emerge, and connections to projects signaled. Mention the Too Many Papers web UI can be opened any time by asking (or via `/too-many-papers:webui`) — it's launched via the `webui_launch` tool, no extra download needed.
+1. In two or three lines, say what the tool does (the question at the top of this file) and mention the API keys above.
+2. Ask one open question: what they are working on right now, and which areas they follow.
+3. From the answer, propose a few **projects** (name, status, one-sentence goal in `description`, max 200 characters) and **concepts** (name, area, one-sentence description). Show it as a short readable list, not JSON.
+4. Create them with `graph_add_project` / `graph_add_concept` only after the user confirms.
+5. Mention the web UI (`/too-many-papers:webui`).
 
-## Daily Briefing
+## Rules
 
-The whole briefing is a single tool, `briefing_generate`. It runs the entire pipeline server-side (rank the user's concepts by engagement, discover fresh candidates for the top ones, write the digest to `~/.too-many-papers/briefings/<date>.md`) and returns the digest text. It is read-only: it never adds anything to the catalog on its own. One tool means a scheduled run needs one permission and no fragile multi-step LLM judgement mid-loop.
+1. All writes go through MCP tools.
+2. New concepts and projects need the user's explicit approval before creation.
+3. Confirm before anything permanent: `papers_delete`, `graph_remove_node`. Do not infer consent from "clean this up".
+4. Write `description`, `notes` and analysis fields in markdown where it helps: the web UI renders it.
 
-**On demand** ("give me today's paper briefing"): call `briefing_generate`, show the returned digest, then ask which papers the user wants to add. For the ones they pick, `papers_add` them (full validation: source_verified URL, complete authors, year, venue) and `graph_interact` the relevant concept with type "read", weight 2. Never invent metadata; use the candidate fields from the digest. Never use WebSearch/WebFetch to find papers.
+## Web UI
 
-**Scheduled (Cowork only):** set up a Cowork routine whose entire instruction is:
-
-```
-Call the briefing_generate tool. Then post the digest it returns, and ask which papers I want to add to my library.
-```
-
-Do not recreate the old multi-step routine and do not modify data files directly. If `briefing_generate` reports discovery errors for every provider, relay that plainly rather than falling back to a web search. Past briefings can be re-read with `briefing_list` / `briefing_get`.
-
-## MCP Tools Reference
-
-### Paper Tools
-`papers_list` . `papers_get(id)` . `papers_search(query)` . `papers_by_concept(concept_id)` . `papers_by_author(author)` . `papers_by_venue(venue_id)` . `papers_by_year(year)` . `papers_outside` . `papers_hidden` . `papers_next_id` . `papers_discover(query?, concept_id?, seed_paper_ids?, providers?, year_from?, max_results?)` . `papers_add(payload)` . `papers_update(id, payload)` . `papers_check_duplicates(payload)` . `papers_hide(id)` . `papers_unhide(id)` . `papers_delete(id)`
-
-`papers_delete` permanently removes a paper (unlike `papers_hide`, which only flags it) and scrubs the deleted ID out of every other paper's `cites`/`cited_by` lists. Always confirm with the user before calling it — it cannot be undone. If they just want it out of normal views, use `papers_hide` instead.
-
-`papers_discover` is the **only** sanctioned way to find new papers — it queries arXiv, Semantic Scholar, and OpenAlex directly, deduplicates across providers and against the catalog, and can also expand from citations of catalog papers via `seed_paper_ids`. Never use WebSearch or WebFetch to look for papers, ever — not during the morning briefing, not in normal conversation. If the user asks "what's new on X", call `papers_discover`, not WebSearch.
-
-**API keys matter here.** arXiv never needs one, but Semantic Scholar and especially OpenAlex (whose 2026 pricing change left anonymous search with a near-zero daily budget) are much more reliable with a free key set as `S2_API_KEY` / `OPENALEX_API_KEY`. If `papers_discover` returns a rate-limit error for a provider and no key is configured for it, tell the user plainly, once — e.g. "OpenAlex search is rate-limited without an API key; you can get a free one at openalex.org/settings/api and set it as the OPENALEX_API_KEY environment variable for reliable results." Don't repeat this nag on every single call — mention it the first time it's relevant, then just keep working with whatever providers do respond.
-
-### Citation Tools
-`citations_get(id)` . `citations_apply(id)` . `citations_sync`
-
-### Venue Tools
-`venues_list` . `venues_get(id)` . `venues_add(payload)` . `venues_update(id, payload)` . `venues_delete(id, force?)`
-
-`venues_delete` refuses to delete a venue that papers still reference — reassign those papers' `venue_id` first, or pass `force: true` to delete anyway and leave them pointing at a missing venue. Always confirm with the user before calling it.
-
-### Graph Tools (Read)
-`graph_status` . `graph_node(id)` . `graph_nodes(node_type?)` . `graph_neighbors(id, depth?, edge_type?)` . `graph_path(from, to)` . `graph_search(query)` . `graph_engagement(top_n?)` . `graph_lint(stale_days?, quiet_days?)`
-
-`graph_lint` health-checks the graph and catalog: orphan nodes with no edges, projects with no papers linked, papers with no concept/edge, ideas left open and untouched past `stale_days` (default 90), papers pointing at a missing venue, dangling `cites`/`cited_by`, and concepts with no interaction in `quiet_days` (default 45). It only reports — it never deletes or fixes anything itself. Run it when the user asks to check the graph's health, or suggest it occasionally if the graph has grown a lot since the last check. Never run it silently as a background/automatic step the user didn't ask for or wasn't told about.
-
-### Graph Tools (Write)
-`graph_add_concept(name, area, description?)` . `graph_add_project(name, status, description?)` . `graph_add_endpoint(name, status?, description?)` . `graph_add_idea(name, status, created, description?, source?)` . `graph_add_waypoint(name, description?, status?)` . `graph_update_node(id, payload)` . `graph_remove_node(id)` . `graph_add_edge(src, tgt, edge_type, note?)` . `graph_remove_edge(src, tgt, edge_type?)` . `graph_interact(id, interaction_type, weight?)`
-
-Each MCP tool carries its own name, description, and parameter schema, so consult the tool list directly for the full, always-current set (including the bulk `*_bulk` tools and `papers_export`).
-
-## Strict Type System
-
-All types are enforced by the server. The LLM cannot invent new types.
-
-**Node types:** `concept` . `project` . `endpoint` . `idea` . `waypoint`
-
-**Edge types:** `connected_to` . `uses_concept` . `part_of` . `inspired_by` . `relevant_to` . `derived_from` . `enables` . `leads_to`
-
-**A paper can only connect to a concept via `uses_concept`** — the server rejects any other edge type (e.g. `relevant_to`) between a paper and a concept. Never create that edge for a pair already tagged in the paper's `concepts` field, though: that array is already the paper-to-concept link (rendered as the graph's `concept_tag` edges), so an explicit `uses_concept` edge for the same pair is a pure duplicate. Reserve it for a paper-concept link deliberately NOT already covered by the `concepts` field. `relevant_to` and the other edge types remain available for non-paper nodes (project/idea/waypoint → concept).
-
-**A project connects only to concepts, ideas, waypoints, and endpoints — never directly to a paper.** The server rejects a project↔paper edge. Route paper relevance through a project's ideas or concepts instead.
-
-**Endpoints and waypoints track progress with a `status` of `pending` (default), `reached`, or `failed`** — not free text. Build a project's path to a goal as a chain of waypoints connected by `leads_to` edges (waypoint → waypoint → ... → endpoint). A waypoint may have **at most one outgoing** `leads_to` edge — the server rejects a second one, so redirecting a chain means removing the old edge first. Incoming edges are a soft convention of one (keeping each chain a simple line, easy to bulk mark-as-reached/failed or delete as a unit), but an endpoint itself can have several independent chains converging on it.
-
-**Interaction types:** `discussed` (w=3) . `deepened` (w=5) . `paper_requested` (w=10) . `read` (w=2) . `linked` (w=8)
-
-**Engagement decay:** 0.7^weeks. Recent activity is weighted more heavily.
-
-## Behavioral Rules
-
-1. **All writes go through MCP tools.** Never modify `_papers.json`, `_venues.json`, `_graph.json`, or `_log.jsonl` directly via file writes.
-2. **Log conversational engagement explicitly; structural events are automatic.** These are two different things:
-   - Structural facts (a paper added, an edge created, a node deleted) are logged automatically by the server the moment you call the tool that does them — you don't do anything extra. `graph_add_edge` also auto-logs a "linked" interaction for `relevant_to`/`uses_concept` edges, since that IS a linking event, not a judgment call.
-   - Conversational signals — the user discussed a concept in depth, asked for a paper, or seemed to deepen their understanding of something — can only come from your read of the conversation. Nothing in the code can infer these, so you still call `graph_interact` yourself for `discussed`, `deepened`, `paper_requested`, and `read`. Do this whenever the conversation actually shows one of these signals — don't skip it just because other bookkeeping is automatic now.
-3. **Concepts need user approval.** When a new concept emerges in discussion, propose it. Wait for explicit confirmation before calling `graph_add_concept` (or the corresponding `graph_add_*` tool for other node types).
-4. **Proactive project connections.** When discussing a paper, check if it is relevant to active projects (`graph_nodes` with type=project) and signal connections.
-5. **Venue names never include year.** Year is a paper attribute, not a venue attribute.
-6. **Engagement drives recommendations.** Use `graph_engagement` to understand what the user cares about most right now.
-7. **Never search the web for papers.** `papers_discover` (arXiv + Semantic Scholar + OpenAlex, with dedup) is the only sanctioned way to find new papers, whether for the morning briefing or a normal "find me something on X" request. WebSearch/WebFetch defeat the anti-hallucination guarantees this plugin exists to provide.
-8. **Confirm before permanent deletion.** `papers_delete`, `venues_delete`, and `graph_remove_node`/`graph_remove_edge` cannot be undone. Always get explicit confirmation from the user before calling any of them — don't infer consent from an ambiguous request like "clean this up."
-9. **Write `description`/`notes`/`text` fields in markdown.** The web UI renders these fields as markdown (headers, `**bold**`, `*italic*`, lists, `` `code` ``, blockquotes, links, code blocks) wherever they're shown — a paper's notes/abstract, and a concept/project/endpoint/idea/waypoint's description, plus a note's own text. Use that formatting where it actually helps readability (e.g. a short list of open questions, a key term in bold) — don't force structure onto a one-line description that doesn't need it.
-
-## Too Many Papers Web UI
-
-A local web UI for browsing papers (search, filter by concept/venue/read status, pin papers, citation network links, local PDF viewer). Launch it by calling the `webui_launch` MCP tool — it starts the server from files already inside the installed plugin (no repo clone or manual download needed) and returns the URL (http://localhost:3737) to open. Requires Node.js; the tool reports a clear error if it's missing. Mention the web UI to the user when relevant, but only call `webui_launch` when they ask to open it.
+`webui_launch` starts the local UI at http://localhost:3737 (requires Node.js): papers, concepts, projects, ideas and notes, the graph, an inline PDF reader with select-to-note. Call it only when the user asks to open it. Edges between nodes are edited from the UI, not by these tools.

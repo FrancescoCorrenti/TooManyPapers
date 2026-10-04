@@ -15,7 +15,7 @@ SANDBOX NOTE
   stdout when invoked as a direct subprocess. Use instead:
 
     python3 << 'EOF'
-    import sys; sys.argv = ['papers_api.py', 'list']
+    import sys; sys.argv = ['papers_api.py', 'find']
     exec(open('/absolute/path/_scripts/papers_api.py').read()...)
     EOF
 
@@ -23,25 +23,19 @@ SANDBOX NOTE
 
 PAPER COMMANDS — READ
 ---------------------
-  list                          -> all papers (ID, title, year, venue)
   get <ID>                      -> full record of a paper (e.g. P001)
-  search <text>                 -> fuzzy search on title and authors
-  by-concept <CID>              -> papers linked to a concept (e.g. C003)
-  by-author <surname>           -> papers with author whose surname contains <surname>
-  by-venue <VID>                -> papers published in a venue (e.g. V001)
-  by-year <year>                -> papers published in a year
-  outside                       -> only "outside the comfort zone" papers
-  hidden                        -> only hidden papers
-  next-id                       -> next available paper ID (e.g. P021)
+  find [json]                   -> filter the catalog: query, author, year, venue,
+                                  concept_id, hidden (false|true|"any"); no
+                                  argument lists every visible paper
 
 PAPER COMMANDS — WRITE
 -----------------------
-  add-paper <json|@file>        -> adds a paper (ID assigned automatically)
+  add-paper <json|@file>        -> adds a paper (ID assigned automatically).
+                                  Venue given by name in `venue`; created if new.
                                   Accepts inline JSON or @path/file.json to
                                   avoid shell quoting issues with apostrophes/accents.
-  update-paper <ID> <json|@file> -> updates fields of an existing paper (partial merge)
-  hide <ID>                     -> hides a paper (field hidden = true)
-  unhide <ID>                   -> restores a hidden paper (field hidden = false)
+  update-paper <ID> <json|@file> -> updates fields of an existing paper (partial
+                                  merge; {"hidden": true} hides it)
   delete-paper <ID>             -> permanently deletes a paper (not a soft hide)
 
 PAPER COMMANDS — VALIDATION
@@ -69,61 +63,44 @@ PDF COMMANDS
   sync-pdfs                     -> runs fetch-pdf on every paper that doesn't
                                   already have a PDF on disk.
 
-VENUE COMMANDS — READ
-----------------------
-  venue-list                    -> all venues (ID, name, type)
-  venue-get <VID>               -> full record of a venue
-
-VENUE COMMANDS — WRITE
------------------------
-  add-venue <json>              -> adds a venue (ID assigned automatically)
-  update-venue <VID> <json>     -> updates fields of an existing venue (partial merge)
-  delete-venue <VID> [force]    -> permanently deletes a venue (blocked if papers reference it)
-
 GRAPH COMMANDS
 --------------
-  graph-status                  -> overview: nodes by type, edges, interactions
-  graph-node <id>               -> node with context (edges, recent interactions)
+  graph-status                  -> overview: nodes by type, edges
+  graph-node <id>               -> node with its edges
   graph-nodes [--type <type>]   -> list nodes (filterable by type)
-  graph-add-node <type> <json>  -> adds a node (concept/project/endpoint/idea/waypoint)
+  graph-project-context <project> [paper] -> papers, relevance ideas and analysis context
+  graph-link-project-paper <project> <paper> <json> -> associate with required analysis
+  graph-review-queue           -> migrated ideas and analyses needing review
+  graph-add-node <type> <json>  -> adds a node (concept/project/idea/note)
   graph-update-node <id> <json> -> updates fields of a node (partial merge)
   graph-remove-node <id>        -> removes node and all its edges
   graph-add-edge <src> <tgt> <type> [note] -> adds an edge
   graph-remove-edge <src> <tgt> [--type <type>] -> removes edges
-  graph-neighbors <id> [--depth N] [--edge-type <type>] -> BFS traversal
-  graph-path <from> <to>        -> shortest path (BFS, max depth 6)
-  graph-interact <id> <type> [--weight N] -> logs interaction
-  graph-engagement [--top N]    -> engagement ranking (exponential decay)
   graph-search <text>           -> full-text search on nodes and papers
-  graph-lint [--stale-days N] [--quiet-days N] -> health-check: orphan nodes,
-                                  projects with no papers, dangling refs, stale ideas
 
 EXAMPLES
 --------
-  python _scripts/papers_api.py list
+  python _scripts/papers_api.py find
   python _scripts/papers_api.py get P004
-  python _scripts/papers_api.py search "fetal brain"
+  python _scripts/papers_api.py find '{"query": "fetal brain", "year": 2024}'
   python _scripts/papers_api.py graph-status
   python _scripts/papers_api.py graph-node C003
   python _scripts/papers_api.py graph-add-node concept '{"name": "ViT", "area": "CV"}'
-  python _scripts/papers_api.py graph-add-edge C003 P004 uses_concept
-  python _scripts/papers_api.py graph-neighbors C003 --depth 2
-  python _scripts/papers_api.py graph-interact C003 discussed
-  python _scripts/papers_api.py graph-engagement --top 5
 """
 
 import os
+import project_papers
+from contextlib import contextmanager, nullcontext
 import re
 import sys
 import json
 import time
-import math
+import copy
 import urllib.request
 import urllib.error
 import urllib.parse
 import xml.etree.ElementTree as ET
-from collections import deque
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 
 # -- Paths -----------------------------------------------------------------
@@ -144,7 +121,7 @@ TEMPLATES_DIR = ROOT_DIR / "_templates"
 # sessions. A fixed home-directory path is the only location guaranteed to
 # survive across sessions, hosts, and plugin updates.
 def _resolve_data_dir() -> Path:
-    return Path.home() / ".too-many-papers"
+    return Path(os.environ["TOO_MANY_PAPERS_DATA_DIR"]).resolve() if os.environ.get("TOO_MANY_PAPERS_DATA_DIR") else Path.home() / ".too-many-papers"
 
 
 DATA_DIR = _resolve_data_dir()
@@ -152,11 +129,8 @@ DATA_DIR = _resolve_data_dir()
 PAPERS_FILE = DATA_DIR / "_papers.json"
 VENUES_FILE = DATA_DIR / "_venues.json"
 GRAPH_FILE = DATA_DIR / "_graph.json"
-# Append-only, machine-written audit trail of every mutation. Unlike
-# graph "interactions" (which record conversational/engagement signals and
-# are logged explicitly by Claude via graph-interact), every line here is
-# written automatically by the command that performs the mutation — Claude
-# never has to remember to log anything for this file to stay accurate.
+# Append-only, machine-written audit trail of every mutation, written by the
+# command that performs it — Claude never logs anything by hand.
 LOG_FILE = DATA_DIR / "_log.jsonl"
 
 # Bibliographic exports (BibTeX now; format-dispatched so RIS/CSL-JSON are
@@ -164,9 +138,6 @@ LOG_FILE = DATA_DIR / "_log.jsonl"
 # papers save, the same way _log.jsonl is written automatically.
 EXPORT_DIR = DATA_DIR / "exports"
 BIBTEX_FILE = EXPORT_DIR / "library.bib"
-
-# Daily paper briefings, one Markdown file per day, all in one folder.
-BRIEFINGS_DIR = DATA_DIR / "briefings"
 
 
 def _ensure_data_files():
@@ -190,6 +161,31 @@ def _ensure_data_files():
 
 
 _ensure_data_files()
+
+
+@contextmanager
+def graph_command_lock():
+    """Serialize graph read/modify/write commands across MCP and web workers."""
+    with open(DATA_DIR / ".graph.lock", "a+b") as lock:
+        lock.seek(0, 2)
+        if lock.tell() == 0:
+            lock.write(b"0")
+            lock.flush()
+        lock.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            lock.seek(0)
+            if os.name == "nt":
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
 def _configure_stdio():
     """On Windows, redirected stdout (e.g. > file.txt) often uses cp1252 and
@@ -237,11 +233,25 @@ def save_venues(data):
 
 def load_graph():
     with open(GRAPH_FILE, encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    original = json.dumps(data, ensure_ascii=False, indent=2)
+    papers = load_papers().get("papers", {})
+    if project_papers.migrate(data, papers):
+        backup = DATA_DIR / "_graph.pre-v3.json"
+        if not backup.exists():
+            backup.write_text(original, encoding="utf-8")
+        save_graph(data)
+    for node in data.get("nodes", {}).values():
+        state = project_papers.review_state(node, data, papers)
+        if state:
+            node["review_state"] = state
+    return data
 
 def save_graph(data):
-    with open(GRAPH_FILE, "w", encoding="utf-8") as f:
+    temporary = GRAPH_FILE.with_suffix(".tmp")
+    with open(temporary, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    temporary.replace(GRAPH_FILE)
 
 def _log_event(event: str, **fields):
     """Append one JSON-line record to _log.jsonl. Called automatically by
@@ -361,39 +371,7 @@ def format_paper(pid, p, verbose=False):
         lines.append(f"Notes:    {p['notes']}")
     return "\n".join(lines)
 
-def format_venue(vid, v, verbose=False):
-    if not verbose:
-        return f"{vid} | {v['type']:<12} | {v['name']}"
-    m = v.get("metrics", {})
-    lines = [
-        f"{'-'*60}",
-        f"ID:           {vid}",
-        f"Name:         {v['name']}",
-        f"Type:         {v['type']}",
-        f"Publisher:    {v.get('publisher','—')}",
-        f"URL:          {v.get('url','—')}",
-        f"Open Access:  {'YES' if v.get('open_access') else 'NO'}",
-        f"Peer-review:  {'YES' if v.get('peer_reviewed') else 'NO'}",
-        f"IF:           {m.get('IF') or '—'}",
-        f"H-index:      {m.get('h_index') or '—'}",
-        f"Quartile:     {m.get('quartile') or '—'}",
-        f"CORE:         {m.get('core') or '—'}",
-        f"Acceptance:   {m.get('acceptance_rate') or '—'}",
-    ]
-    if v.get("notes"):
-        lines.append(f"Notes:        {v['notes']}")
-    return "\n".join(lines)
-
 # -- Paper commands — read -------------------------------------------------
-
-def cmd_list(args):
-    data = load_papers()
-    papers = data["papers"]
-    print(f"{'ID':<6} {'Year':<6} {'Venue':<35} {'Title'}")
-    print(SEP_LINE * 100)
-    for pid, p in sorted(papers.items()):
-        print(format_paper(pid, p))
-    print(f"\nTotal: {len(papers)} papers")
 
 def cmd_get(args):
     if not args:
@@ -405,112 +383,56 @@ def cmd_get(args):
         print(f"Paper '{pid}' not found."); return
     print(format_paper(pid, p, verbose=True))
 
-def cmd_search(args):
-    if not args:
-        print("Usage: search <text>"); return
-    query = " ".join(args).lower()
+def cmd_find(args):
+    """One query over the catalog: every filter is optional and they combine
+    with AND. An empty filter set lists the whole visible catalog."""
+    try:
+        f = parse_json_arg(args) if args else {}
+    except PayloadError as e:
+        print(f"ERROR: {e}"); sys.exit(1)
+    query = (f.get("query") or "").lower().strip()
+    author = (f.get("author") or "").lower().strip()
+    venue = (f.get("venue") or "").lower().strip()
+    concept = (f.get("concept_id") or "").upper().strip()
+    year = f.get("year") or 0
+    hidden = f.get("hidden", False)  # False: visible only, True: hidden only, "any": both
+    venues = load_venues()["venues"]
     data = load_papers()
     results = []
-    for pid, p in data["papers"].items():
-        haystack = (p["title"] + " " + " ".join(p.get("authors", []))).lower()
-        if query in haystack:
-            results.append((pid, p))
+    for pid, p in sorted(data["papers"].items()):
+        if hidden != "any" and bool(p.get("hidden")) != bool(hidden):
+            continue
+        authors = " ".join(p.get("authors", [])).lower()
+        if query and query not in (p.get("title", "") + " " + authors).lower():
+            continue
+        if author and author not in authors:
+            continue
+        if year and p.get("year") != int(year):
+            continue
+        if concept and concept not in p.get("concepts", []):
+            continue
+        vname = (venues.get(p.get("venue_id"), {}).get("name", "") + " " + (p.get("venue_detail") or "")).lower()
+        if venue and venue not in vname:
+            continue
+        results.append((pid, p))
     if not results:
-        print(f"No papers found for '{query}'."); return
+        print("No papers match."); return
     print(f"{'ID':<6} {'Year':<6} {'Venue':<35} {'Title'}")
     print(SEP_LINE * 100)
     for pid, p in results:
         print(format_paper(pid, p))
     print(f"\n{len(results)} results.")
 
-def cmd_by_concept(args):
-    if not args:
-        print("Usage: by-concept <CID>  e.g. by-concept C003"); return
-    cid = args[0].upper().lstrip("#")
-    data = load_papers()
-    results = [(pid, p) for pid, p in data["papers"].items() if cid in p.get("concepts", [])]
-    if not results:
-        print(f"No papers for concept #{cid}."); return
-    print(f"Papers linked to #{cid}:")
-    print(SEP_LINE * 100)
-    for pid, p in sorted(results):
-        print(format_paper(pid, p))
-    print(f"\n{len(results)} papers.")
-
-def cmd_by_author(args):
-    if not args:
-        print("Usage: by-author <surname>"); return
-    query = " ".join(args).lower()
-    data = load_papers()
-    results = [(pid, p) for pid, p in data["papers"].items()
-               if any(query in a.lower() for a in p.get("authors", []))]
-    if not results:
-        print(f"No papers with author '{query}'."); return
-    for pid, p in sorted(results):
-        print(format_paper(pid, p))
-
-def cmd_by_venue(args):
-    if not args:
-        print("Usage: by-venue <VID>  e.g. by-venue V001"); return
-    vid = args[0].upper()
-    data = load_papers()
-    results = [(pid, p) for pid, p in data["papers"].items() if p.get("venue_id") == vid]
-    if not results:
-        print(f"No papers for venue '{vid}'."); return
-    venues = load_venues()
-    vname = venues["venues"].get(vid, {}).get("name", vid)
-    print(f"Papers in {vid} — {vname}:")
-    print(SEP_LINE * 100)
-    for pid, p in sorted(results):
-        print(format_paper(pid, p))
-    print(f"\n{len(results)} papers.")
-
-def cmd_by_year(args):
-    if not args:
-        print("Usage: by-year <year>"); return
-    try:
-        year = int(args[0])
-    except ValueError:
-        print("Year must be an integer."); return
-    data = load_papers()
-    results = [(pid, p) for pid, p in data["papers"].items() if p.get("year") == year]
-    if not results:
-        print(f"No papers from {year}."); return
-    for pid, p in sorted(results):
-        print(format_paper(pid, p))
-
-def cmd_outside(args):
-    data = load_papers()
-    results = [(pid, p) for pid, p in data["papers"].items() if p.get("outside_zone")]
-    if not results:
-        print("No outside zone papers."); return
-    print("Papers outside the comfort zone:")
-    print(SEP_LINE * 100)
-    for pid, p in sorted(results):
-        print(format_paper(pid, p))
-
-def cmd_hidden(args):
-    data = load_papers()
-    results = [(pid, p) for pid, p in data["papers"].items() if p.get("hidden")]
-    if not results:
-        print("No hidden papers."); return
-    print("Hidden papers:")
-    print(SEP_LINE * 100)
-    for pid, p in sorted(results):
-        print(format_paper(pid, p))
-    print(f"\n{len(results)} papers.")
-
-def cmd_next_id(args):
-    data = load_papers()
-    print(next_paper_id(data["papers"]))
-
 # -- Paper commands — write ------------------------------------------------
 
-PAPER_REQUIRED_FIELDS = {"title", "authors", "year", "discovered", "venue_id",
-                         "venue_detail", "source_verified", "concepts",
-                         "file", "outside_zone", "notes"}
+PAPER_REQUIRED_FIELDS = {"title", "authors", "year", "source_verified"}
+# Filled with these defaults when omitted, so the stored record keeps the
+# shape the web UI and exporters read.
+PAPER_DEFAULTS = {"discovered": None, "venue_id": None, "venue_detail": "",
+                  "concepts": [], "file": None, "outside_zone": False, "notes": ""}
 PAPER_OPTIONAL_FIELDS = {"url", "hidden", "cites", "cited_by", "cites_unmatched",
-                          "pdf_status", "pdf_source", "pdf_notes", "cite_key", "abstract"}
+                          "pdf_status", "pdf_source", "pdf_notes", "cite_key", "abstract",
+                          "venue", "venue_type", "pdf_checked", "citations_checked"} | set(PAPER_DEFAULTS)
 PAPER_ALLOWED_FIELDS = PAPER_REQUIRED_FIELDS | PAPER_OPTIONAL_FIELDS
 
 def validate_paper_payload(payload: dict) -> list[str]:
@@ -558,10 +480,40 @@ def validate_paper_payload(payload: dict) -> list[str]:
     if venue_id:
         venues = load_venues()
         if venue_id not in venues["venues"]:
-            errors.append(f"venue_id '{venue_id}' does not exist in _venues.json. "
-                           f"Create it first with add-venue.")
+            errors.append(f"venue_id '{venue_id}' does not exist. Pass the venue by name "
+                           f"in 'venue' instead; it is created if missing.")
 
     return errors
+
+
+def _resolve_venue_name(payload: dict) -> None:
+    """Replace a `venue` name (plus optional `venue_type`) with a `venue_id`,
+    matching an existing venue case-insensitively or creating it. Venues are
+    never managed by hand: they exist only as what papers reference."""
+    name = payload.pop("venue", None)
+    vtype = payload.pop("venue_type", None) or "unknown"
+    if name is None:
+        return
+    name = str(name).strip()
+    if not name:
+        payload["venue_id"] = None
+        return
+    if re.search(r"\b(19|20)\d{2}\b", name):
+        raise ValueError(f"venue name must not include the year: '{name}' "
+                         f"(put edition details in 'venue_detail').")
+    data = load_venues()
+    for vid, v in data["venues"].items():
+        if (v.get("name") or "").strip().lower() == name.lower():
+            payload["venue_id"] = vid
+            return
+    vid = next_venue_id(data["venues"])
+    data["venues"][vid] = {"name": name, "type": vtype}
+    meta = data.setdefault("_meta", {})
+    meta["total_venues"] = len(data["venues"])
+    meta["last_updated"] = str(date.today())
+    save_venues(data)
+    _log_event("venue_added", id=vid, name=name)
+    payload["venue_id"] = vid
 
 def cmd_add_paper(args):
     if not args:
@@ -577,6 +529,14 @@ def cmd_add_paper(args):
         for e in errors:
             print(f"  - {e}")
         sys.exit(1)
+    try:
+        _resolve_venue_name(payload)
+    except ValueError as e:
+        print(f"Payload REJECTED — fix and retry:\n  - {e}"); sys.exit(1)
+    for field, default in PAPER_DEFAULTS.items():
+        payload.setdefault(field, copy.deepcopy(default))
+    if not payload.get("discovered"):
+        payload["discovered"] = str(date.today())
 
     data = load_papers()
     new_id = next_paper_id(data["papers"])
@@ -589,7 +549,10 @@ def cmd_add_paper(args):
     # -- Automatic citation linking (bidirectional) -------------------------
     # Direction 1 — forward: what the new paper cites, according to Semantic Scholar.
     # Requires an S2 call (requires arXiv ID or DOI verbatim in the payload).
-    fwd_result = compute_citation_links(new_id, payload, data["papers"])
+    # Capped so a slow Semantic Scholar leaves time for the PDF fetch below;
+    # a missed link is recovered later by citations_sync.
+    with time_budget(12):
+        fwd_result = compute_citation_links(new_id, payload, data["papers"])
     if fwd_result["error"]:
         print(f"[INFO] Automatic linking (what {new_id} cites) not performed: "
               f"{fwd_result['error']}")
@@ -747,6 +710,10 @@ def cmd_update_paper(args):
     data = load_papers()
     if pid not in data["papers"]:
         print(f"Paper '{pid}' not found."); return
+    try:
+        _resolve_venue_name(patch)
+    except ValueError as e:
+        print(f"ERROR: {e}"); sys.exit(1)
     data["papers"][pid].update(patch)
     data["_meta"]["last_updated"] = str(date.today())
     save_papers(data)
@@ -760,34 +727,6 @@ def cmd_update_paper(args):
             _log_event("concept_edges_synced", id=pid, added=added)
 
     print(f"Paper {pid} updated.")
-    print(format_paper(pid, data["papers"][pid], verbose=True))
-
-def cmd_hide(args):
-    if not args:
-        print("Usage: hide <ID>  e.g. hide P012"); return
-    pid = args[0].upper()
-    data = load_papers()
-    if pid not in data["papers"]:
-        print(f"Paper '{pid}' not found."); return
-    data["papers"][pid]["hidden"] = True
-    data["_meta"]["last_updated"] = str(date.today())
-    save_papers(data)
-    _log_event("paper_hidden", id=pid)
-    print(f"Paper {pid} hidden.")
-    print(format_paper(pid, data["papers"][pid], verbose=True))
-
-def cmd_unhide(args):
-    if not args:
-        print("Usage: unhide <ID>  e.g. unhide P012"); return
-    pid = args[0].upper()
-    data = load_papers()
-    if pid not in data["papers"]:
-        print(f"Paper '{pid}' not found."); return
-    data["papers"][pid]["hidden"] = False
-    data["_meta"]["last_updated"] = str(date.today())
-    save_papers(data)
-    _log_event("paper_unhidden", id=pid)
-    print(f"Paper {pid} restored (no longer hidden).")
     print(format_paper(pid, data["papers"][pid], verbose=True))
 
 def cmd_delete_paper(args):
@@ -810,8 +749,11 @@ def cmd_delete_paper(args):
             if values and pid in values:
                 other[field] = [v for v in values if v != pid]
                 scrubbed += 1
-    data["_meta"]["total_papers"] = len(data["papers"])
+    data.setdefault("_meta", {})["total_papers"] = len(data["papers"])
     data["_meta"]["last_updated"] = str(date.today())
+    graph = load_graph()
+    graph["edges"] = [e for e in graph.get("edges", []) if pid not in (e.get("src"), e.get("tgt"))]
+    save_graph(graph)
     save_papers(data)
     _log_event("paper_deleted", id=pid, title=removed.get("title", ""), scrubbed=scrubbed)
     print(f"Paper {pid} ({removed.get('title', '')}) permanently deleted. "
@@ -840,7 +782,9 @@ S2_MIN_INTERVAL = float(os.environ.get(
     "S2_MIN_INTERVAL", "1.0" if S2_API_KEY else "3.5"))
 _last_s2_request_time = [0.0]
 
-ARXIV_ID_RE = re.compile(r"(\d{4}\.\d{4,5})(v\d+)?")
+# YYMM.NNNNN with a real month, not embedded in a longer number: a bare
+# \d{4}\.\d{4,5} also matches inside DOIs (…compmedimag.2025.102562).
+ARXIV_ID_RE = re.compile(r"(?<!\d)(?<!\d\.)(\d{2}(?:0[1-9]|1[0-2])\.\d{4,5})(?!\d)(v\d+)?")
 DOI_RE = re.compile(r"10\.\d{4,9}/[^\s\"'<>]+", re.IGNORECASE)
 # Matches the 40-hex-char Semantic Scholar paper ID at the end of a
 # semanticscholar.org/paper/... URL, with or without a title slug before it
@@ -868,6 +812,8 @@ def extract_arxiv_id(paper: dict) -> str | None:
     haystacks = [_as_str(paper.get("venue_detail")), _as_str(paper.get("source_verified")),
                  _as_str(paper.get("url"))]
     for h in haystacks:
+        if "arxiv" not in h.lower():
+            continue
         m = ARXIV_ID_RE.search(h)
         if m:
             return m.group(1)
@@ -923,13 +869,47 @@ def extract_pmcid(paper: dict) -> str | None:
     return None
 
 
+# Wall-clock budget for one command. The MCP server runs tools one at a time,
+# so a call stuck in retries/backoff freezes every later call too. Inside a
+# budget, network helpers shorten their timeouts and give up retrying once
+# the time is spent; outside one (plain CLI use) nothing changes.
+_DEADLINE = [None]
+
+
+@contextmanager
+def time_budget(seconds):
+    prev = _DEADLINE[0]
+    if seconds is not None:  # a nested budget can only shorten the outer one
+        end = time.monotonic() + seconds
+        _DEADLINE[0] = end if prev is None else min(prev, end)
+    try:
+        yield
+    finally:
+        _DEADLINE[0] = prev
+
+
+def _left(cap: float) -> float:
+    """Seconds a request may still use (at most `cap`); 0 once the budget is spent."""
+    if _DEADLINE[0] is None:
+        return cap
+    return max(0.0, min(cap, _DEADLINE[0] - time.monotonic()))
+
+
+def _nap(seconds: float):
+    """Backoff/throttle sleep that never runs past the budget."""
+    time.sleep(_left(seconds))
+
+
+BUDGET_SPENT = "time budget for this call exhausted"
+
+
 def _s2_throttle():
     """Ensures at least S2_MIN_INTERVAL seconds between two consecutive requests
     to Semantic Scholar, to respect the API key's rate limit (e.g. 1 req/s)."""
     elapsed = time.monotonic() - _last_s2_request_time[0]
     wait = S2_MIN_INTERVAL - elapsed
     if wait > 0:
-        time.sleep(wait)
+        _nap(wait)
     _last_s2_request_time[0] = time.monotonic()
 
 
@@ -946,26 +926,29 @@ def s2_request(url: str, max_retries: int = 6, base_delay: float = 2.0):
     req = urllib.request.Request(url, headers=headers)
     last_err = None
     for attempt in range(max_retries):
+        if S2_API_KEY:
+            _s2_throttle()
+        timeout = _left(20)
+        if timeout < 1:
+            return None, f"{BUDGET_SPENT} ({last_err or 'Semantic Scholar not reached'})"
         try:
-            if S2_API_KEY:
-                _s2_throttle()
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 body = resp.read().decode("utf-8")
                 return json.loads(body), None
         except urllib.error.HTTPError as e:
             if e.code == 429:
                 last_err = "429 Too Many Requests"
-                time.sleep(base_delay * (attempt + 1))
+                _nap(base_delay * (attempt + 1))
                 continue
             elif e.code == 404:
                 return None, "404 Not Found (paper not present on Semantic Scholar)"
             else:
                 last_err = f"HTTP {e.code}: {e.reason}"
-                time.sleep(base_delay)
+                _nap(base_delay)
                 continue
-        except urllib.error.URLError as e:
-            last_err = f"Network error: {e.reason}"
-            time.sleep(base_delay)
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            last_err = f"Network error: {getattr(e, 'reason', e)}"
+            _nap(base_delay)
             continue
         except json.JSONDecodeError as e:
             return None, f"Non-JSON response from Semantic Scholar: {e}"
@@ -1291,7 +1274,13 @@ def cmd_sync_citations(args):
     total = len(papers)
     processed, total_new_links, no_id, errors = 0, 0, [], []
 
-    for i, (pid, paper) in enumerate(sorted(papers.items()), start=1):
+    order = sorted(papers.items(), key=lambda kv: (kv[1].get("citations_checked") or "", kv[0]))
+    stopped = 0
+    for i, (pid, paper) in enumerate(order, start=1):
+        if _left(5) < 5:
+            stopped = total - i + 1
+            break
+        paper["citations_checked"] = str(date.today())
         try:
             result = compute_citation_links(pid, paper, papers)
         except Exception as e:
@@ -1310,7 +1299,7 @@ def cmd_sync_citations(args):
             processed += 1
             print(f"[{i}/{total}] {pid}: {len(result['matched'])} citations in catalog "
                   f"({new_links} new)")
-        time.sleep(1.1)  # respect Semantic Scholar's public rate limit
+        _nap(1.1)  # respect Semantic Scholar's public rate limit
 
     data["_meta"]["last_updated"] = str(date.today())
     save_papers(data)
@@ -1327,6 +1316,9 @@ def cmd_sync_citations(args):
     print(f"Network/API errors:        {len(errors)}")
     for pid, e in errors:
         print(f"  * {pid}: {e}")
+    if stopped:
+        print(f"\nStopped at the time budget with {stopped} papers not checked yet: "
+              f"run it again to continue from there.")
 
 # -- Paper discovery (arXiv, Semantic Scholar, OpenAlex) --------------------
 #
@@ -1359,7 +1351,7 @@ def _throttle(bucket: list, min_interval: float):
     elapsed = time.monotonic() - bucket[0]
     wait = min_interval - elapsed
     if wait > 0:
-        time.sleep(wait)
+        _nap(wait)
     bucket[0] = time.monotonic()
 
 
@@ -1370,18 +1362,21 @@ def _http_get(url: str, headers: dict | None = None, timeout: int = 20,
     req = urllib.request.Request(url, headers=headers or {})
     last_err = None
     for attempt in range(max_retries):
+        t = _left(timeout)
+        if t < 1:
+            return None, f"{BUDGET_SPENT} ({last_err or 'not reached'})"
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=t) as resp:
                 return resp.read().decode("utf-8"), None
         except urllib.error.HTTPError as e:
             if e.code == 429 or 500 <= e.code < 600:
                 last_err = f"HTTP {e.code}"
-                time.sleep(base_delay * (attempt + 1))
+                _nap(base_delay * (attempt + 1))
                 continue
             return None, f"HTTP {e.code}: {e.reason}"
-        except urllib.error.URLError as e:
-            last_err = f"Network error: {e.reason}"
-            time.sleep(base_delay)
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            last_err = f"Network error: {getattr(e, 'reason', e)}"
+            _nap(base_delay)
             continue
     return None, f"Persistent failure after {max_retries} attempts ({last_err})"
 
@@ -1718,126 +1713,142 @@ UNPAYWALL_EMAIL = os.environ.get("UNPAYWALL_EMAIL") or os.environ.get("TOO_MANY_
 PDF_DIR = DATA_DIR / "pdfs"
 
 
-def resolve_pdf_candidates(paper: dict) -> tuple[list[tuple[str, str]], str | None]:
-    """Builds an ORDERED list of (url, source) candidates to try for `paper`:
-      a. arXiv     — the /pdf/{id}.pdf URL pattern is stable and documented,
-                      no HTTP call needed to construct it.
-      b. PMC       — the pmc.ncbi.nlm.nih.gov/articles/{PMCID}/pdf/ pattern is
-                      stable and documented, no HTTP call needed to construct
-                      it; used only when a literal PMCID is already on file.
-      c. bioRxiv   — the biorxiv.org/content/{doi}v1.full.pdf pattern, used
-                      only when "biorxiv" is literally present in the
-                      paper's own fields (not inferred from the DOI prefix,
-                      which medRxiv also shares) and a DOI is on file. v1 is
-                      always a real, downloadable version of the preprint,
-                      even if later versions exist.
-      d. Semantic Scholar — openAccessPdf field, looked up by DOI, or (if no
-                      DOI is on file) directly by Semantic Scholar paper ID
-                      when source_verified is a semanticscholar.org/paper/
-                      URL — that ID is itself a fully valid, directly
-                      resolvable S2 identifier (see extract_s2_id). If S2's
-                      response includes an externalIds.DOI we didn't already
-                      have, it's a real value from a live API response (not
-                      an inference) and gets used for the Unpaywall step too.
-      e. Unpaywall — best_oa_location, requires a DOI and a contact email.
-    Every source that reports a URL is included (not just the first one) so
-    the caller can fall through to the next candidate if an earlier one
-    turns out not to be a real PDF when actually downloaded (e.g. a host
-    reporting an "open access" link that's really a landing/redirect page).
-    Returns (candidates, reason) — `reason` explains why the list is empty
-    when it is; an empty list is a normal, expected outcome for paywalled
-    papers, not a failure to alarm about."""
-    candidates: list[tuple[str, str]] = []
+EUROPEPMC_SEARCH = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+PMC_OA_BUCKET = "https://pmc-oa-opendata.s3.amazonaws.com"
+
+
+def _pmcid_for_doi(doi: str) -> str | None:
+    """PMCID from Europe PMC's search by DOI (NCBI's idconv v1.0 is retired)."""
+    q = urllib.parse.quote(f'DOI:"{doi}"')
+    body, err = _http_get(f"{EUROPEPMC_SEARCH}?format=json&resultType=lite&query={q}", max_retries=2)
+    if err:
+        return None
+    try:
+        results = json.loads(body).get("resultList", {}).get("result", [])
+    except json.JSONDecodeError:
+        return None
+    return next((r["pmcid"] for r in results if r.get("pmcid")), None)
+
+
+def _pmc_bucket_pdf(pmcid: str) -> str | None:
+    """PDF in PMC's open-data S3 bucket, if that article has one. The public
+    pmc.ncbi.nlm.nih.gov/.../pdf/ URL serves a 1.8 KB cookie stub to any
+    non-browser client, so the bucket is the only reliable PMC route."""
+    body, err = _http_get(f"{PMC_OA_BUCKET}/?list-type=2&prefix={pmcid}.", max_retries=2)
+    if err:
+        return None
+    keys = re.findall(r"<Key>([^<]+\.pdf)</Key>", body)
+    return f"{PMC_OA_BUCKET}/{keys[0]}" if keys else None
+
+
+def iter_pdf_candidates(paper: dict, notes: list):
+    """Yield (url, source) PDF candidates for `paper`, cheapest first, and
+    only look the next source up if the caller keeps iterating — so a paper
+    found on arXiv costs one request, not six lookups. Every URL comes from a
+    stable documented pattern or a live API response; nothing is guessed.
+    Reasons a source had nothing are appended to `notes`.
+
+      arXiv → PMC bucket (PMCID on file or via Europe PMC) → bioRxiv →
+      Semantic Scholar openAccessPdf → OpenAlex locations → Unpaywall
+    """
     arxiv_id = extract_arxiv_id(paper)
     doi = extract_doi(paper)
     s2_id = extract_s2_id(paper)
     pmcid = extract_pmcid(paper)
-    is_biorxiv = any("biorxiv" in _as_str(paper.get(f)).lower()
-                      for f in ("venue_detail", "source_verified", "url"))
 
-    # (a) arXiv
     if arxiv_id:
-        candidates.append((f"https://arxiv.org/pdf/{arxiv_id}.pdf", "arxiv"))
+        yield f"https://arxiv.org/pdf/{arxiv_id}.pdf", "arxiv"
 
-    # (b) PMC
+    if not doi and not s2_id and not pmcid:
+        notes.append("no verbatim arXiv ID, PMCID, DOI, or Semantic Scholar paper URL "
+                     "in venue_detail/source_verified/url")
+        return
+
+    # Semantic Scholar first when there is no DOI: it may supply one.
+    s2_meta = None
+    if not doi and s2_id:
+        s2_meta, _ = s2_request(f"{S2_API_BASE}/{s2_id}?fields=openAccessPdf,externalIds",
+                                max_retries=3)
+        doi = ((s2_meta or {}).get("externalIds") or {}).get("DOI")  # live API value
+
+    if not pmcid and doi:
+        pmcid = _pmcid_for_doi(doi)
     if pmcid:
-        candidates.append((f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/pdf/", "pmc"))
+        url = _pmc_bucket_pdf(pmcid)
+        if url:
+            yield url, "pmc"
+        else:
+            notes.append(f"{pmcid} has no PDF in the PMC open-data bucket")
 
-    # (c) bioRxiv
+    is_biorxiv = any("biorxiv" in _as_str(paper.get(f)).lower()
+                     for f in ("venue_detail", "source_verified", "url"))
     if is_biorxiv and doi:
-        candidates.append((f"https://www.biorxiv.org/content/{doi}v1.full.pdf", "biorxiv"))
+        yield f"https://www.biorxiv.org/content/{doi}v1.full.pdf", "biorxiv"
 
-    if not doi and not s2_id:
-        if candidates:
-            return candidates, None
-        return [], ("no verbatim arXiv ID, PMCID, DOI, or Semantic Scholar "
-                     "paper URL found in venue_detail/source_verified/url — "
-                     "cannot resolve a PDF without a real identifier.")
+    if s2_meta is None and doi:
+        s2_meta, _ = s2_request(f"{S2_API_BASE}/DOI:{doi}?fields=openAccessPdf", max_retries=3)
+    oa = (s2_meta or {}).get("openAccessPdf") or {}
+    if oa.get("url"):
+        yield oa["url"], "semantic_scholar"
 
-    # (b) Semantic Scholar — by DOI if we have one, else directly by S2 paper ID.
-    if doi:
-        lookup_url = f"{S2_API_BASE}/DOI:{doi}?fields=openAccessPdf,externalIds"
-    else:
-        lookup_url = f"{S2_API_BASE}/{s2_id}?fields=openAccessPdf,externalIds"
-    meta, err = s2_request(lookup_url)
-    if not err and meta:
-        oa = meta.get("openAccessPdf") or {}
-        if oa.get("url"):
-            candidates.append((oa["url"], "semantic_scholar"))
-        if not doi:
-            ext = meta.get("externalIds") or {}
-            if ext.get("DOI"):
-                doi = ext["DOI"]  # real DOI from a live S2 response, not invented
-
-    # (c) Unpaywall
     if not doi:
-        if candidates:
-            return candidates, None
-        return [], "no open-access PDF reported by Semantic Scholar, and no DOI to try Unpaywall"
-    if not UNPAYWALL_EMAIL:
-        if candidates:
-            return candidates, None
-        return [], (
-            "no UNPAYWALL_EMAIL or TOO_MANY_PAPERS_CONTACT_EMAIL set — Unpaywall "
-            "requires a contact email; set one of these environment variables "
-            "(any email works, e.g. TOO_MANY_PAPERS_CONTACT_EMAIL=you@x.com) to "
-            "enable this source"
-        )
-    unpaywall_url = f"{UNPAYWALL_API_BASE}/{urllib.parse.quote(doi)}?email={urllib.parse.quote(UNPAYWALL_EMAIL)}"
-    body, err = _http_get(unpaywall_url)
+        notes.append("no DOI, so OpenAlex and Unpaywall cannot be asked")
+        return
+
+    seen = {oa.get("url")}
+    oa_headers = {"User-Agent": S2_USER_AGENT}
+    key = f"&api_key={urllib.parse.quote(OPENALEX_API_KEY)}" if OPENALEX_API_KEY else ""
+    body, err = _http_get(f"{OPENALEX_API_BASE}/doi:{urllib.parse.quote(doi)}?select=locations{key}",
+                          headers=oa_headers, max_retries=2)
     if not err:
         try:
-            up_data = json.loads(body)
+            locations = json.loads(body).get("locations") or []
         except json.JSONDecodeError:
-            up_data = {}
-        best = up_data.get("best_oa_location") or {}
-        pdf_url = best.get("url_for_pdf")
-        if not pdf_url:
-            # Only fall back to `.url` if it visibly looks like a PDF —
-            # otherwise treat as unavailable rather than guess (Rule Zero).
-            candidate = best.get("url") or ""
-            if candidate.lower().split("?")[0].endswith(".pdf"):
-                pdf_url = candidate
-        if pdf_url:
-            candidates.append((pdf_url, "unpaywall"))
+            locations = []
+        for loc in locations:
+            url = loc.get("pdf_url")
+            if url and url not in seen:
+                seen.add(url)
+                yield url, "openalex"
 
-    if candidates:
-        return candidates, None
-    return [], "no open-access PDF reported by Semantic Scholar or Unpaywall"
+    if not UNPAYWALL_EMAIL:
+        notes.append("Unpaywall skipped: set TOO_MANY_PAPERS_CONTACT_EMAIL to enable it")
+        return
+    body, err = _http_get(f"{UNPAYWALL_API_BASE}/{urllib.parse.quote(doi)}"
+                          f"?email={urllib.parse.quote(UNPAYWALL_EMAIL)}", max_retries=2)
+    if not err:
+        try:
+            up = json.loads(body)
+        except json.JSONDecodeError:
+            up = {}
+        for loc in up.get("oa_locations") or []:
+            url = loc.get("url_for_pdf")
+            if url and url not in seen:
+                seen.add(url)
+                yield url, "unpaywall"
 
 
-def resolve_pdf_url(paper: dict) -> tuple[str | None, str, str | None]:
-    """Convenience wrapper around resolve_pdf_candidates() returning just the
-    single best (first) candidate. Kept for callers that only care about the
-    top choice; _fetch_pdf_for_paper uses resolve_pdf_candidates() directly
-    so it can fall through to the next source if the first one's download
-    fails validation. Returns (url, source, error) — source is one of
-    "arxiv", "pmc", "biorxiv", "semantic_scholar", "unpaywall", or "none"."""
-    candidates, err = resolve_pdf_candidates(paper)
-    if not candidates:
-        return None, "none", err
-    url, source = candidates[0]
-    return url, source, None
+def _fetch_pdf_for_paper(pid: str, paper: dict) -> dict:
+    """Try PDF candidates in order until one downloads as a real PDF. A host
+    that serves a landing page or a 403 just moves on to the next source.
+    Returns a result dict; never raises, never mutates `paper`."""
+    dest = PDF_DIR / f"{pid}.pdf"
+    notes, failures = [], []
+    for url, source in iter_pdf_candidates(paper, notes):
+        ok, dl_err = download_pdf(url, dest)
+        if ok:
+            rel_path = str(dest.relative_to(DATA_DIR)).replace(os.sep, "/")
+            return {"ok": True, "file": rel_path, "source": source, "url": url}
+        host = urllib.parse.urlparse(url).netloc
+        failures.append(f"{source} ({host}): {dl_err}")
+        if _left(1) < 1:
+            failures.append(BUDGET_SPENT)
+            break
+    if not failures:
+        return {"ok": False, "status": "unavailable",
+                "reason": "; ".join(notes) or "no open-access source found", "source": "none"}
+    reason = "; ".join(failures + notes)
+    return {"ok": False, "status": f"error: {reason}", "reason": reason, "source": "none"}
 
 
 def _http_get_bytes(url: str, timeout: int = 20, max_retries: int = 4,
@@ -1847,22 +1858,26 @@ def _http_get_bytes(url: str, timeout: int = 20, max_retries: int = 4,
     corrupt binary content. Same retry/backoff behavior on 429/5xx, and
     follows redirects (urllib's default). Returns (body_bytes, content_type,
     None) on success or (None, None, error_string) on failure."""
-    headers = {"User-Agent": S2_USER_AGENT}
+    # Accept */*: some hosts (eLife) answer 406 to an Accept naming application/pdf.
+    headers = {"User-Agent": S2_USER_AGENT, "Accept": "*/*"}
     req = urllib.request.Request(url, headers=headers)
     last_err = None
     for attempt in range(max_retries):
+        t = _left(timeout)
+        if t < 1:
+            return None, None, f"{BUDGET_SPENT} ({last_err or 'not reached'})"
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=t) as resp:
                 return resp.read(), resp.headers.get("Content-Type", ""), None
         except urllib.error.HTTPError as e:
             if e.code == 429 or 500 <= e.code < 600:
                 last_err = f"HTTP {e.code}"
-                time.sleep(base_delay * (attempt + 1))
+                _nap(base_delay * (attempt + 1))
                 continue
             return None, None, f"HTTP {e.code}: {e.reason}"
-        except urllib.error.URLError as e:
-            last_err = f"Network error: {e.reason}"
-            time.sleep(base_delay)
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            last_err = f"Network error: {getattr(e, 'reason', e)}"
+            _nap(base_delay)
             continue
     return None, None, f"Persistent failure after {max_retries} attempts ({last_err})"
 
@@ -1892,34 +1907,6 @@ def download_pdf(url: str, dest_path: Path) -> tuple[bool, str | None]:
     except OSError as e:
         return False, f"failed to write file: {e}"
     return True, None
-
-
-def _fetch_pdf_for_paper(pid: str, paper: dict) -> dict:
-    """Core logic shared by fetch-pdf, sync-pdfs, and the automatic fetch in
-    add-paper: resolve PDF candidates and try downloading them IN ORDER,
-    falling through to the next source if an earlier one's URL turns out
-    not to be a real PDF when actually downloaded (e.g. a host reporting an
-    "open access" link that's really a landing/redirect page) — a resolve
-    failure is not the same as a download failure, and shouldn't stop the
-    fallback chain. Returns a result dict describing the outcome — never
-    raises, never mutates `paper` itself (the caller decides what to do with
-    the result)."""
-    candidates, err = resolve_pdf_candidates(paper)
-    if not candidates:
-        return {"ok": False, "status": "unavailable",
-                "reason": err or "no open-access source found", "source": "none"}
-
-    dest = PDF_DIR / f"{pid}.pdf"
-    last_err, last_source = None, None
-    for url, source in candidates:
-        ok, dl_err = download_pdf(url, dest)
-        if ok:
-            rel_path = str(dest.relative_to(DATA_DIR)).replace(os.sep, "/")
-            return {"ok": True, "file": rel_path, "source": source, "url": url}
-        last_err, last_source = dl_err, source
-
-    return {"ok": False, "status": f"error: {last_err}", "reason": last_err,
-            "source": last_source}
 
 
 def cmd_fetch_pdf(args):
@@ -2082,13 +2069,22 @@ def cmd_sync_pdfs(args):
     total = len(papers)
     fetched, already_had, unavailable, errored = 0, 0, [], []
 
-    for i, (pid, paper) in enumerate(sorted(papers.items()), start=1):
+    # Least recently tried first, so a budget-limited run that stops early
+    # picks up where the previous one left off instead of retrying the same
+    # paywalled papers every time.
+    order = sorted(papers.items(), key=lambda kv: (kv[1].get("pdf_checked") or "", kv[0]))
+    stopped = 0
+    for i, (pid, paper) in enumerate(order, start=1):
         existing_file = paper.get("file")
         if existing_file and (DATA_DIR / existing_file).exists():
             already_had += 1
-            print(f"[{i}/{total}] {pid}: already has a PDF on file, skipped")
             continue
+        if _left(5) < 5:
+            stopped = sum(1 for _, p in order[i - 1:]
+                          if not (p.get("file") and (DATA_DIR / p["file"]).exists()))
+            break
 
+        paper["pdf_checked"] = str(date.today())
         try:
             result = _fetch_pdf_for_paper(pid, paper)
         except Exception as e:
@@ -2110,7 +2106,7 @@ def cmd_sync_pdfs(args):
             else:
                 errored.append((pid, result["status"]))
                 print(f"[{i}/{total}] {pid}: {result['status']}")
-        time.sleep(1.1)  # respect the same public rate limits as sync-citations
+        _nap(1.1)  # respect the same public rate limits as sync-citations
 
     data["_meta"]["last_updated"] = str(date.today())
     save_papers(data)
@@ -2127,173 +2123,22 @@ def cmd_sync_pdfs(args):
     print(f"Errors:                    {len(errored)}")
     for pid, e in errored:
         print(f"  * {pid}: {e}")
-
-# -- Venue commands — read -------------------------------------------------
-
-def cmd_venue_list(args):
-    data = load_venues()
-    print(f"{'ID':<6} {'Type':<14} {'Name'}")
-    print(SEP_LINE * 60)
-    for vid, v in sorted(data["venues"].items()):
-        print(format_venue(vid, v))
-    print(f"\nTotal: {len(data['venues'])} venues")
-
-def cmd_venue_get(args):
-    if not args:
-        print("Usage: venue-get <VID>  e.g. venue-get V003"); return
-    vid = args[0].upper()
-    data = load_venues()
-    v = data["venues"].get(vid)
-    if not v:
-        print(f"Venue '{vid}' not found."); return
-    print(format_venue(vid, v, verbose=True))
-
-# -- Venue commands — write ------------------------------------------------
-
-VENUE_REQUIRED_FIELDS = {"name", "type"}
-VENUE_OPTIONAL_FIELDS = {"publisher", "url", "open_access", "peer_reviewed",
-                         "metrics", "notes"}
-VENUE_ALLOWED_FIELDS = VENUE_REQUIRED_FIELDS | VENUE_OPTIONAL_FIELDS
-
-def validate_venue_payload(payload, is_patch: bool = False) -> list[str]:
-    errors = []
-    if not isinstance(payload, dict):
-        return ["The payload must be a JSON object."]
-
-    unknown = set(payload.keys()) - VENUE_ALLOWED_FIELDS
-    if unknown:
-        errors.append(f"Unrecognized fields (rejected): {', '.join(sorted(unknown))}. "
-                       f"Allowed fields: {', '.join(sorted(VENUE_ALLOWED_FIELDS))}. "
-                       f"(Note: the field is called 'peer_reviewed', not 'peer_review'.)")
-
-    if not is_patch:
-        missing = VENUE_REQUIRED_FIELDS - set(payload.keys())
-        if missing:
-            errors.append(f"Missing fields: {', '.join(sorted(missing))}")
-
-    if "name" in payload:
-        name = payload["name"]
-        if not name or not isinstance(name, str) or not name.strip():
-            errors.append("Field 'name' cannot be empty.")
-        elif re.search(r"\b(19|20)\d{2}\b", name):
-            errors.append(f"The venue 'name' field must not include the year: '{name}'.")
-
-    if "open_access" in payload and not isinstance(payload["open_access"], bool):
-        errors.append("Field 'open_access' must be boolean (true/false).")
-    if "peer_reviewed" in payload and not isinstance(payload["peer_reviewed"], bool):
-        errors.append("Field 'peer_reviewed' must be boolean (true/false).")
-
-    return errors
-
-def cmd_add_venue(args):
-    if not args:
-        print("Usage: add-venue '<json>' or add-venue @file.json"); return
-    try:
-        payload = parse_json_arg(args)
-    except PayloadError as e:
-        print(f"ERROR: {e}"); sys.exit(1)
-
-    errors = validate_venue_payload(payload, is_patch=False)
-    if errors:
-        print("Payload REJECTED — fix and retry:")
-        for e in errors:
-            print(f"  - {e}")
-        sys.exit(1)
-
-    data = load_venues()
-    new_id = next_venue_id(data["venues"])
-    data["venues"][new_id] = payload
-    data["_meta"]["total_venues"] = len(data["venues"])
-    data["_meta"]["last_updated"] = str(date.today())
-    save_venues(data)
-    _log_event("venue_added", id=new_id, name=payload.get("name"))
-    print(f"Venue added with ID: {new_id}")
-    print(format_venue(new_id, payload, verbose=True))
-
-def cmd_update_venue(args):
-    if len(args) < 2:
-        print("Usage: update-venue <VID> '<json>' or update-venue <VID> @file.json"); return
-    vid = args[0].upper()
-    try:
-        patch = parse_json_arg(args[1:])
-    except PayloadError as e:
-        print(f"ERROR: {e}"); sys.exit(1)
-
-    errors = validate_venue_payload(patch, is_patch=True)
-    if errors:
-        print("Payload REJECTED — fix and retry:")
-        for e in errors:
-            print(f"  - {e}")
-        sys.exit(1)
-
-    data = load_venues()
-    if vid not in data["venues"]:
-        print(f"Venue '{vid}' not found."); return
-    data["venues"][vid].update(patch)
-    data["_meta"]["last_updated"] = str(date.today())
-    save_venues(data)
-    _log_event("venue_updated", id=vid, fields=sorted(patch.keys()))
-    print(f"Venue {vid} updated.")
-    print(format_venue(vid, data["venues"][vid], verbose=True))
-
-def cmd_delete_venue(args):
-    """Permanently remove a venue. Blocked if papers still reference it,
-    unless 'force' is passed as an extra argument."""
-    if not args:
-        print("Usage: delete-venue <VID> [force]  e.g. delete-venue V003"); return
-    vid = args[0].upper()
-    force = len(args) > 1 and args[1].lower() == "force"
-    venues = load_venues()
-    if vid not in venues["venues"]:
-        print(f"Venue '{vid}' not found."); return
-    papers = load_papers()
-    referencing = [pid for pid, p in papers["papers"].items() if p.get("venue_id") == vid]
-    if referencing and not force:
-        print(f"ERROR: venue '{vid}' is still referenced by {len(referencing)} paper(s): "
-              f"{', '.join(sorted(referencing))}. Reassign those papers' venue_id first, "
-              f"or pass 'force' to delete anyway (leaves those papers pointing at a missing venue).")
-        sys.exit(1)
-    removed = venues["venues"].pop(vid)
-    venues["_meta"]["total_venues"] = len(venues["venues"])
-    venues["_meta"]["last_updated"] = str(date.today())
-    save_venues(venues)
-    _log_event("venue_deleted", id=vid, name=removed.get("name", ""),
-               orphaned_papers=len(referencing))
-    note = f" ({len(referencing)} paper(s) now reference a missing venue)" if referencing else ""
-    print(f"Venue {vid} ({removed.get('name', '')}) permanently deleted.{note}")
+    if stopped:
+        print(f"\nStopped at the time budget with {stopped} papers without a PDF not tried yet: "
+              f"run it again to continue from there.")
 
 # -- Graph helpers ---------------------------------------------------------
 
-GRAPH_NODE_TYPES = {"concept", "project", "endpoint", "idea", "waypoint", "note"}
+GRAPH_NODE_TYPES = {"concept", "project", "idea", "note"}
 GRAPH_EDGE_TYPES = {"connected_to", "uses_concept", "part_of", "inspired_by",
-                    "relevant_to", "derived_from", "enables", "annotates", "leads_to"}
-INTERACTION_TYPES = {
-    "discussed": 3,
-    "deepened": 5,
-    "paper_requested": 10,
-    "read": 2,
-    "linked": 8,
-}
+                    "relevant_to", "derived_from", "enables", "annotates"}
 
-# Applies only to endpoint/waypoint nodes — their `status` tracks progress
-# toward a project's goal, not free-text like project/idea status.
-STATUS_ENUM = {"pending", "reached", "failed"}
-STATUS_ENUM_TYPES = {"endpoint", "waypoint"}
-DEFAULT_STATUS = "pending"
-
-# A project's description is meant to stay a short summary, not a place for
-# sprawling notes — those belong on its ideas/waypoints/endpoints instead.
 PROJECT_DESCRIPTION_MAX_LEN = 200
 
 NODE_REQUIRED_FIELDS = {
     "concept": {"name", "area"},
     "project": {"name", "status"},
-    # `project` here is the id of the owning project node, not a graph
-    # field: cmd_graph_add_node pops it off and turns it into a `part_of`
-    # edge to that project, since every endpoint must belong to one.
-    "endpoint": {"name", "status", "project"},
     "idea": {"name", "status", "created"},
-    "waypoint": {"name"},
     "note": {"name", "created"},
 }
 
@@ -2303,9 +2148,7 @@ NODE_OPTIONAL_FIELDS = {
     # name — set from the Concepts tab, never inferred.
     "concept": {"description", "color"},
     "project": {"description"},
-    "endpoint": {"description"},
     "idea": {"description", "source"},
-    "waypoint": {"description", "status"},
     # `note` = a reading annotation captured from a PDF (via the web UI's
     # select-to-note flow, or graph_add_note). `quote` is the verbatim
     # excerpt the user selected; `text` is their own comment on it; `page`
@@ -2314,23 +2157,6 @@ NODE_OPTIONAL_FIELDS = {
     # other graph relationship (BFS, "linked to" filters, etc.).
     "note": {"quote", "text", "page"},
 }
-
-
-def _validate_node_status(node_type: str, payload: dict) -> None:
-    """Default/validate `status` in place for endpoint/waypoint nodes.
-
-    Mutates payload to fill in the default when status is missing. Exits
-    with an error if an explicit status isn't one of the allowed values."""
-    if node_type not in STATUS_ENUM_TYPES:
-        return
-    status = payload.get("status")
-    if status is None or status == "":
-        payload["status"] = DEFAULT_STATUS
-        return
-    if status not in STATUS_ENUM:
-        print(f"ERROR: status for a '{node_type}' must be one of: "
-              f"{', '.join(sorted(STATUS_ENUM))} (got '{status}')")
-        sys.exit(1)
 
 
 def _validate_project_description(payload: dict) -> None:
@@ -2394,19 +2220,8 @@ def _generate_node_id(node_type: str, payload: dict, nodes: dict) -> str:
                 i += 1
             candidate = f"{candidate}{i}"
         return candidate
-    elif node_type == "endpoint":
-        # Try to find parent project from description or just use generic
-        parent_slug = "GEN"
-        # Check edges or description for parent project hint
-        candidate_base = f"EP-{parent_slug}"
-        nums = [int(k.split("-")[-1]) for k in nodes
-                if k.startswith(candidate_base + "-") and k.split("-")[-1].isdigit()]
-        next_num = (max(nums) + 1) if nums else 1
-        return f"{candidate_base}-{next_num}"
     elif node_type == "idea":
         return _next_graph_id(nodes, "IDEA-")
-    elif node_type == "waypoint":
-        return _next_graph_id(nodes, "WP-")
     return _next_graph_id(nodes, node_type.upper()[:4] + "-")
 
 
@@ -2423,7 +2238,6 @@ def cmd_graph_status(args):
     graph = load_graph()
     nodes = graph.get("nodes", {})
     edges = graph.get("edges", [])
-    interactions = graph.get("interactions", [])
     total_papers = len(load_papers().get("papers", {}))
 
     type_counts = {}
@@ -2438,10 +2252,6 @@ def cmd_graph_status(args):
     for t, c in sorted(type_counts.items()):
         print(f"  {t:<15} {c}")
     print(f"Total edges: {len(edges)}")
-    print(f"Total interactions: {len(interactions)}")
-    if interactions:
-        latest = max(i.get("date", "") for i in interactions)
-        print(f"Latest interaction: {latest}")
     print(f"Data directory: {DATA_DIR}")
 
 
@@ -2476,16 +2286,6 @@ def cmd_graph_node(args):
             other_name = (other_node.get("name", "") if other_node else "?")[:40]
             note = f'  "{e["note"]}"' if e.get("note") else ""
             print(f"  {direction} {other:<12} [{e['type']}] {other_name}{note}")
-
-    # Recent interactions
-    interactions = graph.get("interactions", [])
-    node_interactions = [i for i in interactions if i.get("node_id") == node_id]
-    node_interactions.sort(key=lambda x: x.get("date", ""), reverse=True)
-    if node_interactions:
-        print(f"\nRecent interactions (last 10):")
-        print(SEP_LINE * 60)
-        for i in node_interactions[:10]:
-            print(f"  {i.get('date','')} | {i.get('type',''):<18} | w={i.get('weight','')}")
 
 
 def cmd_graph_nodes(args):
@@ -2542,29 +2342,15 @@ def cmd_graph_add_node(args):
               f"Allowed: {', '.join(sorted(allowed))}")
         sys.exit(1)
 
-    _validate_node_status(node_type, payload)
     if node_type == "project":
         _validate_project_description(payload)
 
     graph = load_graph()
     nodes = graph.setdefault("nodes", {})
 
-    project_id = None
-    if node_type == "endpoint":
-        project_id = payload.pop("project")
-        project_node = _resolve_node_id(project_id, graph)
-        if not project_node:
-            print(f"ERROR: project '{project_id}' not found."); sys.exit(1)
-        if project_node.get("type") != "project":
-            print(f"ERROR: '{project_id}' is not a project node."); sys.exit(1)
-
     new_id = _generate_node_id(node_type, payload, nodes)
     payload["type"] = node_type
     nodes[new_id] = payload
-
-    if project_id:
-        graph.setdefault("edges", []).append(
-            {"src": new_id, "tgt": project_id, "type": "part_of"})
 
     save_graph(graph)
     _log_event("node_added", id=new_id, type=node_type, name=payload.get("name"))
@@ -2606,10 +2392,6 @@ def cmd_graph_update_node(args):
             print("ERROR: a node's type cannot be changed via update.")
             sys.exit(1)
 
-    if node_type in STATUS_ENUM_TYPES and "status" in patch and patch["status"] not in STATUS_ENUM:
-        print(f"ERROR: status for a '{node_type}' must be one of: "
-              f"{', '.join(sorted(STATUS_ENUM))} (got '{patch['status']}')")
-        sys.exit(1)
     if node_type == "project" and "description" in patch:
         merged = dict(nodes[node_id]); merged.update(patch)
         _validate_project_description(merged)
@@ -2633,7 +2415,22 @@ def cmd_graph_remove_node(args):
     if node_id not in nodes:
         print(f"Node '{node_id}' not found in the graph."); return
 
+    node = nodes[node_id]
+    if node.get("project_id") and project_papers.review_state(node, graph, load_papers().get("papers", {})) != "detached":
+        print("ERROR: unlink the project/paper association before deleting its relevance idea.")
+        sys.exit(1)
     removed_node = nodes.pop(node_id)
+    if removed_node.get("type") == "note":
+        papers_data = load_papers()
+        changed = False
+        for paper in papers_data.get("papers", {}).values():
+            notes = paper.get("pdf_notes", [])
+            remaining = [note for note in notes if note.get("id") != node_id]
+            if len(remaining) != len(notes):
+                paper["pdf_notes"] = remaining
+                changed = True
+        if changed:
+            save_papers(papers_data)
     edges_before = len(graph.get("edges", []))
     graph["edges"] = [e for e in graph.get("edges", [])
                       if e.get("src") != node_id and e.get("tgt") != node_id]
@@ -2701,49 +2498,12 @@ def cmd_graph_add_edge(args):
     src_type = src_node.get("type")
     tgt_type = tgt_node.get("type")
 
-    # A project may only connect to concepts, ideas, waypoints, and
-    # endpoints — never directly to a paper (or venue).
-    PROJECT_ALLOWED_PEERS = {"concept", "idea", "waypoint", "endpoint"}
-    if src_type == "project" and tgt_type not in PROJECT_ALLOWED_PEERS:
-        print(f"ERROR: a project can only connect to concept/idea/waypoint/endpoint "
-              f"nodes, not '{tgt_type}'.")
+    if "project" in (src_type, tgt_type):
+        print("ERROR: projects connect only to papers through graph_link_project_paper, with a required relevance analysis.")
         sys.exit(1)
-    if tgt_type == "project" and src_type not in PROJECT_ALLOWED_PEERS:
-        print(f"ERROR: a project can only connect to concept/idea/waypoint/endpoint "
-              f"nodes, not '{src_type}'.")
+    if "idea" in (src_type, tgt_type) and "paper" not in (src_type, tgt_type):
+        print("ERROR: ideas connect only to papers.")
         sys.exit(1)
-
-    # A waypoint has only two "chain slots": at most two edges (either
-    # direction, any edge type) to other project/waypoint/endpoint nodes,
-    # since a chain runs through a waypoint as start/passthrough/end and
-    # never branches there. Projects and endpoints are hubs, not links in
-    # a single chain — a project legitimately fans out to many endpoints,
-    # and an endpoint may have several independent chains converging on
-    # it — so they are exempt from this cap.
-    CHAIN_TYPES = {"project", "waypoint", "endpoint"}
-    if src_type in CHAIN_TYPES and tgt_type in CHAIN_TYPES:
-        def _chain_degree(node_id):
-            count = 0
-            for e in graph.get("edges", []):
-                other_id = None
-                if e.get("src") == node_id:
-                    other_id = e.get("tgt")
-                elif e.get("tgt") == node_id:
-                    other_id = e.get("src")
-                if other_id is None:
-                    continue
-                other_node = _resolve_node_id(other_id, graph)
-                if other_node and other_node.get("type") in CHAIN_TYPES:
-                    count += 1
-            return count
-        if src_type == "waypoint" and _chain_degree(src) >= 2:
-            print(f"ERROR: '{src}' already has 2 project/waypoint/endpoint "
-                  f"connections (its chain slots are full).")
-            sys.exit(1)
-        if tgt_type == "waypoint" and _chain_degree(tgt) >= 2:
-            print(f"ERROR: '{tgt}' already has 2 project/waypoint/endpoint "
-                  f"connections (its chain slots are full).")
-            sys.exit(1)
 
     # A paper may only connect to a concept via uses_concept — that's the
     # one edge type meant to express "this paper is about this concept";
@@ -2752,25 +2512,6 @@ def cmd_graph_add_edge(args):
     if {src_type, tgt_type} == {"paper", "concept"} and edge_type != "uses_concept":
         print("ERROR: a paper can only connect to a concept via 'uses_concept'.")
         sys.exit(1)
-
-    # leads_to forms the waypoint chain: waypoint -> waypoint -> ... -> endpoint.
-    if edge_type == "leads_to":
-        if src_type != "waypoint" or tgt_type not in ("waypoint", "endpoint"):
-            print("ERROR: a 'leads_to' edge must go from a waypoint to another "
-                  "waypoint or to an endpoint.")
-            sys.exit(1)
-        # A waypoint has at most one outgoing leads_to edge — enforced (unlike
-        # incoming, where multiple independent chains may converge on the
-        # same endpoint, and unlike a waypoint's own incoming edge count,
-        # which stays a soft convention).
-        existing_out = [e for e in graph.get("edges", [])
-                        if e.get("src") == src and e.get("type") == "leads_to"]
-        if existing_out:
-            print(f"ERROR: waypoint '{src}' already has an outgoing 'leads_to' edge "
-                  f"(to '{existing_out[0].get('tgt')}'). A waypoint can only lead to "
-                  f"one next node — remove the existing edge first if you want to "
-                  f"redirect it.")
-            sys.exit(1)
 
     # Check duplicate
     edges = graph.setdefault("edges", [])
@@ -2783,29 +2524,12 @@ def cmd_graph_add_edge(args):
         new_edge["note"] = note
     edges.append(new_edge)
 
-    # Structural fact, not a conversational judgment call: creating a
-    # relevant_to/uses_concept edge IS the "linked" engagement signal by
-    # definition, so it's recorded automatically here instead of requiring
-    # Claude to remember a separate graph-interact call for it.
-    auto_linked = []
-    if edge_type in ("relevant_to", "uses_concept"):
-        interactions = graph.setdefault("interactions", [])
-        linked_weight = INTERACTION_TYPES.get("linked", 8)
-        today_str = str(date.today())
-        for nid in (src, tgt):
-            interactions.append({
-                "node": nid, "type": "linked", "weight": linked_weight, "date": today_str,
-            })
-            auto_linked.append(nid)
-
     save_graph(graph)
-    _log_event("edge_added", src=src, tgt=tgt, type=edge_type, auto_linked=auto_linked)
+    _log_event("edge_added", src=src, tgt=tgt, type=edge_type)
 
     src_name = src_node.get("name", "")[:30]
     tgt_name = tgt_node.get("name", "")[:30]
     print(f"Edge added: {src} ({src_name}) -> {tgt} ({tgt_name}) [{edge_type}]")
-    if auto_linked:
-        print(f"[ENGAGEMENT] 'linked' interaction auto-logged for: {', '.join(auto_linked)}")
 
 
 def cmd_graph_remove_edge(args):
@@ -2823,24 +2547,14 @@ def cmd_graph_remove_edge(args):
     graph = load_graph()
     edges = graph.get("edges", [])
 
-    # Every endpoint must stay connected to a project — block removing its
-    # last remaining part_of link to one.
-    src_node = graph.get("nodes", {}).get(src)
-    if src_node and src_node.get("type") == "endpoint" and (type_filter is None or type_filter == "part_of"):
-        to_remove = [e for e in edges
-                     if e.get("src") == src and e.get("tgt") == tgt and
-                     (type_filter is None or e.get("type") == type_filter)]
-        if any(e.get("type") == "part_of" for e in to_remove):
-            other_project_links = [
-                e for e in edges
-                if e.get("src") == src and e.get("type") == "part_of" and e.get("tgt") != tgt
-                and graph.get("nodes", {}).get(e.get("tgt"), {}).get("type") == "project"
-            ]
-            if not other_project_links:
-                print(f"ERROR: '{src}' is an endpoint and must stay connected to a "
-                      f"project — this is its only 'part_of' link to one. Connect it "
-                      f"to another project first if you want to move it.")
-                sys.exit(1)
+    for e in edges:
+        if (e.get("src") == src and e.get("tgt") == tgt
+                and (type_filter is None or e.get("type") == type_filter)):
+            idea = graph.get("nodes", {}).get(src, {})
+            if idea.get("project_id") and idea.get("paper_id") == tgt:
+                if project_papers.review_state(idea, graph, load_papers().get("papers", {})) != "detached":
+                    print("ERROR: unlink the project/paper association before removing its idea grounding.")
+                    sys.exit(1)
 
     before = len(edges)
     graph["edges"] = [e for e in edges
@@ -2850,450 +2564,6 @@ def cmd_graph_remove_edge(args):
     save_graph(graph)
     _log_event("edge_removed", src=src, tgt=tgt, type=type_filter, count=removed)
     print(f"Removed {removed} edges between {src} and {tgt}.")
-
-
-def cmd_graph_neighbors(args):
-    """BFS traversal from a node."""
-    if not args:
-        print("Usage: graph-neighbors <id> [--depth N] [--edge-type <type>]"); return
-    node_id = args[0].upper()
-    depth = 1
-    edge_type_filter = None
-
-    if "--depth" in args:
-        idx = args.index("--depth")
-        if idx + 1 < len(args):
-            depth = min(int(args[idx + 1]), 3)
-    if "--edge-type" in args:
-        idx = args.index("--edge-type")
-        if idx + 1 < len(args):
-            edge_type_filter = args[idx + 1].lower()
-
-    graph = load_graph()
-    edges = graph.get("edges", [])
-
-    # Build adjacency
-    def get_neighbors(nid):
-        result = []
-        for e in edges:
-            if edge_type_filter and e.get("type") != edge_type_filter:
-                continue
-            if e.get("src") == nid:
-                result.append((e["tgt"], e["type"], "->"))
-            elif e.get("tgt") == nid:
-                result.append((e["src"], e["type"], "<-"))
-        return result
-
-    # BFS
-    visited = {node_id}
-    queue = deque([(node_id, 0)])
-    tree = []  # (node_id, depth, edge_type, direction)
-
-    while queue:
-        current, d = queue.popleft()
-        if d >= depth:
-            continue
-        for neighbor, etype, direction in get_neighbors(current):
-            if neighbor not in visited:
-                visited.add(neighbor)
-                tree.append((neighbor, d + 1, etype, direction))
-                queue.append((neighbor, d + 1))
-
-    root_node = _resolve_node_id(node_id, graph)
-    root_name = root_node.get("name", "") if root_node else "?"
-    print(f"Neighbors of {node_id} ({root_name}) — depth {depth}")
-    print(SEP_LINE * 60)
-    if not tree:
-        print("  (no neighbors found)")
-    else:
-        for nid, d, etype, direction in tree:
-            indent = "  " * d
-            n = _resolve_node_id(nid, graph)
-            name = (n.get("name", "") if n else "?")[:40]
-            print(f"{indent}{direction} {nid:<14} [{etype}] {name}")
-    print(f"\n{len(tree)} reachable nodes.")
-
-
-def cmd_graph_path(args):
-    """Shortest path between two nodes via BFS."""
-    if len(args) < 2:
-        print("Usage: graph-path <from> <to>"); return
-    start = args[0].upper()
-    end = args[1].upper()
-    max_depth = 6
-
-    graph = load_graph()
-    edges = graph.get("edges", [])
-
-    # Build adjacency
-    adj = {}
-    for e in edges:
-        s, t, et = e["src"], e["tgt"], e["type"]
-        adj.setdefault(s, []).append((t, et))
-        adj.setdefault(t, []).append((s, et))
-
-    # BFS
-    visited = {start}
-    queue = deque([(start, [(start, None)])])
-
-    while queue:
-        current, path = queue.popleft()
-        if current == end:
-            print(f"Path found ({len(path) - 1} steps):")
-            print(SEP_LINE * 60)
-            for i, (nid, etype) in enumerate(path):
-                n = _resolve_node_id(nid, graph)
-                name = (n.get("name", "") if n else "?")[:45]
-                if etype:
-                    print(f"  [{etype}]")
-                print(f"  {nid:<14} {name}")
-            return
-        if len(path) > max_depth:
-            continue
-        for neighbor, etype in adj.get(current, []):
-            if neighbor not in visited:
-                visited.add(neighbor)
-                queue.append((neighbor, path + [(neighbor, etype)]))
-
-    print(f"No path found between {start} and {end} (max depth {max_depth}).")
-
-
-def cmd_graph_interact(args):
-    """Log an interaction with a node."""
-    if not args:
-        print("Usage: graph-interact <id> <type> [--weight N]"); return
-    if len(args) < 2:
-        print("Usage: graph-interact <id> <type> [--weight N]"); return
-    node_id = args[0].upper()
-    int_type = args[1].lower()
-
-    if int_type not in INTERACTION_TYPES:
-        print(f"ERROR: interaction type must be one of: {', '.join(sorted(INTERACTION_TYPES))}")
-        sys.exit(1)
-
-    weight = INTERACTION_TYPES[int_type]
-    if "--weight" in args:
-        idx = args.index("--weight")
-        if idx + 1 < len(args):
-            try:
-                weight = int(args[idx + 1])
-            except ValueError:
-                print("ERROR: --weight must be an integer."); sys.exit(1)
-
-    graph = load_graph()
-
-    # Validate node exists
-    node = _resolve_node_id(node_id, graph)
-    if not node:
-        print(f"ERROR: node '{node_id}' not found."); sys.exit(1)
-
-    interactions = graph.setdefault("interactions", [])
-    interactions.append({
-        "node": node_id,
-        "type": int_type,
-        "weight": weight,
-        "date": str(date.today()),
-    })
-    save_graph(graph)
-    _log_event("interaction_logged", node=node_id, type=int_type, weight=weight)
-
-    name = node.get("name", "")[:40]
-    print(f"Interaction logged: {node_id} ({name}) | {int_type} | w={weight} | {date.today()}")
-
-
-def rank_engagement(graph, top_n=10):
-    """Rank graph nodes by engagement score (exponential decay over the logged
-    interactions). Returns a list of (node_id, info) sorted by score desc.
-    Reusable by cmd_graph_engagement and the briefing."""
-    interactions = graph.get("interactions", [])
-    today = date.today()
-    scores = {}  # node_id -> {score, last_date, recent, older}
-    for i in interactions:
-        nid = i.get("node", i.get("node_id", ""))
-        w = i.get("weight", 1)
-        d = i.get("date", "")
-        try:
-            i_date = date.fromisoformat(d)
-        except (ValueError, TypeError):
-            continue
-        weeks = (today - i_date).days / 7.0
-        decay = 0.7 ** weeks
-        if nid not in scores:
-            scores[nid] = {"score": 0.0, "last_date": d, "recent": 0, "older": 0}
-        scores[nid]["score"] += w * decay
-        if d > scores[nid]["last_date"]:
-            scores[nid]["last_date"] = d
-        if weeks <= 2:
-            scores[nid]["recent"] += 1
-        else:
-            scores[nid]["older"] += 1
-    return sorted(scores.items(), key=lambda x: x[1]["score"], reverse=True)[:top_n]
-
-
-def cmd_graph_engagement(args):
-    """Compute engagement scores with exponential decay."""
-    top_n = 10
-    if "--top" in args:
-        idx = args.index("--top")
-        if idx + 1 < len(args):
-            try:
-                top_n = int(args[idx + 1])
-            except ValueError:
-                pass
-
-    graph = load_graph()
-    if not graph.get("interactions"):
-        print("No interactions logged."); return
-
-    ranked = rank_engagement(graph, top_n=top_n)
-
-    print(f"{'ID':<16} {'Name':<30} {'Score':>7} {'Last':>12} {'Trend'}")
-    print(SEP_LINE * 80)
-    for nid, info in ranked:
-        node = _resolve_node_id(nid, graph)
-        name = (node.get("name", "") if node else "?")[:28]
-        # Trend: compare recent vs older interactions
-        if info["recent"] > info["older"]:
-            trend = "UP"
-        elif info["recent"] < info["older"]:
-            trend = "DOWN"
-        else:
-            trend = "STABLE"
-        print(f"{nid:<16} {name:<30} {info['score']:>7.1f} {info['last_date']:>12} {trend}")
-
-
-def cmd_graph_lint(args):
-    """Health-check the graph and paper catalog for common hygiene issues.
-    Read-only by default — reports problems, never fixes them automatically
-    — except with --fix, which additionally removes nodes/edges whose type
-    isn't in the centralized GRAPH_NODE_TYPES/GRAPH_EDGE_TYPES sets (a type
-    that could only have gotten there by bypassing the normal add-node/
-    add-edge validation, e.g. a direct file edit). Run this occasionally to
-    catch orphaned nodes, dead references, and stale ideas before they pile
-    up."""
-    stale_idea_days = 90
-    quiet_days = 45
-    do_fix = "--fix" in args
-    if "--stale-days" in args:
-        idx = args.index("--stale-days")
-        if idx + 1 < len(args):
-            try:
-                stale_idea_days = int(args[idx + 1])
-            except ValueError:
-                pass
-    if "--quiet-days" in args:
-        idx = args.index("--quiet-days")
-        if idx + 1 < len(args):
-            try:
-                quiet_days = int(args[idx + 1])
-            except ValueError:
-                pass
-
-    graph = load_graph()
-    nodes = graph.get("nodes", {})
-    edges = graph.get("edges", [])
-    interactions = graph.get("interactions", [])
-
-    try:
-        papers = load_papers().get("papers", {})
-    except Exception:
-        papers = {}
-    try:
-        venues = load_venues().get("venues", {})
-    except Exception:
-        venues = {}
-
-    today = date.today()
-    issues = {
-        "orphan_nodes": [], "projects_without_papers": [], "orphan_papers": [],
-        "stale_ideas": [], "broken_venue_refs": [], "dangling_citations": [],
-        "quiet_concepts": [], "invalid_type_nodes": [], "invalid_type_edges": [],
-        "concept_edge_mismatches": [],
-    }
-
-    # Nodes/edges whose type isn't in the centralized GRAPH_NODE_TYPES/
-    # GRAPH_EDGE_TYPES sets — the single source of truth for what's
-    # "official" (also enforced by graph-add-node/graph-add-edge). Anything
-    # outside these sets could only have gotten into _graph.json by
-    # bypassing that validation (e.g. a direct file edit).
-    for nid, n in nodes.items():
-        t = n.get("type")
-        if t not in GRAPH_NODE_TYPES:
-            issues["invalid_type_nodes"].append({"id": nid, "type": t, "name": n.get("name", "")})
-    invalid_node_ids = {i["id"] for i in issues["invalid_type_nodes"]}
-    for e in edges:
-        t = e.get("type")
-        if t not in GRAPH_EDGE_TYPES:
-            issues["invalid_type_edges"].append(
-                {"src": e.get("src"), "tgt": e.get("tgt"), "type": t})
-
-    touched = set()
-    incoming_by_tgt = {}
-    for e in edges:
-        touched.add(e.get("src"))
-        touched.add(e.get("tgt"))
-        incoming_by_tgt.setdefault(e.get("tgt"), []).append(e)
-
-    # Orphan graph nodes: no edges at all, in either direction.
-    for nid, n in nodes.items():
-        if nid not in touched:
-            issues["orphan_nodes"].append(
-                {"id": nid, "type": n.get("type"), "name": n.get("name", "")})
-
-    # Projects with no paper marked relevant_to them.
-    for nid, n in nodes.items():
-        if n.get("type") != "project":
-            continue
-        has_paper = any(
-            e.get("type") == "relevant_to" and str(e.get("src", "")).startswith("P")
-            for e in incoming_by_tgt.get(nid, [])
-        )
-        if not has_paper:
-            issues["projects_without_papers"].append({"id": nid, "name": n.get("name", "")})
-
-    # Papers with no concept tag and no graph edge at all — read but never filed.
-    for pid, p in papers.items():
-        if p.get("hidden"):
-            continue
-        if pid not in touched and not p.get("concepts"):
-            issues["orphan_papers"].append({"id": pid, "title": p.get("title", "")})
-
-    # `concepts` field vs. `uses_concept` edges — the two representations of
-    # the same paper-concept relationship should agree; report drift so it
-    # can be backfilled with --fix instead of silently accumulating.
-    for pid, p in papers.items():
-        listed = {str(c).upper() for c in (p.get("concepts") or [])}
-        edged = {
-            e.get("src") for e in incoming_by_tgt.get(pid, [])
-            if e.get("type") == "uses_concept"
-        }
-        missing_edges = sorted(listed - edged)
-        extra_edges = sorted(edged - listed)
-        if missing_edges or extra_edges:
-            issues["concept_edge_mismatches"].append({
-                "id": pid, "missing_edges": missing_edges, "extra_edges": extra_edges,
-            })
-
-    # Ideas not marked done/discarded, old, and with no recent interaction.
-    CLOSED_STATUSES = {"done", "completed", "discarded", "closed", "abandoned"}
-    for nid, n in nodes.items():
-        if n.get("type") != "idea":
-            continue
-        if (n.get("status") or "").lower() in CLOSED_STATUSES:
-            continue
-        created = _safe_date(n.get("created"))
-        if created is None:
-            continue
-        age_days = (today - created).days
-        if age_days < stale_idea_days:
-            continue
-        recent = any(
-            i.get("node") == nid and _safe_date(i.get("date")) is not None and
-            (today - _safe_date(i.get("date"))).days <= stale_idea_days
-            for i in interactions
-        )
-        if not recent:
-            issues["stale_ideas"].append({
-                "id": nid, "name": n.get("name", ""), "age_days": age_days,
-                "status": n.get("status"),
-            })
-
-    # Papers pointing at a venue_id that no longer exists.
-    for pid, p in papers.items():
-        vid = p.get("venue_id")
-        if vid and vid not in venues:
-            issues["broken_venue_refs"].append({"paper": pid, "venue_id": vid})
-
-    # cites/cited_by pointing at a paper ID no longer in the catalog.
-    for pid, p in papers.items():
-        for field in ("cites", "cited_by"):
-            for ref in (p.get(field) or []):
-                if ref not in papers:
-                    issues["dangling_citations"].append(
-                        {"paper": pid, "field": field, "missing_id": ref})
-
-    # Concepts that have edges but haven't seen an interaction in a while.
-    last_interaction_by_node = {}
-    for i in interactions:
-        nid = i.get("node")
-        d = _safe_date(i.get("date"))
-        if nid and d and (nid not in last_interaction_by_node or d > last_interaction_by_node[nid]):
-            last_interaction_by_node[nid] = d
-    for nid, n in nodes.items():
-        if n.get("type") != "concept" or nid not in touched:
-            continue
-        last = last_interaction_by_node.get(nid)
-        if last is None or (today - last).days > quiet_days:
-            issues["quiet_concepts"].append({
-                "id": nid, "name": n.get("name", ""),
-                "last_interaction": str(last) if last else "never",
-            })
-
-    total = sum(len(v) for v in issues.values())
-    if total == 0:
-        print("Graph lint: no issues found. Everything looks healthy.")
-        return
-
-    print(f"Graph lint: {total} issue(s) found.")
-    print(SEP_HEAVY * 70)
-    labels = {
-        "orphan_nodes": "Orphan nodes (no edges at all)",
-        "projects_without_papers": "Projects with no papers linked",
-        "orphan_papers": "Papers not linked to any concept or graph node",
-        "stale_ideas": f"Ideas untouched for {stale_idea_days}+ days, not closed",
-        "broken_venue_refs": "Papers pointing to a missing venue",
-        "dangling_citations": "cites/cited_by pointing to a missing paper",
-        "quiet_concepts": f"Concepts with no interaction in {quiet_days}+ days",
-        "invalid_type_nodes": "Nodes with a type outside GRAPH_NODE_TYPES (not official)",
-        "invalid_type_edges": "Edges with a type outside GRAPH_EDGE_TYPES (not official)",
-        "concept_edge_mismatches": "Papers where `concepts` and uses_concept edges disagree",
-    }
-    for key, label in labels.items():
-        items = issues[key]
-        if not items:
-            continue
-        print(f"\n[{label}] ({len(items)})")
-        for it in items:
-            print(f"  {json.dumps(it, ensure_ascii=False)}")
-
-    if not do_fix:
-        if issues["invalid_type_nodes"] or issues["invalid_type_edges"]:
-            print("\nRun graph-lint --fix to remove the non-official nodes/edges above.")
-        if issues["concept_edge_mismatches"]:
-            print("\nRun graph-lint --fix to backfill missing uses_concept edges above.")
-        return
-
-    if (not issues["invalid_type_nodes"] and not issues["invalid_type_edges"]
-            and not issues["concept_edge_mismatches"]):
-        print("\n--fix: nothing to fix.")
-        return
-
-    edges_before = len(edges)
-    fixed_edges = [
-        e for e in edges
-        if e.get("type") in GRAPH_EDGE_TYPES
-        and e.get("src") not in invalid_node_ids
-        and e.get("tgt") not in invalid_node_ids
-    ]
-    for nid in invalid_node_ids:
-        nodes.pop(nid, None)
-    edges_removed = edges_before - len(fixed_edges)
-    graph["nodes"] = nodes
-    graph["edges"] = fixed_edges
-
-    # Backfill missing uses_concept edges. Additive only — a listed concept
-    # with no edge gets one added; an edge with no matching list entry is left
-    # alone (the field, not the edge, is treated as possibly stale/free-form).
-    edges_added = 0
-    for mismatch in issues["concept_edge_mismatches"]:
-        edges_added += sync_concept_edges(mismatch["id"], mismatch["missing_edges"], graph)
-
-    save_graph(graph)
-    _log_event("graph_lint_fix", nodes_removed=len(invalid_node_ids),
-               edges_removed=edges_removed, concept_edges_added=edges_added)
-    print(f"\n--fix: removed {len(invalid_node_ids)} non-official node(s), "
-          f"{edges_removed} non-official/dangling edge(s), "
-          f"and backfilled {edges_added} missing uses_concept edge(s).")
 
 
 def cmd_graph_search(args):
@@ -3556,163 +2826,60 @@ def cmd_export(args):
     print(out)
 
 
-# =============================================================================
-# Daily briefing (read-only digest of newly discovered papers)
-# =============================================================================
-#
-# One tool does the whole pipeline server-side: rank the user's concepts by
-# engagement, discover fresh candidates for the top ones, and write a Markdown
-# digest to ~/.too-many-papers/briefings/<date>.md. It is READ-ONLY — it never
-# touches the catalog. The user reads the digest and picks what to add.
-# Collapsing the old multi-step routine into a single deterministic tool is
-# what lets a scheduled run work unattended (one tool to allow, no live LLM
-# judgement mid-loop) and produce a file instead of just chat output.
-
-def _briefing_candidate_line(c: dict) -> str:
-    title = (c.get("title") or "Untitled").strip()
-    year = c.get("year")
-    authors = ", ".join(a for a in (c.get("authors") or []) if a)
-    if len(authors) > 140:
-        authors = authors[:140].rstrip() + "…"
-    venue = c.get("venue") or ""
-    link = c.get("url") or (f"https://doi.org/{c['doi']}" if c.get("doi") else "") \
-        or (f"https://arxiv.org/abs/{c['arxiv_id']}" if c.get("arxiv_id") else "")
-    meta = " · ".join(x for x in [str(year) if year else "", venue] if x)
-    head = f"- **{title}**" + (f" ({meta})" if meta else "")
-    lines = [head]
-    if authors:
-        lines.append(f"  {authors}")
-    if link:
-        lines.append(f"  {link}")
-    abstract = (c.get("abstract") or "").strip()
-    if abstract:
-        snippet = abstract if len(abstract) <= 280 else abstract[:280].rstrip() + "…"
-        lines.append(f"  {snippet}")
-    return "\n".join(lines)
-
-
-def _render_briefing(the_date, sections) -> str:
-    """sections: list of (concept_name, [candidate dicts], error_or_None)."""
-    total = sum(len(c) for _, c, _ in sections)
-    out = [f"# Paper briefing — {the_date}", ""]
-    if total == 0:
-        out.append("No new candidates found today across your top concepts.")
-        out.append("")
-    for name, cands, err in sections:
-        out.append(f"## {name}")
-        if err:
-            out.append(f"_Discovery unavailable: {err}_")
-        elif not cands:
-            out.append("_No new candidates today._")
-        else:
-            out.extend(_briefing_candidate_line(c) for c in cands)
-        out.append("")
-    out.append("---")
-    out.append("Reply with which of these you'd like to add to your library.")
-    out.append("")
-    return "\n".join(out)
-
-
-def cmd_briefing(args):
-    """Generate a read-only daily briefing digest and save it under
-    briefings/<date>.md. Usage:
-        briefing [--date YYYY-MM-DD] [--concepts N] [--per-concept N] [--year-from Y]
-    Never modifies the catalog."""
-    the_date = str(date.today())
-    n_concepts, per_concept = 3, 6
-    year_from = date.today().year
-    i = 0
-    while i < len(args):
-        a = args[i]
-        if a == "--date" and i + 1 < len(args):
-            the_date = args[i + 1]; i += 2; continue
-        if a == "--concepts" and i + 1 < len(args):
-            try: n_concepts = max(1, int(args[i + 1]))
-            except ValueError: pass
-            i += 2; continue
-        if a == "--per-concept" and i + 1 < len(args):
-            try: per_concept = max(1, int(args[i + 1]))
-            except ValueError: pass
-            i += 2; continue
-        if a == "--year-from" and i + 1 < len(args):
-            try: year_from = int(args[i + 1])
-            except ValueError: pass
-            i += 2; continue
-        i += 1
-
+def cmd_graph_project_context(args):
+    project_id = args[0].upper()
     graph = load_graph()
-    nodes = graph.get("nodes", {})
-    # Top concepts by engagement, falling back to any concepts if there are no
-    # interactions yet (fresh graph).
-    ranked = rank_engagement(graph, top_n=50)
-    top = [(nid, nodes[nid]) for nid, _ in ranked
-           if nid in nodes and nodes[nid].get("type") == "concept"][:n_concepts]
-    if not top:
-        top = [(nid, n) for nid, n in nodes.items() if n.get("type") == "concept"][:n_concepts]
-
-    sections = []
-    for cid, node in top:
-        name = node.get("name", cid)
-        try:
-            res = discover_candidates(concept_id=cid, year_from=year_from, max_results=per_concept)
-            sections.append((name, res["new_candidates"][:per_concept], None))
-        except Exception as e:
-            sections.append((name, [], f"{type(e).__name__}: {e}"))
-
-    md = _render_briefing(the_date, sections)
-    BRIEFINGS_DIR.mkdir(parents=True, exist_ok=True)
-    path = BRIEFINGS_DIR / f"{the_date}.md"
-    path.write_text(md, encoding="utf-8")
-    _log_event("briefing_generated", date=str(the_date),
-               concepts=len(top), candidates=sum(len(c) for _, c, _ in sections))
-    print(f"Briefing saved to {path}\n")
-    print(md)
+    project = graph.get("nodes", {}).get(project_id)
+    if not project or project.get("type") != "project":
+        raise ValueError("Project not found")
+    papers = load_papers().get("papers", {})
+    paper_id = args[1].upper() if len(args) > 1 and args[1] else None
+    if paper_id and paper_id not in papers:
+        raise ValueError("Paper not found")
+    ideas = {i: n for i, n in graph.get("nodes", {}).items() if n.get("project_id") == project_id}
+    legacy = {i: n for i, n in graph.get("nodes", {}).items()
+              if project_id in n.get("legacy", {}).get("project_ids", [])}
+    result = {"project_id": project_id, "project": project, "ideas": ideas, "legacy_ideas": legacy,
+              "paper_ids": [e["src"] for e in graph.get("edges", []) if e.get("tgt") == project_id and e.get("type") == "relevant_to"]}
+    result["legacy_connections"] = [e for e in graph.get("_meta", {}).get("legacy_edges", [])
+                                    if project_id in (e.get("src"), e.get("tgt"))]
+    if paper_id:
+        result.update(paper_id=paper_id, paper=papers[paper_id], context_token=project_papers.context(project, papers[paper_id]))
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
-def cmd_briefing_list(args):
-    """List saved briefing dates, newest first."""
-    if not BRIEFINGS_DIR.exists():
-        print("No briefings yet."); return
-    files = sorted((p.stem for p in BRIEFINGS_DIR.glob("*.md")), reverse=True)
-    if not files:
-        print("No briefings yet."); return
-    print(f"{len(files)} briefing(s):")
-    for d in files:
-        print(f"  {d}")
+def cmd_graph_link_project_paper(args):
+    graph = load_graph()
+    payload = parse_json_arg(args[2:])
+    iid = project_papers.association(graph, load_papers().get("papers", {}), args[0].upper(), args[1].upper(), payload)
+    save_graph(graph)
+    _log_event("project_paper_analyzed", project=args[0].upper(), paper=args[1].upper(), idea_id=iid)
+    print(json.dumps({"idea_id": iid, "review_state": "current", "idea": graph["nodes"][iid]}, ensure_ascii=False))
 
 
-def cmd_briefing_get(args):
-    """Print a saved briefing. Usage: briefing-get [YYYY-MM-DD]  (default: latest)."""
-    if not BRIEFINGS_DIR.exists():
-        print("No briefings yet."); return
-    files = sorted((p.stem for p in BRIEFINGS_DIR.glob("*.md")), reverse=True)
-    if not files:
-        print("No briefings yet."); return
-    want = args[0] if args else files[0]
-    path = BRIEFINGS_DIR / f"{want}.md"
-    if not path.exists():
-        print(f"No briefing for '{want}'. Available: {', '.join(files[:10])}"); return
-    print(path.read_text(encoding="utf-8"))
+def cmd_graph_review_queue(args):
+    graph = load_graph()
+    pending = {i: n for i, n in graph.get("nodes", {}).items()
+               if n.get("review_state") in ("needs_analysis", "stale")}
+    print(json.dumps(pending, ensure_ascii=False, indent=2))
+
+
+def cmd_graph_json(args):
+    print(json.dumps(load_graph(), ensure_ascii=False))
 
 
 COMMANDS = {
+    "graph-json": cmd_graph_json,
+    "graph-project-context": cmd_graph_project_context,
+    "graph-link-project-paper": cmd_graph_link_project_paper,
+    "graph-review-queue": cmd_graph_review_queue,
     # paper
-    "list":            cmd_list,
     "get":             cmd_get,
-    "search":          cmd_search,
-    "by-concept":      cmd_by_concept,
-    "by-author":       cmd_by_author,
-    "by-venue":        cmd_by_venue,
-    "by-year":         cmd_by_year,
-    "outside":         cmd_outside,
-    "hidden":          cmd_hidden,
-    "next-id":         cmd_next_id,
+    "find":            cmd_find,
     "add-paper":       cmd_add_paper,
     "update-paper":    cmd_update_paper,
     "check-duplicates": cmd_check_duplicates,
     "papers-discover": cmd_papers_discover,
-    "hide":            cmd_hide,
-    "unhide":          cmd_unhide,
     "delete-paper":    cmd_delete_paper,
     "get-citations":   cmd_get_citations,
     "apply-citations": cmd_apply_citations,
@@ -3722,15 +2889,6 @@ COMMANDS = {
     "get-pdf-markdown": cmd_get_pdf_markdown,
     "sync-pdfs":       cmd_sync_pdfs,
     "export":          cmd_export,
-    "briefing":        cmd_briefing,
-    "briefing-list":   cmd_briefing_list,
-    "briefing-get":    cmd_briefing_get,
-    # venue
-    "venue-list":      cmd_venue_list,
-    "venue-get":       cmd_venue_get,
-    "add-venue":       cmd_add_venue,
-    "update-venue":    cmd_update_venue,
-    "delete-venue":    cmd_delete_venue,
     # graph
     "graph-status":       cmd_graph_status,
     "graph-node":         cmd_graph_node,
@@ -3740,11 +2898,7 @@ COMMANDS = {
     "graph-remove-node":  cmd_graph_remove_node,
     "graph-add-edge":     cmd_graph_add_edge,
     "graph-remove-edge":  cmd_graph_remove_edge,
-    "graph-neighbors":    cmd_graph_neighbors,
-    "graph-interact":     cmd_graph_interact,
-    "graph-engagement":   cmd_graph_engagement,
     "graph-search":       cmd_graph_search,
-    "graph-lint":         cmd_graph_lint,
 }
 
 def main():
@@ -3760,7 +2914,8 @@ def main():
         print(f"Available commands: {', '.join(sorted(COMMANDS))}")
         sys.stdout.flush()
         sys.exit(1)
-    COMMANDS[cmd](args)
+    with graph_command_lock() if cmd.startswith("graph-") or cmd == "delete-paper" else nullcontext():
+        COMMANDS[cmd](args)
     sys.stdout.flush()
 
 if __name__ == "__main__":

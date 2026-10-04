@@ -39,7 +39,7 @@ The MCP server works natively in Cursor. Add it to `~/.cursor/mcp.json`:
 }
 ```
 
-Replace the path with where you cloned this repo. Skills and slash commands are Claude Code-only and won't be available in Cursor — just the MCP tools (papers, graph, briefing, etc.).
+Replace the path with where you cloned this repo. Skills and slash commands are Claude Code-only and won't be available in Cursor — just the MCP tools (papers, projects, citations, PDFs).
 
 ### Requirements
 
@@ -54,7 +54,7 @@ Just talk about papers:
 
 - "I just read this paper: [link], add it to my library"
 - "What should I read next on transformers?"
-- "Give me today's paper briefing"
+- "Which of my project analyses are out of date?"
 - "Connect this paper to my RAG project"
 
 On first use, the AI asks what you're currently working on and drafts a starting set of concepts and projects for you to confirm.
@@ -65,7 +65,7 @@ To browse visually, run `/too-many-papers:webui` or ask to open Too Many Papers.
   <img src="docs/screenshots/demo.gif" width="700" alt="Too Many Papers demo">
 </p>
 
-The web UI has a tab per type (Papers, Concepts, Projects, Endpoints, Ideas, Pools, Notes, Venues) plus a graph view, search and filters everywhere, an inline PDF reader where you can select text to add a note, and a pencil icon to edit anything.
+The web UI has a tab per type (Papers, Concepts, Projects, Ideas, Notes, Venues) plus a graph view, search and filters everywhere, an inline PDF reader where you can select text to add a note, and a pencil icon to edit anything.
 
 PDFs are fetched automatically from arXiv, Semantic Scholar, and Unpaywall when a paper is added, so there's usually something to read right away.
 
@@ -74,12 +74,15 @@ PDFs are fetched automatically from arXiv, Semantic Scholar, and Unpaywall when 
 A typical end-to-end session, from reading to shipping code:
 
 1. **Gather papers.** "Find me recent work on retrieval-augmented generation" → `papers_discover` pulls candidates from arXiv/Semantic Scholar/OpenAlex; confirm which ones to add.
-2. **Present a project.** "I'm building a RAG pipeline for our docs" → the assistant proposes a `project` node ("RAG Pipeline") plus a `concept` node ("Retrieval-Augmented Generation"), and links the papers you just added to it.
-3. **Co-create an idea.** One paper suggests reranking retrieved chunks before generation → the assistant proposes an `idea` node ("Add a reranker stage"), connected to the project (`part_of`) and grounded in that paper (`inspired_by`).
-4. **Choose an endpoint.** You agree the goal is "Answer quality above 90% on our eval set" → an `endpoint` node with `status: pending`.
-5. **Think about waypoints.** Break the path there into concrete steps: "Build eval set" → "Add reranker" → "Tune chunk size" → `waypoint` nodes.
-6. **Create the chain.** Connect them in order with `leads_to` edges: `Build eval set → Add reranker → Tune chunk size → Answer quality above 90%`. Mark each `reached` as you finish it.
-7. **Feed the graph into code.** With the chain set, hand it to Claude Code (or Cursor, via the MCP server): "implement the next waypoint in my RAG Pipeline project's chain" — so the papers, the idea, and the ordered steps directly guide what gets built next.
+2. **Describe a project.** "I'm building a RAG pipeline for our docs" → create a project with the user's context.
+3. **Read and associate a paper.** The assistant reads the paper, explains its relevance and summarizes only useful findings, with evidence and limitations. `graph_link_project_paper` saves the association and its required idea together.
+4. **Return to the analysis.** `graph_project_context` retrieves the project's papers and their generated ideas. Each project gets its own analysis of a shared paper.
+5. **Keep it relevant.** When the project context or paper content changes, the analysis becomes stale. The assistant reviews and refreshes the same idea, preserving its history. Project development remains up to you.
+
+### Upgrading existing projects
+
+Schema 3.0 removes waypoints and endpoints. On first graph access, the server backs up the old graph to `_graph.pre-v3.json`, converts legacy work nodes to ideas, and preserves their text and provenance. The MCP controller uses `graph_review_queue` to analyze candidate papers and incorporate those ideas into grounded project–paper associations. Unresolved items remain visible; the migration never invents relevance.
+
 
 ## Features
 
@@ -103,3 +106,12 @@ Always at `~/.too-many-papers`, a fixed path in your home directory.
 ## License
 
 MIT
+
+## Development checks
+
+```sh
+python -m unittest discover -s too-many-papers-plugin/server/tests -v
+uv run --directory too-many-papers-plugin/server python tests/mcp_smoke.py
+```
+
+Add `--browser` to the smoke test to launch the web UI through MCP on isolated synthetic data. `TOO_MANY_PAPERS_DATA_DIR` overrides the default data directory for testing; both servers use the same value. Without an override, user data stays at `~/.too-many-papers`.
