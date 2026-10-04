@@ -7,6 +7,8 @@ installed plugins only move when a release is cut.
 
 ## Unreleased
 
+## 0.3.0 — 2026-10-04
+
 **Too Many Papers now does one thing well: for each of your projects, which papers matter, why, and whether that analysis is still current.**
 
 ### New
