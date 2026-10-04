@@ -14,6 +14,21 @@ const path  = require('path');
 const os    = require('os');
 const { spawnSync } = require('child_process');
 
+// Use the same validation and migration as MCP, including analysis requirements.
+function graphCommand(command, args = []) {
+  const r = spawnSync('uv', ['run', '--directory', path.join(__dirname, '..', 'server'),
+    '_scripts/papers_api.py', command, ...args], { encoding: 'utf8', windowsHide: true, maxBuffer: 32 * 1024 * 1024 });
+  if (r.error || r.status !== 0 || (command !== 'graph-json' && /^(ERROR:|(?:Node|Paper) .* not found)/m.test(r.stdout || ''))) {
+    return { error: r.error?.message || r.stdout || r.stderr || 'Graph command failed' };
+  }
+  return { ok: true, output: r.stdout };
+}
+function readGraph() {
+  const result = graphCommand('graph-json');
+  if (result.error) throw new Error(result.error);
+  return JSON.parse(result.output);
+}
+
 // The BibTeX exporter is the Python one in papers_api.py — the single source
 // of truth, with its output validation. The web UI shells out to it rather
 // than reimplementing (and drifting from) the generator here.
@@ -37,7 +52,7 @@ const PORT        = parseInt(process.env.PORT, 10) || 3737;
 // sessions. A fixed path under the user's home directory is the only
 // location guaranteed to survive across sessions, hosts, and plugin updates.
 function resolveDataDir() {
-  return path.join(os.homedir(), '.too-many-papers');
+  return process.env.TOO_MANY_PAPERS_DATA_DIR ? path.resolve(process.env.TOO_MANY_PAPERS_DATA_DIR) : path.join(os.homedir(), '.too-many-papers');
 }
 const DATA_DIR    = resolveDataDir();
 const PAPERS_FILE = path.join(DATA_DIR, '_papers.json');
@@ -130,7 +145,7 @@ function computeGhostPapers(papers) {
 function loadData() {
   const papersDb = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
   const venuesDb = JSON.parse(fs.readFileSync(VENUES_FILE, 'utf8'));
-  const graphDb  = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
+  const graphDb  = readGraph();
 
   const venues = venuesDb.venues || {};
 
@@ -206,7 +221,7 @@ function loadData() {
 function loadGraph() {
   const papersDb = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
   const venuesDb = JSON.parse(fs.readFileSync(VENUES_FILE, 'utf8'));
-  const graphDb  = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
+  const graphDb  = readGraph();
 
   const papers = papersDb.papers || {};
   const venues = venuesDb.venues || {};
@@ -287,64 +302,24 @@ function toggleHidden(paperId) {
 // cmd_delete_paper: pop the paper and scrub its ID out of every other
 // paper's cites/cited_by/cites_unmatched so no dangling references remain.
 function deletePaper(paperId) {
-  const raw    = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
-  const papers = raw.papers || {};
-  if (!papers[paperId]) return { error: `Paper '${paperId}' not found.` };
-  delete papers[paperId];
-  for (const other of Object.values(papers)) {
-    for (const field of ['cites', 'cited_by', 'cites_unmatched']) {
-      if (Array.isArray(other[field])) {
-        other[field] = other[field].filter(v => v !== paperId);
-      }
-    }
-  }
-  raw.papers = papers;
-  raw._meta = raw._meta || {};
-  raw._meta.total_papers = Object.keys(papers).length;
-  raw._meta.last_updated = new Date().toISOString().slice(0, 10);
-  fs.writeFileSync(PAPERS_FILE, JSON.stringify(raw, null, 2), 'utf8');
-  return { ok: true };
+  return graphCommand('delete-paper', [String(paperId || '')]);
 }
 
-// Bulk version of deletePaper() — reads/writes _papers.json once for the
-// whole batch instead of once per ID.
+// Each deletion uses the same cleanup path as MCP.
 function deletePapersBulk(ids) {
-  const raw    = JSON.parse(fs.readFileSync(PAPERS_FILE, 'utf8'));
-  const papers = raw.papers || {};
-  const idSet  = new Set(ids);
-  const deleted = [];
-  const notFound = [];
+  const deleted = [], notFound = [];
   for (const id of ids) {
-    if (papers[id]) { delete papers[id]; deleted.push(id); }
-    else notFound.push(id);
+    const result = deletePaper(id);
+    if (result.error) notFound.push(id); else deleted.push(id);
   }
-  for (const other of Object.values(papers)) {
-    for (const field of ['cites', 'cited_by', 'cites_unmatched']) {
-      if (Array.isArray(other[field])) {
-        other[field] = other[field].filter(v => !idSet.has(v));
-      }
-    }
-  }
-  raw.papers = papers;
-  raw._meta = raw._meta || {};
-  raw._meta.total_papers = Object.keys(papers).length;
-  raw._meta.last_updated = new Date().toISOString().slice(0, 10);
-  fs.writeFileSync(PAPERS_FILE, JSON.stringify(raw, null, 2), 'utf8');
   return { ok: true, deleted, notFound };
 }
 
-// Permanent delete of any non-paper graph node (concept/project/endpoint/
+// Permanent delete of any non-paper graph node (concept/project/
 // idea/pool/note) — mirrors papers_api.py's cmd_graph_remove_node: pop the
 // node and drop every edge that touches it.
 function deleteGraphNode(nodeId) {
-  const raw   = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
-  const nodes = raw.nodes || {};
-  if (!nodes[nodeId]) return { error: `Node '${nodeId}' not found.` };
-  delete nodes[nodeId];
-  raw.nodes = nodes;
-  raw.edges = (raw.edges || []).filter(e => e.src !== nodeId && e.tgt !== nodeId);
-  fs.writeFileSync(GRAPH_FILE, JSON.stringify(raw, null, 2), 'utf8');
-  return { ok: true };
+  return graphCommand('graph-remove-node', [nodeId]);
 }
 
 // Fields a paper can be edited through from the UI. Deliberately excludes
@@ -465,7 +440,7 @@ function addPdfNote(paperId, page, quote, text) {
   text  = text  ? String(text).trim()  : '';
   if (!quote && !text) return { error: 'Note must have a quote or text.' };
 
-  const graphRaw = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
+  const graphRaw = readGraph();
   const nodes    = graphRaw.nodes || {};
   const edges    = graphRaw.edges || (graphRaw.edges = []);
 
@@ -502,7 +477,7 @@ function deletePdfNote(paperId, noteId) {
   papersRaw.papers = papers;
   fs.writeFileSync(PAPERS_FILE, JSON.stringify(papersRaw, null, 2), 'utf8');
 
-  const graphRaw = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
+  const graphRaw = readGraph();
   const nodes    = graphRaw.nodes || {};
   if (nodes[noteId]) {
     delete nodes[noteId];
@@ -538,91 +513,16 @@ function updatePaperFields(paperId, patch) {
   return { ok: true };
 }
 
-// Mirrors papers_api.py's NODE_REQUIRED_FIELDS / NODE_OPTIONAL_FIELDS —
-// keep in sync if the schema there changes.
-const NODE_REQUIRED_FIELDS = {
-  concept:  ['name', 'area'],
-  project:  ['name', 'status'],
-  endpoint: ['name', 'status'],
-  idea:     ['name', 'status', 'created'],
-  pool:     ['name', 'created'],
-  note:     ['name', 'created'],
-};
-const NODE_OPTIONAL_FIELDS = {
-  concept:  ['description', 'color'],
-  project:  ['description'],
-  endpoint: ['description'],
-  idea:     ['description', 'source'],
-  pool:     ['description'],
-  note:     ['quote', 'text', 'page'],
-};
-
 function updateGraphNodeFields(nodeId, patch) {
-  const raw   = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
-  const nodes = raw.nodes || {};
-  if (!nodes[nodeId]) return { error: `Node '${nodeId}' not found.` };
-
-  const type = nodes[nodeId].type;
-  const allowed = new Set([...(NODE_REQUIRED_FIELDS[type] || []), ...(NODE_OPTIONAL_FIELDS[type] || [])]);
-  const unknown = Object.keys(patch).filter(k => !allowed.has(k));
-  if (unknown.length) {
-    return { error: `Unrecognized fields for type '${type}': ${unknown.join(', ')}. ` +
-      `Allowed: ${[...allowed].join(', ')}.` };
-  }
-  for (const field of NODE_REQUIRED_FIELDS[type] || []) {
-    if (field in patch && !String(patch[field] || '').trim()) {
-      return { error: `Field '${field}' cannot be empty.` };
-    }
-  }
-
-  Object.assign(nodes[nodeId], patch);
-  raw.nodes = nodes;
-  fs.writeFileSync(GRAPH_FILE, JSON.stringify(raw, null, 2), 'utf8');
-  return { ok: true };
+  return graphCommand('graph-update-node', [nodeId, JSON.stringify(patch)]);
 }
 
-// Mirrors papers_api.py's GRAPH_EDGE_TYPES.
-const GRAPH_EDGE_TYPES = new Set([
-  'connected_to', 'uses_concept', 'part_of', 'inspired_by',
-  'relevant_to', 'derived_from', 'enables', 'annotates',
-]);
-
-// Connections (edges) are editable directly from the edit modal for any
-// node — including papers, which can be an edge endpoint too (e.g. an idea
-// `inspired_by` a paper) even though they live in a separate JSON file.
-// `src`/`tgt` may reference either a graph node or a paper ID; we don't
-// validate that the ID exists here since either file could contain it and
-// the modal's own node/paper picker already only offers real IDs.
 function addEdge(src, tgt, type, note) {
-  src = String(src || '').trim().toUpperCase();
-  tgt = String(tgt || '').trim().toUpperCase();
-  if (!src || !tgt) return { error: 'Both ends of the connection are required.' };
-  if (src === tgt) return { error: 'A node cannot connect to itself.' };
-  if (!GRAPH_EDGE_TYPES.has(type)) {
-    return { error: `Unrecognized edge type '${type}'. Allowed: ${[...GRAPH_EDGE_TYPES].join(', ')}.` };
-  }
-  const raw = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
-  const edges = raw.edges || (raw.edges = []);
-  if (edges.some(e => e.src === src && e.tgt === tgt && e.type === type)) {
-    return { error: 'That connection already exists.' };
-  }
-  const edge = { src, tgt, type };
-  if (note && String(note).trim()) edge.note = String(note).trim();
-  edges.push(edge);
-  fs.writeFileSync(GRAPH_FILE, JSON.stringify(raw, null, 2), 'utf8');
-  return { ok: true };
+  return graphCommand('graph-add-edge', [String(src || ''), String(tgt || ''), String(type || ''), String(note || '')]);
 }
 
 function deleteEdge(src, tgt, type) {
-  src = String(src || '').trim().toUpperCase();
-  tgt = String(tgt || '').trim().toUpperCase();
-  const raw = JSON.parse(fs.readFileSync(GRAPH_FILE, 'utf8'));
-  const edges = raw.edges || [];
-  const before = edges.length;
-  raw.edges = edges.filter(e => !(e.src === src && e.tgt === tgt && e.type === type));
-  if (raw.edges.length === before) return { error: 'Connection not found.' };
-  fs.writeFileSync(GRAPH_FILE, JSON.stringify(raw, null, 2), 'utf8');
-  return { ok: true };
+  return graphCommand('graph-remove-edge', [String(src || ''), String(tgt || ''), '--type', String(type || '')]);
 }
 
 function cors(res) {

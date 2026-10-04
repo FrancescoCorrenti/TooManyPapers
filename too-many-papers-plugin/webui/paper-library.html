@@ -6,39 +6,64 @@
 <title>Too Many Papers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..600&family=Atkinson+Hyperlegible+Next:ital,wght@0,400..700;1,400&display=swap" rel="stylesheet">
 <style>
   /* ── Reset & Base ─────────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:        #121418;
-    --surface:   #1c1f26;
-    --surface2:  #242830;
-    --border:    #333842;
-    --border-light:#4a4f5c;
-    --accent:    #D4AF37;
-    --accent-hover: #f3c944;
-    --accent2:   #8496B0;
-    --green:     #688C6F;
-    --orange:    #BA7C65;
-    --text:      #e0e2e5;
-    --text-dim:  #9095a0;
-    --read-bg:   #151a18;
-    --unread-bg: #1c1f26;
-    --radius:    4px;
-    --shadow:    0 8px 30px rgba(0,0,0,0.5);
-    
-    --font-heading: 'Crimson Pro', serif;
-    --font-body: 'Inter', system-ui, sans-serif;
+    /* "Cyanotype": the iron-blueprint process Anna Atkins used for the first
+       illustrated science book (1843). Prussian-blue ground, exposed-white
+       ink, and one accent — the yellow-green of unexposed emulsion. */
+    --bg:        #0C2036;   /* prussian, deep wash */
+    --surface:   #112B47;
+    --surface2:  #173659;
+    --border:    #234B73;
+    --border-light:#3A6A96;
+    --accent:    #DDE070;   /* unexposed emulsion */
+    --accent-hover: #EEF0A0;
+    --accent2:   #86CBE6;   /* light cyan */
+    --green:     #93D6C2;   /* washed & fixed: read */
+    --orange:    #F0B583;   /* iron: outside the library */
+    --danger:    #FF8A80;
+    --text:      #EAF2F5;
+    --text-dim:  #8EAFC6;
+    --read-bg:   #0F2840;
+    --unread-bg: #112B47;
+    --radius:    3px;
+    --shadow:    0 10px 34px rgba(3,12,24,0.55);
+    --ink:       rgba(234,242,245,0.85);
+    --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+
+    --font-heading: 'Newsreader', Georgia, serif;
+    --font-body: 'Atkinson Hyperlegible Next', system-ui, sans-serif;
+    color-scheme: dark;
   }
 
   body {
     font-family: var(--font-body);
-    background: var(--bg);
+    background:
+      radial-gradient(120% 90% at 50% 0%, #10304F 0%, transparent 60%),
+      var(--bg);
     color: var(--text);
     min-height: 100vh;
     line-height: 1.5;
+  }
+  /* Paper grain over everything — the print, not the screen. */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    background-image: var(--grain);
+    opacity: .05;
+    mix-blend-mode: overlay;
+  }
+  ::selection { background: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; }
   }
 
   /* ── Header ───────────────────────────────────── */
@@ -93,7 +118,7 @@
     gap: 14px;
     font-size: 0.72rem;
     color: var(--text-dim);
-    text-transform: uppercase;
+
     letter-spacing: 0.05em;
     flex-shrink: 0;
     padding-left: 16px;
@@ -195,7 +220,7 @@
     padding: 8px 30px 8px 14px;
     border-radius: var(--radius);
     border: 1px solid var(--border);
-    background: var(--surface2) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="%239095a0" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>') no-repeat right 10px center;
+    background: var(--surface2) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" stroke="%238EAFC6" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>') no-repeat right 10px center;
     color: var(--text);
     font-size: 0.85rem;
     font-family: var(--font-body);
@@ -307,10 +332,10 @@
   }
   .card.read  { 
     background: var(--read-bg); 
-    border-color: #2a382e;
+    border-color: color-mix(in srgb, var(--green) 28%, var(--border));
   }
   .card.outside { 
-    border-color: #4a362a; 
+    border-color: color-mix(in srgb, var(--orange) 35%, var(--border));
   }
 
   .card-header {
@@ -328,7 +353,7 @@
     font-family: var(--font-body);
     white-space: nowrap;
     flex-shrink: 0;
-    text-transform: uppercase;
+
   }
   .paper-id.outside { color: var(--orange); }
 
@@ -360,7 +385,7 @@
   }
   .delete-btn:hover {
     opacity: 1;
-    color: #e5534b;
+    color: var(--danger);
     background: var(--surface2);
   }
   .read-toggle.loading { animation: pulse 1s ease-in-out infinite; opacity: .5; }
@@ -369,11 +394,11 @@
   .pin-btn.pinned { 
     opacity: 1; 
     color: var(--accent);
-    text-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+    text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
   }
   
   .card.pinned-card { 
-    border-color: rgba(212, 175, 55, 0.3); 
+    border-color: color-mix(in srgb, var(--accent) 30%, transparent); 
   }
   .card.pinned-card::before {
     background: var(--accent);
@@ -466,7 +491,7 @@
   .tag.year::before { display: none; }
   
   .tag.venue { color: var(--accent2); }
-  .tag.concept { color: #A8B2C1; }
+  .tag.concept { color: #B9D3E2; }
   .tag.outside-tag { color: var(--orange); }
 
   /* ── Card footer ──────────────────────────────── */
@@ -490,29 +515,29 @@
     text-decoration: none;
     transition: all .2s;
     font-weight: 500;
-    text-transform: uppercase;
+
     letter-spacing: 0.05em;
   }
   .file-badge.has-file {
     color: var(--green);
-    border-color: rgba(104,140,111,0.4);
-    background: rgba(104,140,111,0.05);
+    border-color: color-mix(in srgb, var(--green) 40%, transparent);
+    background: color-mix(in srgb, var(--green) 5%, transparent);
     opacity: 1;
     cursor: pointer;
   }
   .file-badge.has-file:hover {
-    background: rgba(104,140,111,0.15);
+    background: color-mix(in srgb, var(--green) 15%, transparent);
     border-color: var(--green);
   }
   .file-badge.missing-file {
     color: var(--orange);
-    border-color: rgba(186,124,101,0.4);
-    background: rgba(186,124,101,0.05);
+    border-color: color-mix(in srgb, var(--orange) 40%, transparent);
+    background: color-mix(in srgb, var(--orange) 5%, transparent);
     opacity: 1;
     cursor: pointer;
   }
   .file-badge.missing-file:hover {
-    background: rgba(186,124,101,0.15);
+    background: color-mix(in srgb, var(--orange) 15%, transparent);
     border-color: var(--orange);
   }
 
@@ -552,7 +577,7 @@
     cursor: pointer;
     transition: color .2s;
     text-decoration: underline;
-    text-decoration-color: rgba(132,150,176,0.3);
+    text-decoration-color: color-mix(in srgb, var(--accent2) 30%, transparent);
     text-underline-offset: 3px;
   }
   .cite-link:hover {
@@ -560,7 +585,7 @@
     text-decoration-color: var(--text);
   }
   .cite-link.cited-by-link {
-    color: #9AA7B1;
+    color: var(--text-dim);
   }
 
   /* ── Error banner ─────────────────────────────── */
@@ -568,8 +593,8 @@
     display: none;
     margin: 24px 40px;
     padding: 16px 24px;
-    background: rgba(186,124,101,0.1);
-    border: 1px solid rgba(186,124,101,0.3);
+    background: color-mix(in srgb, var(--orange) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--orange) 30%, transparent);
     border-left: 4px solid var(--orange);
     border-radius: var(--radius);
     color: var(--text);
@@ -651,7 +676,7 @@
     width: max-content;
     max-width: calc(100% - 28px);
     padding: 8px 10px;
-    background: rgba(28,31,38,0.92);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border: 1px solid var(--border-light);
@@ -690,7 +715,7 @@
     max-height: calc(100% - 28px);
     display: flex;
     flex-direction: column;
-    background: rgba(28,31,38,0.92);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border: 1px solid var(--border-light);
@@ -707,7 +732,7 @@
   }
   .side-panel-title {
     font-size: 0.7rem;
-    text-transform: uppercase;
+
     letter-spacing: 0.06em;
     color: var(--text-dim);
     font-weight: 600;
@@ -828,7 +853,7 @@
     z-index: 39;
     width: max-content !important;
     max-width: calc(100% - 230px);
-    background: rgba(28,31,38,0.95) !important;
+    background: color-mix(in srgb, var(--surface) 95%, transparent) !important;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border: 1px solid var(--border-light) !important;
@@ -884,7 +909,7 @@
   .ms-opt input { flex-shrink: 0; }
   .ms-opt .ms-grp { color: var(--text-dim); font-size: 0.72rem; }
   .ms-group-label {
-    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em;
+    font-size: 0.7rem; letter-spacing: 0.05em;
     color: var(--text-dim); padding: 6px 6px 2px; margin-top: 4px;
   }
   .ms-empty { color: var(--text-dim); font-size: 0.8rem; padding: 6px; }
@@ -959,7 +984,7 @@
     max-height: min(340px, calc(100% - 28px));
     display: flex;
     flex-direction: column;
-    background: rgba(28,31,38,0.94);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border: 1px solid var(--border-light);
@@ -1027,7 +1052,7 @@
   @keyframes node-info-spin { to { transform: rotate(360deg); } }
 
   .legend-section + .legend-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
-  .legend-subtitle { color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; font-size: 0.72rem; margin-bottom: 5px; }
+  .legend-subtitle { color: var(--text-dim); letter-spacing: .04em; font-size: 0.72rem; margin-bottom: 5px; }
   .legend-row {
     display: flex;
     align-items: center;
@@ -1047,7 +1072,7 @@
   .legend-shape.diamond { transform: rotate(45deg); border-radius: 2px; }
   .legend-shape.dithered {
     opacity: 0.4;
-    background-image: radial-gradient(circle, #1c1f26 1px, transparent 1.2px);
+    background-image: radial-gradient(circle, var(--surface) 1px, transparent 1.2px);
     background-size: 4px 4px;
   }
   .legend-shape.dot {
@@ -1100,7 +1125,7 @@
   }
   .subtab-close:hover { opacity: 1; background: var(--border); }
 
-  /* ── Generic object-type list (concepts/projects/endpoints/ideas/waypoints) ── */
+  /* ── Generic object-type list (concepts/projects/ideas) ── */
   .type-grid {
     padding: 32px 40px;
     display: grid;
@@ -1157,7 +1182,7 @@
     font-weight: 600;
     letter-spacing: 0.05em;
     color: var(--accent2);
-    text-transform: uppercase;
+
   }
   .concept-swatch {
     display: inline-block;
@@ -1284,7 +1309,7 @@
   .conn-row:hover { border-color: var(--border-light); }
   .conn-type {
     font-size: 0.7rem;
-    text-transform: uppercase;
+
     letter-spacing: 0.04em;
     color: var(--text-dim);
     background: rgba(0,0,0,0.2);
@@ -1296,46 +1321,6 @@
   .conn-note { color: var(--text-dim); font-style: italic; font-size: 0.8rem; }
   .conn-edit-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
 
-  /* ── Project detail page: status pills + waypoint chain visualization ── */
-  .status-pill {
-    display: inline-block;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 2px 9px;
-    border-radius: 10px;
-    color: #14161a;
-    font-weight: 600;
-  }
-  .endpoint-block {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 16px;
-    margin-bottom: 12px;
-  }
-  .endpoint-block-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-    margin-bottom: 6px;
-  }
-  .chain-block { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
-  .chain-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
-  .chain-dot {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    cursor: pointer;
-    border: 1px solid rgba(0,0,0,0.3);
-    flex-shrink: 0;
-  }
-  .chain-dot.chain-endpoint { width: 16px; height: 16px; }
-  .chain-arrow { color: var(--text-dim); font-size: 0.8rem; }
-  .chain-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-  .chain-actions .filter-btn, .chain-actions .delete-btn { font-size: 0.75rem; padding: 4px 9px; }
   .conn-edit-row {
     display: flex;
     align-items: center;
@@ -1412,7 +1397,7 @@
     cursor: text;
     transform-origin: 0% 0%;
   }
-  .pdf-text-layer ::selection { background: rgba(212,175,55,0.35); }
+  .pdf-text-layer ::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
   .pdf-loading { padding: 60px 0; text-align: center; color: var(--text-dim); }
   .pdf-note-popup {
     position: fixed;
@@ -1497,14 +1482,14 @@
     font-size: 0.72rem;
     font-weight: 600;
     color: var(--accent);
-    background: rgba(212,175,55,0.12);
-    border: 1px solid rgba(212,175,55,0.3);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
     border-radius: 10px;
     padding: 2px 9px;
     cursor: pointer;
     white-space: nowrap;
   }
-  .pdf-note-page-badge:hover { background: rgba(212,175,55,0.22); }
+  .pdf-note-page-badge:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   .pdf-note-text {
     flex: 1;
     font-size: 0.86rem;
@@ -1627,7 +1612,7 @@
   .form-field { display: flex; flex-direction: column; gap: 6px; }
   .form-field label {
     font-size: 0.78rem;
-    text-transform: uppercase;
+
     letter-spacing: 0.04em;
     color: var(--text-dim);
     font-weight: 600;
@@ -1703,8 +1688,8 @@
   }
   .menu button:hover:not(:disabled) { background: var(--surface); }
   .menu button:disabled { color: var(--text-dim); cursor: default; }
-  .menu button.danger { color: #e5534b; }
-  .menu button.danger:hover:not(:disabled) { background: rgba(229, 83, 75, 0.12); }
+  .menu button.danger { color: var(--danger); }
+  .menu button.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 12%, transparent); }
   .menu .menu-sep { height: 1px; background: var(--border-light); margin: 6px 4px; }
 
   /* Per-card "more actions" overflow menu (Edit/Cite/Source/Hide/Delete) —
@@ -1722,8 +1707,8 @@
     text-decoration: none; box-sizing: border-box;
   }
   a.card-menu-item:hover { background: var(--surface); }
-  .card-menu-item.danger { color: #e5534b; }
-  .card-menu-item.danger:hover { background: rgba(229, 83, 75, 0.12); }
+  .card-menu-item.danger { color: var(--danger); }
+  .card-menu-item.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
   /* Per-card export selection checkbox */
   .card-select { cursor: pointer; margin-right: 2px; flex-shrink: 0; }
@@ -1740,37 +1725,396 @@
   #boot-overlay .spinner {
     width: 34px; height: 34px;
     border: 3px solid var(--border, #333);
-    border-top-color: var(--accent, #6c8cff);
+    border-top-color: var(--accent, #DDE070);
     border-radius: 50%;
     animation: boot-spin .8s linear infinite;
   }
   @keyframes boot-spin { to { transform: rotate(360deg); } }
+
+  /* ══ Cyanotype shell ═════════════════════════════════════════════════
+     Everything above is component structure; this block is the shell and
+     the look. Layout: a fixed rail on the left (views), the working list
+     in the middle, and a drawer on the right for whatever is open — the
+     list never disappears behind a detail page. The one bold move is the
+     graph, rendered as a contact print. */
+  :root { --rail-w: 212px; --drawer-w: min(46vw, 760px); }
+
+  body { padding-left: var(--rail-w); }
+
+  /* ── Rail ── */
+  .rail {
+    position: fixed; inset: 0 auto 0 0; width: var(--rail-w); z-index: 120;
+    display: flex; flex-direction: column; gap: 14px;
+    padding: 18px 12px 16px;
+    background: color-mix(in srgb, var(--bg) 88%, #000);
+    border-right: 1px solid color-mix(in srgb, var(--accent2) 16%, transparent);
+  }
+  .rail-brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 6px; }
+  .rail-brand .mark { flex-shrink: 0; fill: none; stroke: var(--accent); stroke-width: 1.5; }
+  .rail-brand .mark circle { fill: var(--bg); }
+  .rail-name {
+    font-family: var(--font-heading); font-style: italic; font-weight: 500;
+    font-size: 1.18rem; letter-spacing: -0.01em; line-height: 1; white-space: nowrap;
+    font-variation-settings: 'opsz' 30;
+  }
+  .rail-search {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    padding: 8px 10px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 60%, transparent);
+    color: var(--text-dim); font: inherit; font-size: 0.85rem; cursor: pointer; text-align: left;
+  }
+  .rail-search:hover { color: var(--text); border-color: var(--border-light); }
+  .rail-search .rail-label { flex: 1; }
+  kbd {
+    font-family: var(--font-body); font-size: 0.68rem; color: var(--text-dim);
+    border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 3px;
+    padding: 1px 5px; white-space: nowrap;
+  }
+  .rail .tab-bar {
+    display: flex; flex-direction: column; gap: 1px;
+    padding: 0; background: none; border: 0; overflow: visible; flex: 1;
+  }
+  .rail .tab-btn {
+    display: flex; align-items: center; gap: 11px; width: 100%; height: auto;
+    padding: 8px 10px; border: 0; border-radius: var(--radius);
+    background: none; color: var(--text-dim);
+    font-family: var(--font-body); font-size: 0.9rem; font-weight: 500; text-align: left;
+    position: relative; cursor: pointer;
+  }
+  .rail .tab-btn svg {
+    width: 17px; height: 17px; flex-shrink: 0;
+    fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round;
+  }
+  .rail .tab-btn .rail-label { flex: 1; }
+  .rail .tab-btn:hover { color: var(--text); background: color-mix(in srgb, var(--surface) 70%, transparent); }
+  .rail .tab-btn.active { color: var(--text); background: var(--surface); }
+  .rail .tab-btn.active::before {
+    content: ''; position: absolute; left: -12px; top: 7px; bottom: 7px; width: 3px;
+    background: var(--accent); border-radius: 0 2px 2px 0;
+  }
+  .rail .tab-btn.active svg { stroke: var(--accent); }
+  .rail-count {
+    font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--bg); background: var(--accent); border-radius: 9px; padding: 0 6px; line-height: 1.5;
+  }
+  .rail-sep {
+    margin: 14px 10px 4px; font-size: 0.75rem; color: var(--text-dim); opacity: .7;
+    font-family: var(--font-heading); font-style: italic;
+  }
+  .rail .stats {
+    display: block; padding: 10px; border: 0; margin: 0;
+    font-size: 0.78rem; color: var(--text-dim); letter-spacing: 0;
+  }
+  .rail .stats b { font-family: var(--font-body); font-size: 0.8rem; color: var(--text); font-weight: 700; }
+  .stat-bar { height: 3px; background: var(--border); border-radius: 2px; margin-bottom: 8px; overflow: hidden; }
+  .stat-bar span { display: block; height: 100%; width: 0; background: var(--green); transition: width .4s ease; }
+
+  /* ── Views as list + drawer ── */
+  #view-paper, #view-concept, #view-project, #view-idea, #view-note, #view-venue {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "list";
+    min-height: 100vh;
+  }
+  #view-paper[style*="none"], #view-concept[style*="none"], #view-project[style*="none"],
+  #view-idea[style*="none"], #view-note[style*="none"], #view-venue[style*="none"] { display: none; }
+  [id^="pane-"][id$="-list"] { grid-area: list; min-width: 0; }
+  .subtab-bar { display: none; }
+
+  .has-drawer {
+    grid-template-columns: minmax(0, 1fr) var(--drawer-w) !important;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "list tabs" "list detail" !important;
+  }
+  .has-drawer .subtab-bar {
+    grid-area: tabs; display: flex; align-items: center; flex-wrap: nowrap; gap: 2px;
+    position: sticky; top: 0; z-index: 30;
+    padding: 10px 12px 0 16px; overflow-x: auto; scrollbar-width: none;
+    background: var(--surface); border-left: 1px solid var(--border-light); border-bottom: 1px solid var(--border);
+  }
+  .has-drawer .subtab-btn[data-sub="list"] { display: none; }
+  .has-drawer .subtab-btn {
+    background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+    padding: 6px 8px 9px; font-size: 0.8rem; flex-shrink: 0; max-width: 180px;
+  }
+  .has-drawer .subtab-btn.active { color: var(--text); background: none; border-bottom-color: var(--accent); top: 0; }
+  .drawer-tools { margin-left: auto; display: flex; gap: 2px; padding-bottom: 6px; flex-shrink: 0; }
+  .drawer-tool {
+    display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+    border: 0; border-radius: var(--radius); background: none; color: var(--text-dim); cursor: pointer;
+  }
+  .drawer-tool svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+  .drawer-tool:hover { color: var(--text); background: var(--surface2); }
+  .has-drawer .detail-pane {
+    grid-area: detail; max-width: none; min-width: 0;
+    position: sticky; top: 49px; height: calc(100vh - 49px); overflow-y: auto;
+    padding: 26px 30px 60px;
+    background: var(--surface); border-left: 1px solid var(--border-light);
+    box-shadow: -18px 0 40px -24px rgba(3,12,24,.8);
+    animation: drawer-in .22s cubic-bezier(.2,.7,.2,1);
+  }
+  @keyframes drawer-in { from { transform: translateX(24px); opacity: 0; } }
+  /* Full-width reading: the list steps aside, the paper takes the table. */
+  .has-drawer.drawer-wide { grid-template-columns: 0 minmax(0, 1fr) !important; }
+  .has-drawer.drawer-wide [id$="-list"] { visibility: hidden; height: 0; overflow: hidden; }
+  .has-drawer.drawer-wide .detail-pane { padding: 34px clamp(24px, 6vw, 90px) 80px; animation: none; }
+  .has-drawer.drawer-wide .detail-pane > * { max-width: 1180px; }
+  .has-drawer.drawer-wide .pdf-reader { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; align-items: start; }
+  .has-drawer.drawer-wide .pdf-notes { position: sticky; top: 10px; margin-top: 0; max-height: calc(100vh - 120px); overflow-y: auto; }
+  .has-drawer.drawer-wide .pdf-notes-add { flex-direction: column; align-items: stretch; }
+  .has-drawer.drawer-wide .pdf-notes-add > * { width: 100% !important; }
+  .has-drawer:not(.drawer-wide) main:not(.rows) { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+  /* With a drawer open the list column is narrow: keep only the filters
+     you reach for while reading (search, read state, concept, sort). */
+  .has-drawer .toolbar .year-range, .has-drawer #paper-venue-ms, .has-drawer .sort-wrap > span,
+  .has-drawer #paper-reset-filters, .has-drawer #paper-advanced-toggle, .has-drawer .toolbar .menu-wrap { display: none; }
+  .has-drawer .toolbar .search-wrap { flex-basis: 100%; max-width: none; }
+  .detail-edit-btn { background: none; border: 0; }
+  .cite-link { text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent2) 30%, transparent); }
+
+  .is-open { border-color: var(--accent) !important; box-shadow: inset 3px 0 0 var(--accent) !important; }
+
+  /* ── Library toolbar ── */
+  .toolbar {
+    position: sticky; top: 0; z-index: 25;
+    padding: 14px 28px; gap: 10px 14px;
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .filter-btns {
+    gap: 0; padding: 2px; border: 1px solid var(--border); border-radius: calc(var(--radius) + 2px);
+    background: color-mix(in srgb, var(--bg) 60%, var(--surface));
+  }
+  .filter-btns .filter-btn { padding: 6px 12px; font-size: 0.82rem; border: 0; }
+  .filter-btns .filter-btn.active { background: var(--surface2); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+  .filter-btn.active { color: var(--text); }
+  input[type="search"], select.sel, .year-input, #sort-toggle {
+    background-color: color-mix(in srgb, var(--bg) 60%, var(--surface));
+  }
+  .density { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .density-btn {
+    display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+    border: 0; background: none; color: var(--text-dim); cursor: pointer;
+  }
+  .density-btn + .density-btn { border-left: 1px solid var(--border); }
+  .density-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+  .density-btn[aria-pressed="true"] { background: var(--surface2); color: var(--accent); }
+
+  /* ── Paper cards ── */
+  main { padding: 24px 28px 60px; gap: 16px; }
+  .card {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent2) 5%, transparent), transparent 40%), var(--unread-bg);
+    border-color: color-mix(in srgb, var(--accent2) 16%, var(--border));
+    padding: 20px 22px;
+  }
+  .card:hover { transform: none; box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--accent2) 45%, var(--border)); }
+  .card::before { display: none; }
+  .card.read { background: var(--read-bg); }
+  .card.pinned-card { box-shadow: inset 0 2px 0 var(--accent); }
+  .paper-id { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; font-weight: 700; font-size: 0.74rem; }
+  .paper-title {
+    font-size: 1.28rem; font-weight: 500; line-height: 1.22; letter-spacing: -0.005em;
+    text-wrap: balance; font-variation-settings: 'opsz' 36;
+  }
+  .paper-authors { font-style: normal; }
+  .tag::before { content: ''; width: 3px; height: 3px; border-radius: 50%; background: var(--border-light); }
+  .card-actions button { opacity: .55; }
+
+  /* ── Paper rows: the default reading-list layout ── */
+  main.rows { display: flex; flex-direction: column; gap: 0; padding: 8px 28px 60px; }
+  main.rows .card {
+    display: grid; align-items: center; column-gap: 18px; row-gap: 2px;
+    grid-template-columns: 22px minmax(0, 1fr) minmax(0, 34%) auto;
+    grid-template-areas: "id title meta actions" "id authors meta actions";
+    padding: 12px 14px 12px 10px; margin: 0;
+    background: none; border: 0; border-bottom: 1px solid var(--border); border-radius: 0;
+    box-shadow: none;
+  }
+  main.rows .card:hover { background: color-mix(in srgb, var(--surface) 70%, transparent); box-shadow: none; }
+  main.rows .card.read .paper-title { color: var(--text-dim); }
+  main.rows .card-header { display: contents; }
+  main.rows .card-header > div:first-child { grid-area: id; align-self: start; padding-top: 4px; }
+  main.rows .card-header .paper-id { display: none; }
+  main.rows .card-actions { grid-area: actions; opacity: 0; transition: opacity .12s; }
+  main.rows .card:hover .card-actions, main.rows .card:focus-within .card-actions,
+  main.rows .card .pin-btn.pinned { opacity: 1; }
+  main.rows .card-select { opacity: .35; }
+  main.rows .card:hover .card-select, main.rows .card-select:checked { opacity: 1; }
+  main.rows .paper-title { grid-area: title; font-size: 1.08rem; margin: 0; line-height: 1.28; font-variation-settings: 'opsz' 20; text-wrap: pretty; }
+  main.rows .paper-authors { grid-area: authors; font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  main.rows .card-meta { grid-area: meta; margin: 0; gap: 1px; flex-direction: column; align-items: flex-start; min-width: 0; }
+  main.rows .card-meta .tag { max-width: 100%; }
+  main.rows .card-meta .tag::before { display: none; }
+  main.rows .tag.year { font-size: 0.78rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  main.rows .citations, main.rows .card-footer { display: none; }
+  main.rows .card.pinned-card { box-shadow: inset 3px 0 0 var(--accent); }
+  main.rows .card.is-open { background: var(--surface); border-color: var(--border) !important; }
+  main.rows .empty { padding: 80px 0; }
+  .has-drawer main.rows .card { grid-template-columns: 22px minmax(0, 1fr) auto; grid-template-areas: "id title actions" "id authors actions"; }
+  .has-drawer main.rows .card-meta { display: none; }
+
+  /* ── Other indexes (concepts, projects…) ── */
+  /* Same row grammar as the Library: name and description on the left,
+     category and ID on the right, actions on hover. */
+  .type-grid { display: flex; flex-direction: column; gap: 0; padding: 8px 28px 60px; }
+  .type-group-cards { display: flex; flex-direction: column; gap: 0; margin-bottom: 24px; }
+  .type-group-header { font-family: var(--font-heading); font-style: italic; font-weight: 500; margin: 18px 0 0; padding: 0 0 8px 12px; color: var(--text-dim); }
+  .type-card {
+    display: grid; align-items: center; column-gap: 18px; row-gap: 2px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 30%) auto;
+    grid-template-areas: "name sub actions" "desc id actions";
+    padding: 12px 14px 12px 12px;
+    background: none; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none;
+  }
+  .type-card:hover { transform: none; box-shadow: none; background: color-mix(in srgb, var(--surface) 70%, transparent); }
+  .type-card-header { display: contents; }
+  .type-card-id { grid-area: id; display: flex; align-items: center; gap: 6px; font-size: 0.74rem; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; color: var(--text-dim); }
+  .type-card .card-actions { grid-area: actions; opacity: 0; transition: opacity .12s; }
+  .type-card:hover .card-actions, .type-card:focus-within .card-actions { opacity: 1; }
+  .type-card-name { grid-area: name; margin: 0; font-size: 1.08rem; font-weight: 500; line-height: 1.28; font-variation-settings: 'opsz' 20; text-wrap: pretty; }
+  .type-card-sub { grid-area: sub; margin: 0; font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .type-card-desc { grid-area: desc; font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .type-card.is-open { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent) !important; border-color: var(--border) !important; }
+  .has-drawer .type-card { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name actions" "desc actions"; }
+  .has-drawer .type-card-sub, .has-drawer .type-card-id { display: none; }
+  .type-grid .empty { padding: 80px 0; }
+  .detail-title, .modal-header h3 { font-weight: 500; font-variation-settings: 'opsz' 48; text-wrap: balance; letter-spacing: -0.01em; }
+  .detail-title { font-size: 1.7rem; line-height: 1.18; }
+  .detail-section-title { font-style: italic; font-size: 1.05rem; }
+
+  /* ── Command palette ── */
+  .palette {
+    position: fixed; inset: 0; z-index: 9000;
+    display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh;
+    background: rgba(4, 14, 26, .55);
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  .palette[hidden] { display: none; }
+  .palette-box {
+    width: min(640px, calc(100vw - 32px));
+    background: var(--surface); border: 1px solid var(--border-light); border-radius: 8px;
+    box-shadow: 0 30px 80px rgba(2,8,18,.7); overflow: hidden;
+    animation: palette-in .14s ease-out;
+  }
+  @keyframes palette-in { from { transform: translateY(-6px) scale(.99); opacity: 0; } }
+  .palette-input-wrap { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); color: var(--text-dim); }
+  #palette-input { flex: 1; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 1.02rem; }
+  #palette-input::placeholder { color: var(--text-dim); }
+  .palette-list { list-style: none; max-height: min(56vh, 460px); overflow-y: auto; padding: 6px; }
+  .palette-item { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 5px; cursor: pointer; }
+  .palette-item.sel { background: var(--surface2); }
+  .palette-kind { flex-shrink: 0; width: 58px; font-size: 0.72rem; color: var(--text-dim); }
+  .palette-kind.k-view { color: var(--accent); }
+  .palette-kind.k-concept { color: var(--green); }
+  .palette-kind.k-project { color: var(--orange); }
+  .palette-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .palette-title { font-family: var(--font-heading); font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .palette-sub { font-size: 0.76rem; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .palette-id { font-size: 0.72rem; color: var(--accent2); font-variant-numeric: tabular-nums; }
+  .palette-empty { padding: 22px 12px; color: var(--text-dim); text-align: center; font-size: 0.9rem; }
+
+  /* ── The print (graph) ── */
+  #view-graph { height: 100vh; }
+  #graph-wrap { background: radial-gradient(ellipse at 50% 45%, #13385C 0%, #0E2A46 45%, #091B2F 100%); }
+  #graph-wrap::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background-image: var(--grain); opacity: .09; mix-blend-mode: soft-light;
+  }
+  /* Controls dock at the bottom edge, like the caption strip of a print. */
+  .graph-toolbar {
+    top: auto; bottom: 18px; left: 50%; right: auto; transform: translateX(-50%);
+    border-radius: 999px; padding: 6px 8px 6px 12px;
+    border-color: color-mix(in srgb, var(--accent2) 28%, transparent);
+  }
+  .graph-toolbar input[type="search"] { border-radius: 999px; }
+  #graph-filters-panel { top: auto !important; bottom: 74px; left: 50% !important; transform: translateX(-50%); max-width: calc(100% - 260px); }
+  #graph-side-panel, #node-info-panel, #graph-tooltip, #graph-filters-panel { border-color: color-mix(in srgb, var(--accent2) 25%, transparent) !important; border-radius: 6px; }
+  #node-info-panel { top: 14px; bottom: auto; }
+
+  /* ── PDF table ── */
+  .pdf-viewer-wrap { background: #081A2C; }
+
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ── Narrow screens: rail collapses to icons, drawer becomes a sheet ── */
+  @media (max-width: 1100px) {
+    :root { --rail-w: 60px; }
+    .rail { padding: 16px 8px; align-items: center; }
+    .rail-name, .rail .rail-label, .rail-search kbd, .rail .stats, .rail-sep { display: none; }
+    .rail-search { justify-content: center; padding: 9px; }
+    .rail .tab-btn { justify-content: center; padding: 10px; }
+    .rail .tab-btn.active::before { left: -8px; }
+    .rail-count { position: absolute; top: 2px; right: 0; font-size: 0.6rem; }
+    .has-drawer { grid-template-columns: minmax(0, 1fr) !important; grid-template-areas: "list" !important; }
+    .has-drawer .subtab-bar, .has-drawer .detail-pane {
+      position: fixed; right: 0; width: min(100vw - var(--rail-w), 640px); z-index: 110;
+    }
+    .has-drawer .subtab-bar { top: 0; }
+    .has-drawer .detail-pane { top: 49px; height: calc(100vh - 49px); }
+  }
+  @media (max-width: 640px) {
+    main.rows .card, .has-drawer main.rows .card { grid-template-columns: 22px minmax(0, 1fr); grid-template-areas: "id title" "id authors"; column-gap: 10px; }
+    main.rows .card-meta, main.rows .card-actions { display: none; }
+    .type-card, .has-drawer .type-card { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "desc"; }
+    .type-card-sub, .type-card-id, .type-card .card-actions { display: none; }
+    .type-grid { padding: 8px 16px 60px; }
+    .toolbar .year-range, #paper-venue-ms, #paper-reset-filters, #paper-advanced-toggle, .toolbar .menu-wrap, .sort-wrap > span { display: none; }
+    .toolbar .search-wrap { flex-basis: 100%; max-width: none; }
+    .sort-wrap { margin-left: 0; }
+    .toolbar { padding: 12px 16px; }
+    main, main.rows { padding-left: 16px; padding-right: 16px; }
+  }
 </style>
 </head>
 <body>
 <div id="boot-overlay"><div class="spinner"></div></div>
 
-<header>
-  <div class="header-left">
-    <h1>📚 Too Many <span>Papers</span></h1>
+<aside class="rail" aria-label="Views">
+  <div class="rail-brand">
+    <svg class="mark" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 15.5 15.6 7.6M8.8 17.4h6.2"/><circle cx="6" cy="17" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="17" cy="18" r="2"/></svg>
+    <span class="rail-name">Too many papers</span>
   </div>
-  <div class="tab-bar">
-    <button class="tab-btn active" data-tab="paper" title="A paper in your library.">Papers</button>
-    <button class="tab-btn" data-tab="concept" title="A research area you care about.">Concepts</button>
-    <button class="tab-btn" data-tab="project" title="An active research project with goals.">Projects</button>
-    <button class="tab-btn" data-tab="endpoint" title="A specific milestone within a project.">Endpoints</button>
-    <button class="tab-btn" data-tab="idea" title="A concrete idea connected to a project.">Ideas</button>
-    <button class="tab-btn" data-tab="waypoint" title="An intermediate node in a project's chain toward an endpoint.">Waypoints</button>
-    <button class="tab-btn" data-tab="note" title="A reading annotation — a quoted excerpt and/or comment, usually tied to a paper page.">Notes</button>
-    <button class="tab-btn" data-tab="venue" title="Where a paper was published (journal, conference, preprint server). Not part of the knowledge graph — usable only as a filter.">Venues</button>
-    <button class="tab-btn" data-tab="graph" title="Force-directed view of the whole knowledge graph.">Graph</button>
-  </div>
+  <button class="rail-search" id="palette-open" title="Search everything (Ctrl+K)">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <span class="rail-label">Search</span><kbd>Ctrl K</kbd>
+  </button>
+  <nav class="tab-bar">
+    <button class="tab-btn active" data-tab="paper" title="A paper in your library.">
+      <svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h5"/></svg><span class="rail-label">Library</span><span class="rail-count" id="stat-unread" title="Unread">—</span></button>
+    <button class="tab-btn" data-tab="graph" title="Force-directed view of the whole knowledge graph.">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="6" r="1.6"/><path d="M8 15.5 16 7.5M8.5 17.5H15M7 7.6V14.5"/></svg><span class="rail-label">Graph</span></button>
+    <div class="rail-sep">Index</div>
+    <button class="tab-btn" data-tab="concept" title="A research area you care about.">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.2"/><circle cx="8.5" cy="9.5" r="1"/><circle cx="15.5" cy="9.5" r="1"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/></svg><span class="rail-label">Concepts</span></button>
+    <button class="tab-btn" data-tab="project" title="An active research project with goals.">
+      <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16"/><path d="M8 15l3-3 2 2 3-4"/></svg><span class="rail-label">Projects</span></button>
+    <button class="tab-btn" data-tab="idea" title="A paper-grounded idea or project relevance analysis.">
+      <svg viewBox="0 0 24 24"><path d="M12 3l9 9-9 9-9-9z"/></svg><span class="rail-label">Ideas</span></button>
+    <button class="tab-btn" data-tab="note" title="A reading annotation — a quoted excerpt and/or comment, usually tied to a paper page.">
+      <svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6-4.5-4.2 6.1-.7z"/></svg><span class="rail-label">Notes</span></button>
+    <button class="tab-btn" data-tab="venue" title="Where a paper was published (journal, conference, preprint server). Not part of the knowledge graph — usable only as a filter.">
+      <svg viewBox="0 0 24 24"><path d="M3 10l9-6 9 6M5 10v9M19 10v9M9.5 10v9M14.5 10v9M3 20h18"/></svg><span class="rail-label">Venues</span></button>
+  </nav>
   <div class="stats">
-    <div>Total <b id="stat-total">—</b></div>
-    <div>Read <b id="stat-read" style="color:var(--green)">—</b></div>
-    <div>Unread <b id="stat-unread" style="color:var(--accent)">—</b></div>
+    <div class="stat-bar" aria-hidden="true"><span id="stat-bar-read"></span></div>
+    <div><b id="stat-read">—</b> of <b id="stat-total">—</b> read</div>
   </div>
-</header>
+</aside>
+
+<div id="palette" class="palette" hidden>
+  <div class="palette-box" role="dialog" aria-label="Search everything">
+    <div class="palette-input-wrap">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="palette-input" type="text" placeholder="Find a paper, concept, project, note, or view" autocomplete="off" spellcheck="false">
+      <kbd>Esc</kbd>
+    </div>
+    <ul id="palette-list" class="palette-list" role="listbox"></ul>
+  </div>
+</div>
 
 <div id="view-paper">
   <div class="subtab-bar" id="subtabbar-paper"></div>
@@ -1824,6 +2168,11 @@
         ">↓</button>
       </div>
 
+      <div class="density" role="group" aria-label="Layout">
+        <button class="density-btn" data-density="rows" title="Rows"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <button class="density-btn" data-density="cards" title="Cards"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg></button>
+      </div>
+
       <button class="filter-btn" id="paper-advanced-toggle" aria-expanded="false">Advanced filters &#9656;</button>
       <button class="filter-btn" id="paper-reset-filters">Reset filters</button>
 
@@ -1869,11 +2218,6 @@
   <div id="pane-project-detail" class="detail-pane" style="display:none;"></div>
 </div>
 
-<div id="view-endpoint" style="display:none;">
-  <div class="subtab-bar" id="subtabbar-endpoint"></div>
-  <div id="pane-endpoint-list"></div>
-  <div id="pane-endpoint-detail" class="detail-pane" style="display:none;"></div>
-</div>
 
 <div id="view-idea" style="display:none;">
   <div class="subtab-bar" id="subtabbar-idea"></div>
@@ -1881,11 +2225,6 @@
   <div id="pane-idea-detail" class="detail-pane" style="display:none;"></div>
 </div>
 
-<div id="view-waypoint" style="display:none;">
-  <div class="subtab-bar" id="subtabbar-waypoint"></div>
-  <div id="pane-waypoint-list"></div>
-  <div id="pane-waypoint-detail" class="detail-pane" style="display:none;"></div>
-</div>
 
 <div id="view-note" style="display:none;">
   <div class="subtab-bar" id="subtabbar-note"></div>
@@ -1926,9 +2265,7 @@
       <label class="gtype-chip" title="Papers"><input type="checkbox" class="gtype" value="paper" checked><span class="chip-dot circle"></span><span class="chip-label">Papers</span></label>
       <label class="gtype-chip" title="Concepts"><input type="checkbox" class="gtype" value="concept" checked><span class="chip-dot circle dithered"></span><span class="chip-label">Concepts</span></label>
       <label class="gtype-chip" title="Projects"><input type="checkbox" class="gtype" value="project" checked><span class="chip-dot square"></span><span class="chip-label">Projects</span></label>
-      <label class="gtype-chip" title="Endpoints"><input type="checkbox" class="gtype" value="endpoint"><span class="chip-dot triangle"></span><span class="chip-label">Endpoints</span></label>
       <label class="gtype-chip" title="Ideas"><input type="checkbox" class="gtype" value="idea" checked><span class="chip-dot diamond"></span><span class="chip-label">Ideas</span></label>
-      <label class="gtype-chip" title="Waypoints"><input type="checkbox" class="gtype" value="waypoint"><span class="chip-dot dot"></span><span class="chip-label">Waypoints</span></label>
       <label class="gtype-chip" title="Notes"><input type="checkbox" class="gtype" value="note" checked><span class="chip-dot star"></span><span class="chip-label">Notes</span></label>
       <label class="gtype-chip" title="Papers referenced by something in your library but not in it themselves"><input type="checkbox" class="gtype" value="ghost"><span class="chip-dot circle hollow"></span><span class="chip-label">Missing</span></label>
       <div class="gtype-chip-sep"></div>
@@ -1937,9 +2274,9 @@
       </label>
       <div class="legend-section">
         <div class="legend-subtitle">Status</div>
-        <div class="legend-row"><span class="legend-shape dot" style="background:#8a8f98"></span> <span class="lbl">Pending</span></div>
-        <div class="legend-row"><span class="legend-shape dot" style="background:#4caf7a"></span> <span class="lbl">Reached</span></div>
-        <div class="legend-row"><span class="legend-shape dot" style="background:#c25b5b"></span> <span class="lbl">Failed</span></div>
+        <div class="legend-row"><span class="legend-shape dot" style="background:#8EAFC6"></span> <span class="lbl">Pending</span></div>
+        <div class="legend-row"><span class="legend-shape dot" style="background:#93D6C2"></span> <span class="lbl">Reached</span></div>
+        <div class="legend-row"><span class="legend-shape dot" style="background:#FF8A80"></span> <span class="lbl">Failed</span></div>
       </div>
       <div class="legend-section">
         <div class="legend-subtitle">Edges</div>
@@ -2087,34 +2424,30 @@ function invalidateGraphCache() {
   if (typeof Graph !== 'undefined') Graph.loaded = false;
 }
 
-// Forces the per-type list panes (Concepts/Projects/Endpoints/Ideas/Waypoints)
 // to rebuild their filter toolbars — including the "linked to" dropdown and
 // quick-filter option lists — next time they're rendered, so a rename/edit
 // is reflected there too instead of showing stale option labels.
 function resetAllTypeToolbars() {
-  ['concept', 'project', 'endpoint', 'idea', 'waypoint', 'note', 'venue'].forEach(t => {
+  ['concept', 'project', 'idea', 'note', 'venue'].forEach(t => {
     const el = document.getElementById(`pane-${t}-list`);
     if (el) delete el.dataset.toolbarBuilt;
   });
 }
 
-// ── Tabs: object-type views (Papers/Concepts/Projects/Endpoints/Ideas/Waypoints) ──
 
 const TYPE_META = {
   paper:    { label: 'Papers',    description: 'A paper in your library.' },
   concept:  { label: 'Concepts',  description: 'A research area you care about.' },
   project:  { label: 'Projects',  description: 'An active research project with goals.' },
-  endpoint: { label: 'Endpoints', description: "A project's goal/milestone — pending, reached, or failed." },
-  idea:     { label: 'Ideas',     description: 'A concrete idea connected to a project.' },
-  waypoint: { label: 'Waypoints', description: "An intermediate node in a project's chain toward an endpoint." },
+  idea:     { label: 'Ideas',     description: 'A paper-grounded idea or project relevance analysis.' },
   note:     { label: 'Notes',     description: 'A reading annotation — a quoted excerpt and/or comment, usually tied to a paper page.' },
   venue:    { label: 'Venues',    description: 'Where a paper was published (journal, conference, preprint server). Not part of the knowledge graph — usable only as a filter.' },
 };
-const TOP_TABS = ['paper', 'concept', 'project', 'endpoint', 'idea', 'waypoint', 'note', 'venue', 'graph'];
+const TOP_TABS = ['paper', 'concept', 'project', 'idea', 'note', 'venue', 'graph'];
 
 let currentTopTab = 'paper';
-let openTabs  = { paper: [], concept: [], project: [], endpoint: [], idea: [], waypoint: [], note: [], venue: [] };
-let activeSub = { paper: 'list', concept: 'list', project: 'list', endpoint: 'list', idea: 'list', waypoint: 'list', note: 'list', venue: 'list' };
+let openTabs  = { paper: [], concept: [], project: [], idea: [], note: [], venue: [] };
+let activeSub = { paper: 'list', concept: 'list', project: 'list', idea: 'list', note: 'list', venue: 'list' };
 
 // ── Cookie helpers ────────────────────────────────────────────────────────────
 
@@ -2295,7 +2628,6 @@ async function deleteSelectedPapers() {
 }
 
 // Permanent delete for any non-paper, non-venue graph node (concept/
-// project/endpoint/idea/waypoint/note) — mirrors deletePaper above.
 async function deleteGraphNode(type, id) {
   if (!confirm(`Permanently delete ${id}? This cannot be undone.`)) return;
   try {
@@ -2414,6 +2746,7 @@ function render() {
   document.getElementById('stat-total').textContent  = total;
   document.getElementById('stat-read').textContent   = read;
   document.getElementById('stat-unread').textContent = total - read;
+  document.getElementById('stat-bar-read').style.width = total ? `${(read / total) * 100}%` : '0';
 
   // Ghost papers: referenced by something in the library (cites_unmatched)
   // but with no record of their own — opt-in via the "Show..." checkbox,
@@ -2483,11 +2816,11 @@ function render() {
   });
   updateExportCount();
   initDrag(grid);
+  markActiveItem('paper');
 }
 
 // ── BibTeX export ─────────────────────────────────────────────────────────────
 // Same-origin so it hits whichever server served this page (which has the
-// /api/export endpoint), regardless of the hardcoded data API host.
 function bibtexUrl(ids, download) {
   const params = [];
   if (ids) params.push('ids=' + encodeURIComponent(ids));
@@ -2809,7 +3142,7 @@ function applyUIToDOM() {
   const sortBtn = document.getElementById('sort-toggle');
   sortBtn.textContent = sortAscend ? '↑' : '↓';
   sortBtn.style.background  = sortAscend ? 'var(--accent)' : 'var(--surface2)';
-  sortBtn.style.color       = sortAscend ? '#fff' : 'var(--text)';
+  sortBtn.style.color       = sortAscend ? 'var(--bg)' : 'var(--text)';
   sortBtn.style.borderColor = sortAscend ? 'var(--accent)' : 'var(--border)';
   // Concept and venue selects are populated after fetch, applied in populateFilters
   document.getElementById('paper-year-min').value = yearMinF != null ? String(yearMinF) : '';
@@ -2949,7 +3282,7 @@ document.getElementById('sort-toggle').addEventListener('click', () => {
   const btn = document.getElementById('sort-toggle');
   btn.textContent = sortAscend ? '↑' : '↓';
   btn.style.background  = sortAscend ? 'var(--accent)' : 'var(--surface2)';
-  btn.style.color       = sortAscend ? '#fff' : 'var(--text)';
+  btn.style.color       = sortAscend ? 'var(--bg)' : 'var(--text)';
   btn.style.borderColor = sortAscend ? 'var(--accent)' : 'var(--border)';
   saveUI();
   render();
@@ -2957,7 +3290,6 @@ document.getElementById('sort-toggle').addEventListener('click', () => {
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 //
-// Top-level tabs: Papers / Concepts / Projects / Endpoints / Ideas / Waypoints / Graph.
 // Each object-type tab (all but Graph) has its own row of sub-tabs: an
 // always-open "list" tab showing the summary grid, plus one closable
 // detail sub-tab per item the user has opened. Opening an item shows its
@@ -3002,13 +3334,19 @@ function openDetail(type, id) {
   if (!openTabs[type].includes(id)) openTabs[type].push(id);
   activeSub[type] = id;
   switchTopTab(type);
-  window.scrollTo(0, 0); // the page keeps whatever scroll position the list view was at otherwise
+  // No scroll reset: the list stays put beside the drawer.
   saveUI();
 }
 
 function closeDetail(type, id) {
+  const idx = openTabs[type].indexOf(id);
   openTabs[type] = openTabs[type].filter(x => x !== id);
-  if (activeSub[type] === id) activeSub[type] = 'list';
+  // Closing the active tab moves to its neighbour, like a browser; the
+  // drawer only closes with the last tab.
+  if (activeSub[type] === id) {
+    const rest = openTabs[type];
+    activeSub[type] = rest.length ? rest[Math.min(idx, rest.length - 1)] : 'list';
+  }
   renderSubTabBar(type);
   renderActivePane(type);
   saveUI();
@@ -3018,7 +3356,7 @@ function selectSubTab(type, sub) {
   activeSub[type] = sub;
   renderSubTabBar(type);
   renderActivePane(type);
-  if (sub !== 'list') window.scrollTo(0, 0);
+
   saveUI();
 }
 
@@ -3045,7 +3383,20 @@ function renderSubTabBar(type) {
       <span class="subtab-close" data-close="${esc(id)}">✕</span>
     </button>`;
   });
+  if (activeSub[type] !== 'list') {
+    const wide = document.getElementById(`view-${type}`).classList.contains('drawer-wide');
+    html += `<span class="drawer-tools">
+      <button class="drawer-tool" data-drawer="wide" title="${wide ? 'Show the list again' : 'Read full width'}">${wide
+        ? '<svg viewBox="0 0 24 24"><path d="M14 4v16M4 9l3 3-3 3"/></svg>'
+        : '<svg viewBox="0 0 24 24"><path d="M4 4v16M14 9l-3 3 3 3M20 9l-3 3 3 3"/></svg>'}</button>
+      <button class="drawer-tool" data-drawer="close" title="Close (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </span>`;
+  }
   bar.innerHTML = html;
+  bar.querySelectorAll('[data-drawer]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.drawer === 'wide') toggleDrawerWide(type);
+    else selectSubTab(type, 'list');
+  }));
   bar.querySelectorAll('.subtab-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       if (e.target.closest('.subtab-close')) return;
@@ -3060,37 +3411,63 @@ function renderSubTabBar(type) {
 function renderActivePane(type) {
   const listPane   = document.getElementById(`pane-${type}-list`);
   const detailPane = document.getElementById(`pane-${type}-detail`);
+  const view       = document.getElementById(`view-${type}`);
+  // The list never goes away: a detail opens in a drawer beside it, so the
+  // reader keeps their place in the library while looking at one item.
+  listPane.style.display = '';
+  const hadDrawer = view.classList.contains('has-drawer');
   if (activeSub[type] === 'list') {
-    listPane.style.display = '';
+    view.classList.remove('has-drawer', 'drawer-wide');
     detailPane.style.display = 'none';
-    if (type === 'venue') renderVenueList(listPane);
-    else if (type !== 'paper') renderTypeList(type);
+    if (!hadDrawer || type !== 'paper') {
+      if (type === 'venue') renderVenueList(listPane);
+      else if (type !== 'paper') renderTypeList(type);
+    }
   } else {
-    listPane.style.display = 'none';
+    view.classList.add('has-drawer');
+    if (!hadDrawer && type !== 'paper') {
+      if (type === 'venue') renderVenueList(listPane);
+      else renderTypeList(type);
+    }
     detailPane.style.display = '';
+    detailPane.scrollTop = 0;
+    markActiveItem(type);
     if (type === 'paper') renderPaperDetail(detailPane, activeSub[type]);
     else if (type === 'venue') renderVenueDetail(detailPane, activeSub[type]);
     else renderNodeDetail(detailPane, type, activeSub[type]);
   }
+  if (activeSub[type] === 'list') markActiveItem(type);
 }
 
-// ── Generic object-type list (concepts/projects/endpoints/ideas/waypoints) ──
+// Highlights the list row whose detail is open in the drawer.
+function markActiveItem(type) {
+  const list = document.getElementById(`pane-${type}-list`);
+  if (!list) return;
+  const open = activeSub[type];
+  list.querySelectorAll('.card[data-id], .type-card[data-id]').forEach(el =>
+    el.classList.toggle('is-open', el.dataset.id === open));
+}
+
+function toggleDrawerWide(type) {
+  const view = document.getElementById(`view-${type}`);
+  view.classList.toggle('drawer-wide');
+  renderSubTabBar(type);
+}
+
 //
 // Easy-access filters (search + a type-relevant quick filter) stay visible
 // at all times; a "linked to" cross-reference filter — the same kind of
 // filter the Graph view offers via its concept-link filter — lives behind
 // an Advanced toggle since it's a more specialized, less-common query.
 
-const QUICK_FIELD = { concept: 'area', project: 'status', endpoint: 'status', idea: 'status', waypoint: 'status', note: null };
+const QUICK_FIELD = { concept: 'area', project: 'status', idea: 'status', note: null };
 
 // linkedTo is a Set of node ids (multi-select). sortKey/asc are seeded from
 // each type's default sort in ensureTypeFilterState().
 let typeFilterState = {
   concept:  { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
   project:  { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
-  endpoint: { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
   idea:     { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
-  waypoint: { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
   note:     { search: '', quick: '', linkedTo: new Set(), linkedMS: null },
 };
 
@@ -3251,9 +3628,7 @@ const S_CREATED = { key: 'created', label: 'Created', get: ([, n]) => n.created 
 const TYPE_SORTS = {
   concept:  [S_NAME, { key: 'papers', label: '# papers', get: ([id]) => nodeLinkedTypeCount(id, 'paper'), dir: 'desc' }, S_CONN, S_ID],
   project:  [S_NAME, S_CONN, S_CREATED, S_ID],
-  endpoint: [S_NAME, S_CONN, S_CREATED, S_ID],
   idea:     [S_NAME, S_CREATED, S_CONN, S_ID],
-  waypoint: [S_NAME, S_CONN, S_CREATED, S_ID],
   note:     [S_CREATED, S_NAME, S_CONN, S_ID],
 };
 
@@ -3391,13 +3766,7 @@ function renderTypeGrid(type) {
     return;
   }
 
-  if (type === 'endpoint' || type === 'waypoint') {
-    grid.innerHTML = groupCardsByProjectHTML(items, type);
-    grid.querySelectorAll('.type-group-header[data-open-type]').forEach(el =>
-      el.addEventListener('click', () => openDetail(el.dataset.openType, el.dataset.openId)));
-  } else {
-    grid.innerHTML = items.map(([id, n]) => typeCardHTML(id, n)).join('');
-  }
+  grid.innerHTML = items.map(([id, n]) => typeCardHTML(id, n)).join('');
   grid.querySelectorAll('.type-card').forEach(el => {
     el.addEventListener('click', e => {
       if (e.target.closest('button')) return;
@@ -3412,33 +3781,8 @@ function renderTypeGrid(type) {
   });
 }
 
-// Groups endpoint/waypoint cards under their owning project's name, so the
-// list view mirrors the per-project chain grouping already shown on a
-// project's detail page. Items without a resolvable project (e.g. a
-// waypoint whose chain doesn't yet reach an endpoint) land in a trailing
-// "No project" bucket. Sort order within each group follows the active sort.
-function groupCardsByProjectHTML(items, type) {
-  const groups = new Map(); // projectId|'' -> [[id, n], ...]
-  items.forEach(([id, n]) => {
-    const pid = projectOfNode(id, type) || '';
-    if (!groups.has(pid)) groups.set(pid, []);
-    groups.get(pid).push([id, n]);
-  });
-  const projectIds = [...groups.keys()].filter(Boolean)
-    .sort((a, b) => (GraphNodes[a] && GraphNodes[a].name || a).localeCompare(GraphNodes[b] && GraphNodes[b].name || b));
-  const orderedKeys = groups.has('') ? [...projectIds, ''] : projectIds;
-  return orderedKeys.map(pid => {
-    const label = pid ? esc((GraphNodes[pid] && GraphNodes[pid].name) || pid) : 'No project';
-    const cards = groups.get(pid).map(([id, n]) => typeCardHTML(id, n)).join('');
-    return `<div class="type-group">
-      <div class="type-group-header"${pid ? ` data-open-type="project" data-open-id="${esc(pid)}"` : ''}>${label}</div>
-      <div class="type-group-cards">${cards}</div>
-    </div>`;
-  }).join('');
-}
-
 function typeCardHTML(id, n) {
-  const sub = n.area || n.status || (n.type === 'note' && n.page ? `p.${n.page}` : n.created) || '';
+  const sub = n.review_state || n.area || n.status || (n.type === 'note' && n.page ? `p.${n.page}` : n.created) || '';
   const desc = n.description || n.text || n.quote || '';
   // Only shown once the user has actually picked a color (edit modal, concept
   // type) — the hash-based default lives inside the Graph module and isn't
@@ -3648,8 +3992,10 @@ function renderPaperDetail(container, id) {
            <button class="filter-btn pdf-fullscreen-btn" title="Fullscreen">&#10021; Fullscreen</button>
          </div>
        </div>
-       <div class="pdf-viewer-wrap" id="pdf-viewer-wrap"><div class="pdf-loading">Loading PDF…</div></div>
-       ${pdfNotesHTML(p)}`
+       <div class="pdf-reader">
+         <div class="pdf-viewer-wrap" id="pdf-viewer-wrap"><div class="pdf-loading">Loading PDF…</div></div>
+         ${pdfNotesHTML(p)}
+       </div>`
     : (p.file
         ? `<div class="empty" style="padding:30px 0;">PDF registered but not found on disk</div>`
         : `<div class="empty" style="padding:30px 0;">No PDF on file</div>`);
@@ -3992,6 +4338,8 @@ function renderNodeDetail(container, type, id) {
   if (n.status) fields.push(`<div class="detail-field"><b>Status:</b> ${esc(n.status)}</div>`);
   if (n.created) fields.push(`<div class="detail-field"><b>Created:</b> ${esc(n.created)}</div>`);
   if (n.source) fields.push(`<div class="detail-field"><b>Source:</b> ${esc(n.source)}</div>`);
+  if (n.review_state) fields.push(`<div class="detail-field"><b>Review:</b> ${esc(n.review_state)}</div>`);
+  if (n.project_id) fields.push(`<div class="conn-row" data-open-type="project" data-open-id="${esc(n.project_id)}"><b>Generated for project:</b> ${esc(GraphNodes[n.project_id]?.name || n.project_id)}</div>`);
   if (n.type === 'note' && n.page) fields.push(`<div class="detail-field"><b>Page:</b> ${esc(String(n.page))}</div>`);
 
   const connections = GraphEdges
@@ -4046,251 +4394,36 @@ function renderNodeDetail(container, type, id) {
   if (deleteBtn) deleteBtn.addEventListener('click', () => deleteGraphNode(type, deleteBtn.dataset.deleteNode));
 }
 
-// ── Project detail page ─────────────────────────────────────────────────────
-//
-// Unlike every other node type (fully generic via renderNodeDetail above), a
-// project gets its own layout: its ideas, and its endpoints each shown with
-// the waypoint chain(s) leading to them. An endpoint can have more than one
-// independent chain converging on it (each waypoint has at most one
-// predecessor by convention, but an endpoint itself can have several),
-// so chains are discovered and rendered per incoming `leads_to` edge, not
-// assumed to be singular.
-
-async function bulkPatchNodes(ids, patch) {
-  for (const nid of ids) {
-    try {
-      const res = await fetch(`${API}/node-update`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: nid, patch }),
-      });
-      const data = await res.json();
-      if (data.error) { toast(`Error on ${nid}: ${data.error}`); continue; }
-      GraphNodes = data.nodes || {}; GraphEdges = data.edges || [];
-    } catch (e) { toast(`Error updating ${nid}`); }
-  }
-  invalidateGraphCache();
-  graphLoadPromise = Promise.resolve({ nodes: GraphNodes, edges: GraphEdges });
-}
-
-async function bulkDeleteNodesSilent(ids) {
-  for (const nid of ids) {
-    try {
-      const res = await fetch(`${API}/node-delete`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: nid }),
-      });
-      const data = await res.json();
-      if (data.error) { toast(`Error on ${nid}: ${data.error}`); continue; }
-      GraphNodes = data.nodes || {}; GraphEdges = data.edges || [];
-    } catch (e) { toast(`Error deleting ${nid}`); }
-  }
-  invalidateGraphCache();
-  graphLoadPromise = Promise.resolve({ nodes: GraphNodes, edges: GraphEdges });
-}
-
-// All nodes of a given type connected to `id` by any edge, regardless of
-// direction or edge type (a project's ideas/endpoints/waypoints aren't
-// restricted to one particular edge type in practice).
-function connectedNodesOfType(id, wantType) {
-  const seen = new Set();
-  const out = [];
-  GraphEdges.forEach(e => {
-    if (e.from !== id && e.to !== id) return;
-    const otherId = e.from === id ? e.to : e.from;
-    if (seen.has(otherId)) return;
-    const other = GraphNodes[otherId];
-    if (other && other.type === wantType) { seen.add(otherId); out.push(otherId); }
-  });
-  return out;
-}
-
-function incomingLeadsTo(nodeId) {
-  return GraphEdges.filter(e => e.to === nodeId && e.type === 'leads_to');
-}
-
-function outgoingLeadsTo(nodeId) {
-  return GraphEdges.filter(e => e.from === nodeId && e.type === 'leads_to');
-}
-
-// A waypoint has no direct edge to its project — only endpoints do (via
-// "part_of"). To find a waypoint's project, walk forward along its chain
-// of "leads_to" edges until an endpoint is reached, then read that
-// endpoint's project.
-function findEndpointForWaypoint(waypointId, guard) {
-  guard = guard || new Set();
-  if (guard.has(waypointId)) return null;
-  guard.add(waypointId);
-  const out = outgoingLeadsTo(waypointId);
-  if (!out.length) return null;
-  const next = GraphNodes[out[0].to];
-  if (!next) return null;
-  if (next.type === 'endpoint') return out[0].to;
-  if (next.type === 'waypoint') return findEndpointForWaypoint(out[0].to, guard);
-  return null;
-}
-
-// Resolves the owning project id for an endpoint or waypoint card, or null
-// if it isn't (yet) part of any project's chain.
-function projectOfNode(id, type) {
-  if (type === 'endpoint') return connectedNodesOfType(id, 'project')[0] || null;
-  if (type === 'waypoint') {
-    const epId = findEndpointForWaypoint(id);
-    return epId ? (connectedNodesOfType(epId, 'project')[0] || null) : null;
-  }
-  return null;
-}
-
-// Walks a single chain backward from a waypoint to its root (the earliest
-// waypoint with no predecessor), returning ids root-first. By convention a
-// waypoint has at most one incoming leads_to edge; if that's ever violated
-// the first one found is followed and a cycle guard prevents infinite loops.
-function walkChainBack(waypointId, guard) {
-  guard = guard || new Set();
-  if (guard.has(waypointId)) return [waypointId];
-  guard.add(waypointId);
-  const incoming = incomingLeadsTo(waypointId);
-  if (!incoming.length) return [waypointId];
-  return [...walkChainBack(incoming[0].from, guard), waypointId];
-}
-
-function statusPillHTML(status) {
-  const s = status || 'pending';
-  return `<span class="status-pill status-${esc(s)}" style="background:${STATUS_COLOR_HEX[s] || STATUS_COLOR_HEX.pending}">${esc(s)}</span>`;
-}
-
-const STATUS_COLOR_HEX = { pending: '#8a8f98', reached: '#4caf7a', failed: '#c25b5b' };
-
-function chainDotsHTML(chainIds, endpointId) {
-  const dots = chainIds.map(wid => {
-    const wn = GraphNodes[wid];
-    const color = STATUS_COLOR_HEX[(wn && wn.status) || 'pending'];
-    return `<span class="chain-dot" data-open-id="${esc(wid)}" title="${esc(wn ? (wn.name || wid) : wid)}" style="background:${color}"></span>`;
-  }).join('<span class="chain-arrow">&#8594;</span>');
-  const epn = GraphNodes[endpointId];
-  const epColor = STATUS_COLOR_HEX[(epn && epn.status) || 'pending'];
-  const epDot = `<span class="chain-dot chain-endpoint" data-open-id="${esc(endpointId)}" title="${esc(epn ? (epn.name || endpointId) : endpointId)}" style="background:${epColor}"></span>`;
-  return `<div class="chain-row">${dots}${chainIds.length ? '<span class="chain-arrow">&#8594;</span>' : ''}${epDot}</div>`;
-}
-
+// Projects collect papers and the analyses generated for each association.
 function renderProjectDetail(container, id) {
   const n = GraphNodes[id];
-  if (!n) { container.innerHTML = `<div class="empty">Not found</div>`; return; }
-
-  const ideaIds = connectedNodesOfType(id, 'idea');
-  const endpointIds = connectedNodesOfType(id, 'endpoint');
-  const projectWaypointIds = new Set(connectedNodesOfType(id, 'waypoint'));
-
-  const chainWaypointIds = new Set();
-  const endpointBlocks = endpointIds.map(epId => {
-    const ep = GraphNodes[epId];
-    const chains = incomingLeadsTo(epId).map(e => walkChainBack(e.from));
-    chains.forEach(chain => chain.forEach(wid => chainWaypointIds.add(wid)));
-    const chainsHTML = chains.length
-      ? chains.map(chain => {
-          const allIds = JSON.stringify([...chain, epId]);
-          return `
-            <div class="chain-block">
-              ${chainDotsHTML(chain, epId)}
-              <div class="chain-actions">
-                <button type="button" class="filter-btn chain-action-btn" data-chain-ids='${esc(allIds)}' data-chain-status="reached">Mark reached</button>
-                <button type="button" class="filter-btn chain-action-btn" data-chain-ids='${esc(allIds)}' data-chain-status="failed">Mark failed</button>
-                <button type="button" class="filter-btn chain-action-btn" data-chain-ids='${esc(allIds)}' data-chain-status="pending">Reset pending</button>
-                <button type="button" class="delete-btn chain-action-btn" data-chain-delete-ids='${esc(JSON.stringify(chain))}' title="Delete this chain's waypoints (keeps the endpoint)">Delete chain</button>
-              </div>
-            </div>`;
-        }).join('')
-      : `<div class="empty" style="padding:8px 0;">No waypoint chain yet — connect a waypoint to this endpoint with a "leads_to" edge.</div>`;
-
-    return `
-      <div class="endpoint-block">
-        <div class="endpoint-block-header" data-open-id="${esc(epId)}">
-          <b>${esc(ep.name || epId)}</b> ${statusPillHTML(ep.status)}
-        </div>
-        ${ep.description ? `<div class="detail-text markdown-body" style="font-size:13px;">${renderMarkdown(ep.description)}</div>` : ''}
-        ${chainsHTML}
-      </div>`;
-  }).join('') || `<div class="empty" style="padding:8px 0;">No endpoints yet.</div>`;
-
-  const orphanWaypointIds = [...projectWaypointIds].filter(wid => !chainWaypointIds.has(wid));
-  const orphanHTML = orphanWaypointIds.length ? `
-    <div class="detail-section">
-      <div class="detail-section-title">Orphan waypoints (not part of any endpoint's chain)</div>
-      <div class="conn-list">${orphanWaypointIds.map(wid => {
-        const wn = GraphNodes[wid];
-        return `<div class="conn-row" data-open-type="waypoint" data-open-id="${esc(wid)}">
-          <span class="conn-name">${esc(wn ? (wn.name || wid) : wid)}</span> ${statusPillHTML(wn && wn.status)}
-        </div>`;
-      }).join('')}</div>
-    </div>` : '';
-
-  const ideasHTML = ideaIds.length ? ideaIds.map(ideaId => {
-    const idea = GraphNodes[ideaId];
-    return `<div class="conn-row" data-open-type="idea" data-open-id="${esc(ideaId)}">
-      <span class="conn-name">${esc(idea ? (idea.name || ideaId) : ideaId)}</span>
-      ${idea && idea.status ? `<span class="conn-note">${esc(idea.status)}</span>` : ''}
-    </div>`;
-  }).join('') : `<div class="empty" style="padding:8px 0;">No ideas linked yet.</div>`;
-
-  container.innerHTML = `
-    <div class="detail-header">
-      <div>
-        <div class="paper-id">${esc(id)}</div>
-        <h2 class="detail-title">${esc(n.name || id)}</h2>
-        ${n.status ? `<div class="detail-field"><b>Status:</b> ${esc(n.status)}</div>` : ''}
-      </div>
-      <div class="detail-actions">
-        <button class="edit-btn detail-edit-btn" data-edit-node="${esc(id)}" title="Edit / manage connections">${PENCIL_SVG}</button>
-        <button class="delete-btn detail-edit-btn" data-delete-node="${esc(id)}" title="Delete permanently">${TRASH_SVG}</button>
-      </div>
-    </div>
-    ${n.description ? `<div class="detail-section"><div class="detail-section-title">Description</div><div class="detail-text markdown-body">${renderMarkdown(n.description)}</div></div>` : ''}
-    <div class="detail-section">
-      <div class="detail-section-title">Ideas</div>
-      <div class="conn-list">${ideasHTML}</div>
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">Endpoints &amp; waypoint chains</div>
-      ${endpointBlocks}
-    </div>
-    ${orphanHTML}
-  `;
-
-  container.querySelectorAll('[data-open-type]').forEach(el =>
-    el.addEventListener('click', () => openDetail(el.dataset.openType, el.dataset.openId)));
-  container.querySelectorAll('[data-open-id]:not([data-open-type])').forEach(el => {
-    const target = GraphNodes[el.dataset.openId];
-    if (target) el.addEventListener('click', () => openDetail(target.type, el.dataset.openId));
-  });
-  const editBtn = container.querySelector('[data-edit-node]');
-  if (editBtn) editBtn.addEventListener('click', () => openEditModal('node', editBtn.dataset.editNode));
-  const deleteBtn = container.querySelector('[data-delete-node]');
-  if (deleteBtn) deleteBtn.addEventListener('click', () => deleteGraphNode('project', deleteBtn.dataset.deleteNode));
-
-  container.querySelectorAll('.chain-action-btn[data-chain-ids]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const ids = JSON.parse(btn.dataset.chainIds);
-      const status = btn.dataset.chainStatus;
-      await bulkPatchNodes(ids, { status });
-      toast(`Marked ${ids.length} node(s) as ${status}`);
-      renderProjectDetail(container, id);
-    });
-  });
-  container.querySelectorAll('[data-chain-delete-ids]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const ids = JSON.parse(btn.dataset.chainDeleteIds);
-      if (!ids.length) return;
-      if (!confirm(`Permanently delete ${ids.length} waypoint(s) in this chain? This cannot be undone.`)) return;
-      await bulkDeleteNodesSilent(ids);
-      toast(`Deleted ${ids.length} waypoint(s)`);
-      renderProjectDetail(container, id);
-    });
-  });
+  if (!n) { container.innerHTML = '<div class="empty">Not found</div>'; return; }
+  const paperIds = GraphEdges.filter(e => e.to === id && e.type === 'relevant_to').map(e => e.from);
+  const analyses = Object.entries(GraphNodes).filter(([, idea]) => idea.type === 'idea' && idea.project_id === id);
+  const legacy = Object.entries(GraphNodes).filter(([, idea]) => idea.legacy?.project_ids?.includes(id) && idea.review_state === 'needs_analysis');
+  const ideaHTML = ([iid, idea]) => `<div class="detail-section">
+    <div class="conn-row" data-open-type="idea" data-open-id="${esc(iid)}"><b>${esc(idea.name || iid)}</b>
+    <span class="conn-note">${esc(idea.review_state || 'needs_analysis')}</span></div>
+    <div class="detail-text markdown-body">${renderMarkdown(idea.description || 'Analysis required.')}</div></div>`;
+  container.innerHTML = `<div class="detail-header"><div><div class="paper-id">${esc(id)}</div>
+    <h2 class="detail-title">${esc(n.name || id)}</h2><div class="detail-field">${esc(n.status || '')}</div></div>
+    <div class="detail-actions"><button class="edit-btn detail-edit-btn" data-edit-node="${esc(id)}" title="Edit">${PENCIL_SVG}</button>
+    <button class="delete-btn detail-edit-btn" data-delete-node="${esc(id)}" title="Delete permanently">${TRASH_SVG}</button></div></div>
+    <div class="detail-text markdown-body">${renderMarkdown(n.description || '')}</div>
+    <div class="detail-section"><div class="detail-section-title">Papers & relevance</div>
+    <p class="conn-note">Ask your assistant to connect a paper and analyze its relevance to this project.</p>
+    ${paperIds.map(pid => `<div class="detail-section"><div class="conn-row" data-open-type="paper" data-open-id="${esc(pid)}">
+      <b>${esc(GraphNodes[pid]?.title || pid)}</b></div>${analyses.filter(([, idea]) => idea.paper_id === pid && idea.review_state !== 'detached').map(ideaHTML).join('')}</div>`).join('') || '<div class="empty">No papers linked yet.</div>'}</div>
+    ${analyses.some(([, idea]) => idea.review_state === 'detached') ? '<div class="detail-section-title">Previous associations</div>' + analyses.filter(([, idea]) => idea.review_state === 'detached').map(ideaHTML).join('') : ''}
+    ${legacy.length ? '<div class="detail-section-title">Migrated ideas — analysis required</div>' + legacy.map(ideaHTML).join('') : ''}`;
+  container.querySelectorAll('[data-open-type]').forEach(el => el.addEventListener('click', () => openDetail(el.dataset.openType, el.dataset.openId)));
+  container.querySelector('[data-edit-node]').addEventListener('click', () => openEditModal('node', id));
+  container.querySelector('[data-delete-node]').addEventListener('click', () => deleteGraphNode('project', id));
 }
 
 // ── Edit modal ───────────────────────────────────────────────────────────────
 //
 // One generic modal reused for editing any paper or graph node (concept/
-// project/endpoint/idea/waypoint) — opened from the pencil button that appears
 // top-right on every card and every detail pane. Fields shown depend on the
 // item's type; system-managed fields (cites/cited_by, pdf_status/pdf_source,
 // read/hidden) are intentionally left out since they have their own
@@ -4333,17 +4466,20 @@ function closeEditModal() {
 //
 // Edges live in _graph.json, not on the node/paper itself, so — unlike the
 // rest of the edit form — add/delete here fire immediately against their
-// own endpoints instead of being bundled into the modal's "Save" patch.
-// Any node type can be a connection endpoint (e.g. a paper can be the
 // target of an idea's `inspired_by` edge), so this is wired into both
 // paperEditFormHTML() and nodeEditFormHTML().
 
 const EDGE_TYPES = ['connected_to', 'uses_concept', 'part_of', 'inspired_by',
-                     'relevant_to', 'derived_from', 'enables', 'annotates', 'leads_to'];
+                     'relevant_to', 'derived_from', 'enables', 'annotates'];
 
-// A project may only connect to concepts/ideas/waypoints/endpoints (never
-// a paper) — mirrors the server-side check in cmd_graph_add_edge.
-const PROJECT_EXCLUDED_CONNECTION_TYPES = new Set(['paper', 'venue']);
+// Project associations are created through MCP with a required analysis.
+const PROJECT_EXCLUDED_CONNECTION_TYPES = new Set(['concept', 'project', 'idea', 'note', 'venue']);
+
+function excludedConnectionTypes(id) {
+  const type = GraphNodes[id]?.type;
+  if (type === 'project' || type === 'idea') return PROJECT_EXCLUDED_CONNECTION_TYPES;
+  return new Set(type === 'paper' ? ['project'] : ['project', 'idea']);
+}
 
 // cites is synthesized by loadGraph() from a paper's own cites field — it's
 // not an entry in _graph.json's edges array, so it can't be deleted through
@@ -4377,13 +4513,14 @@ function connectionsSectionHTML(id) {
     <div class="form-field">
       <label>Connections</label>
       <div class="conn-edit-list">${rows || '<div class="empty" style="padding:6px 0;">No connections yet</div>'}</div>
-      <div class="conn-edit-add">
+      ${GraphNodes[id]?.type === 'project' ? '<p>Ask your assistant to associate a paper with a relevance analysis.</p>' : ''}
+      <div class="conn-edit-add" ${GraphNodes[id]?.type === 'project' ? 'style="display:none"' : ''}>
         <select id="ce-direction">
           <option value="out">This →</option>
           <option value="in">← This</option>
         </select>
         <select id="ce-type">${EDGE_TYPES.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select>
-        <select id="ce-target"><option value="">Select node/paper…</option>${allNodeOptionsHTML(GraphNodes[id] && GraphNodes[id].type === 'project' ? PROJECT_EXCLUDED_CONNECTION_TYPES : null)}</select>
+        <select id="ce-target"><option value="">Select node/paper…</option>${allNodeOptionsHTML(excludedConnectionTypes(id))}</select>
         <button type="button" class="filter-btn" id="ce-add-btn">Add</button>
       </div>
     </div>`;
@@ -4496,27 +4633,13 @@ function collectPaperFormPatch() {
 const NODE_TYPE_FIELDS = {
   concept:  ['area'],
   project:  ['status'],
-  endpoint: ['status'],
   idea:     ['status', 'created', 'source'],
-  waypoint: ['status'],
   note:     ['created', 'page'],
 };
 const FIELD_LABELS = { area: 'Area', status: 'Status', created: 'Created (YYYY-MM-DD)', source: 'Source', page: 'Page' };
 
-// endpoint/waypoint status is a fixed enum (server rejects anything else);
-// every other type's status stays free text.
-const STATUS_ENUM_TYPES = new Set(['endpoint', 'waypoint']);
-
 function nodeEditFormHTML(n) {
   const extra = (NODE_TYPE_FIELDS[n.type] || []).map(f => {
-    if (f === 'status' && STATUS_ENUM_TYPES.has(n.type)) {
-      const current = n.status || 'pending';
-      const opts = ['pending', 'reached', 'failed']
-        .map(s => `<option value="${s}" ${s === current ? 'selected' : ''}>${s[0].toUpperCase()}${s.slice(1)}</option>`)
-        .join('');
-      return `<div class="form-field"><label>${esc(FIELD_LABELS[f] || f)}</label>
-        <select id="ef-node-${f}">${opts}</select></div>`;
-    }
     return `
     <div class="form-field"><label>${esc(FIELD_LABELS[f] || f)}</label>
       <input type="text" id="ef-node-${f}" value="${esc(n[f] || '')}"></div>
@@ -4707,26 +4830,16 @@ const Graph = (function() {
   let selectedNodeId = null;
   let isolationHistory = []; // array of Set<nodeId>, oldest first
   let currentHopMap = new Map(); // nodeId -> hop distance from selectedNodeId
-  // Node ids pulled in by a selected project's unbounded waypoint/endpoint
-  // chain walk (see recomputeConceptLinkSet) — shown regardless of the
-  // Waypoints/Endpoints type checkboxes, since right-clicking a project
-  // should reveal its whole chain even when those types are unchecked by
-  // default. Both nodeVisible() and rebuildSimMembership() bypass typeFilter
-  // for ids in this set.
-  let chainForcedIds = new Set();
+
   const TRAIL_HISTORY_LEN = 5;
 
   const EDGE_STYLE = {
-    cites:        { dash: [6, 4], alpha: 0.55, color: '#BA7C65' },
-    uses_concept: { dash: [1, 4], alpha: 0.35, color: '#688C6F' },
-    annotates:    { dash: [2, 3], alpha: 0.5,  color: '#D4AF37' },
-    leads_to:     { dash: [],     alpha: 0.6,  color: '#7a9cc6' },
+    cites:        { dash: [6, 4], alpha: 0.55, color: '#F0B583' },
+    uses_concept: { dash: [1, 4], alpha: 0.35, color: '#93D6C2' },
+    annotates:    { dash: [2, 3], alpha: 0.5,  color: '#DDE070' },
   };
-  const DEFAULT_EDGE_STYLE = { dash: [], alpha: 0.45, color: '#8496B0' };
+  const DEFAULT_EDGE_STYLE = { dash: [], alpha: 0.45, color: '#86CBE6' };
 
-  // Shared status coloring for waypoint/endpoint nodes, in both the graph
-  // view and the project detail page's chain visualization.
-  const STATUS_COLOR = { pending: '#8a8f98', reached: '#4caf7a', failed: '#c25b5b' };
 
   function hashHue(str) {
     let h = 0;
@@ -4738,7 +4851,7 @@ const Graph = (function() {
 
   function conceptColor(nameOrId) {
     const hue = hashHue(String(nameOrId || ''));
-    return `hsl(${hue}, 62%, 58%)`;
+    return `hsl(${hue}, 58%, 70%)`;
   }
 
   async function init() {
@@ -4793,7 +4906,7 @@ const Graph = (function() {
 
     nodes = Object.entries(rawNodes).map(([id, n]) => {
       const displayName = n.name || n.title || id;
-      let color = '#9095a0'; // neutral gray default
+      let color = '#B9D3E2'; // neutral gray default
       if (n.type === 'concept') {
         color = conceptColorById[id] || conceptColor(displayName);
       } else if (n.type === 'paper') {
@@ -4862,7 +4975,7 @@ const Graph = (function() {
   // slow down the default view and drag real papers toward invisible
   // anchors — but the rule is the same one applied to every type.
   function rebuildSimMembership() {
-    simNodes = nodes.filter(n => typeFilter.has(n.type) || chainForcedIds.has(n.id));
+    simNodes = nodes.filter(n => typeFilter.has(n.type));
     const inSim = new Set(simNodes);
     simLinks = edges
       .filter(e => inSim.has(e.a) && inSim.has(e.b))
@@ -4879,11 +4992,8 @@ const Graph = (function() {
     simulation = d3.forceSimulation(simNodes)
       .force('charge', d3.forceManyBody().strength(-90).distanceMax(600))
       .force('link', d3.forceLink(simLinks)
-        // leads_to links stay short and stiff so a project's waypoint
-        // chains cluster into small, tight radial spurs rather than
-        // spreading out like ordinary graph connections.
-        .distance(l => l.type === 'leads_to' ? 18 : 55)
-        .strength(l => l.type === 'leads_to' ? 0.9 : 0.35))
+        .distance(55)
+        .strength(0.35))
       .force('x', d3.forceX(0).strength(0.03))
       .force('y', d3.forceY(0).strength(0.03))
       .force('collide', d3.forceCollide(10).strength(0.6))
@@ -5011,9 +5121,7 @@ const Graph = (function() {
     paper:    'circle',
     concept:  'circle dithered',
     project:  'square',
-    endpoint: 'triangle',
     idea:     'diamond',
-    waypoint: 'dot',
     note:     'star',
     ghost:    'circle hollow',
   };
@@ -5129,10 +5237,7 @@ const Graph = (function() {
   // directly connect the types still shown (e.g. paper-to-paper citations
   // when only Papers is checked).
   function recomputeConceptLinkSet() {
-    // Rebuilt from scratch every call (not just extended) so switching from
-    // one selected project to another — or deselecting entirely — drops the
-    // previous project's forced-visible chain instead of accumulating it.
-    chainForcedIds = new Set();
+
     if (!linkSeeds || linkSeeds.size === 0) {
       conceptLinkSet = null;
     } else {
@@ -5154,48 +5259,8 @@ const Graph = (function() {
         }
         frontier = next;
       }
-      // A selected project's waypoint->...->endpoint chains must show in
-      // full regardless of hop depth, since they represent one continuous
-      // path rather than fanning-out neighbors — so walk them unbounded,
-      // restricted to project/waypoint/endpoint nodes only.
-      const chainTypes = new Set(['project', 'waypoint', 'endpoint']);
-      const projectSeeds = [...linkSeeds].filter(id => {
-        const n = nodesById.get(id);
-        return n && n.type === 'project';
-      });
-      if (projectSeeds.length) {
-        const chainVisited = new Set(projectSeeds);
-        let chainFrontier = projectSeeds;
-        while (chainFrontier.length) {
-          const next = [];
-          for (const id of chainFrontier) {
-            edges.forEach(e => {
-              const other = e.from === id ? e.to : (e.to === id ? e.from : null);
-              if (!other || chainVisited.has(other)) return;
-              const n = nodesById.get(other);
-              if (!n || !chainTypes.has(n.type)) return;
-              chainVisited.add(other);
-              next.push(other);
-            });
-          }
-          chainFrontier = next;
-        }
-        chainVisited.forEach(id => visited.add(id));
-        // Every waypoint/endpoint the chain walk pulled in must render even
-        // if its type checkbox is unchecked — that's the whole point of
-        // showing "the full chain regardless of hop depth". Project seeds
-        // themselves are excluded since their type is on by default anyway.
-        chainVisited.forEach(id => {
-          const n = nodesById.get(id);
-          if (n && (n.type === 'waypoint' || n.type === 'endpoint')) chainForcedIds.add(id);
-        });
-      }
       conceptLinkSet = visited;
     }
-    // A project's forced-visible chain changes which nodes belong in the
-    // simulation, same as toggling a type checkbox — rebuild membership so
-    // newly-revealed waypoints/endpoints actually get laid out instead of
-    // sitting stacked at their spawn point.
     if (typeof simulation !== 'undefined' && simulation) {
       rebuildSimMembership();
       buildEdgeIndex();
@@ -5256,7 +5321,7 @@ const Graph = (function() {
   }
 
   function nodeVisible(n) {
-    if (!typeFilter.has(n.type) && !chainForcedIds.has(n.id)) return false;
+    if (!typeFilter.has(n.type)) return false;
     if (!paperFilterPasses(n)) return false;
     if (conceptLinkSet && !conceptLinkSet.has(n.id)) {
       // Not part of the active isolation — but let it through if it's still
@@ -5281,7 +5346,7 @@ const Graph = (function() {
     return es.some(e => {
       if (!edgeTypeVisible(e)) return false;
       const other = e.a.id === n.id ? e.b : e.a;
-      return typeFilter.has(other.type) || chainForcedIds.has(other.id);
+      return typeFilter.has(other.type);
     });
   }
 
@@ -5329,26 +5394,7 @@ const Graph = (function() {
     return !edgeTypeFilter || edgeTypeFilter.has(e.type);
   }
 
-  // An endpoint's direct `part_of` edge to its project is real data (every
-  // endpoint must belong to one) but drawing it as a straight line makes the
-  // graph look like endpoints connect to the project directly, bypassing
-  // the waypoint chain that actually leads to them. So it's only drawn when
-  // that chain is empty (a zero-waypoint endpoint, where part_of is the only
-  // way to see the connection at all) — otherwise the chain edges alone
-  // carry the connection visually.
-  function endpointHasWaypointChain(endpointId) {
-    return edges.some(e => e.type === 'leads_to' && e.to === endpointId && e.a && e.a.type === 'waypoint');
-  }
-
-  function edgeVisible(e) {
-    if (!edgeTypeVisible(e)) return false;
-    if (e.type === 'part_of') {
-      const epNode = e.a.type === 'endpoint' ? e.a : (e.b.type === 'endpoint' ? e.b : null);
-      const projNode = e.a.type === 'project' ? e.a : (e.b.type === 'project' ? e.b : null);
-      if (epNode && projNode && endpointHasWaypointChain(epNode.id)) return false;
-    }
-    return true;
-  }
+  function edgeVisible(e) { return edgeTypeVisible(e); }
 
   function nodeMatchesSearch(n) {
     if (!searchQ) return true;
@@ -5362,12 +5408,6 @@ const Graph = (function() {
       ctx.rect(x - r, y - r, r * 2, r * 2);
     } else if (type === 'idea') {
       ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath();
-    } else if (type === 'endpoint') {
-      ctx.moveTo(x, y - r); ctx.lineTo(x + r, y + r); ctx.lineTo(x - r, y + r); ctx.closePath();
-    } else if (type === 'waypoint') {
-      // A tiny dot — waypoints are meant to read as small, unobtrusive
-      // links in a chain, not full-size nodes.
-      ctx.arc(x, y, r, 0, Math.PI * 2);
     } else if (type === 'note') {
       // 5-point star — reads as an annotation/pin marker, distinct from the
       // other node shapes.
@@ -5479,17 +5519,15 @@ const Graph = (function() {
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
 
-    // Directional arrowheads — "cites" (who cites whom) and "leads_to" (the
-    // waypoint chain's direction toward its endpoint) are the two edge types
-    // where direction actually matters; drawn as small filled triangles
+    // Citation direction is drawn as small filled triangles
     // pointing at the target node, on top of the plain lines above, using
     // the same visibility/dim/culling rules so they never appear detached
     // from their line.
     ctx.setLineDash([]);
     function edgeBaseRadius(n) {
-      return n.type === 'paper' ? 6 : (n.type === 'waypoint' ? 4 : (n.type === 'endpoint' ? 6 : 8));
+      return n.type === 'paper' ? 6 : 8;
     }
-    ['cites', 'leads_to'].forEach(arrowType => {
+    ['cites'].forEach(arrowType => {
       const style = EDGE_STYLE[arrowType] || DEFAULT_EDGE_STYLE;
       ctx.fillStyle = style.color;
       [...edges, ...(hoverEdge ? [hoverEdge] : [])].forEach(e => {
@@ -5520,7 +5558,7 @@ const Graph = (function() {
     nodes.forEach(n => {
       if (!nodeVisible(n)) return;
       if (!inView(n)) return;
-      const baseR = n.type === 'paper' ? 6 : (n.type === 'waypoint' ? 4 : (n.type === 'endpoint' ? 6 : 8));
+      const baseR = n.type === 'paper' ? 6 : 8;
       // Subtle degree-based growth, capped so a handful of highly-connected
       // hubs don't dwarf everything else — sqrt keeps it a gentle curve
       // instead of linear.
@@ -5548,20 +5586,16 @@ const Graph = (function() {
         ctx.setLineDash([2, 2]);
         shapePath(ctx, n.type, n.x, n.y, r);
       } else {
-        const isChainNode = n.type === 'waypoint' || n.type === 'endpoint';
-        const chainColor = isChainNode ? (STATUS_COLOR[n.raw.status] || STATUS_COLOR.pending) : null;
         shapePath(ctx, n.type, n.x, n.y, r);
-        ctx.fillStyle = n.type === 'paper' ? n.color : (isChainNode ? chainColor : '#242830');
-        if (isChainNode && n.raw.status === 'failed') ctx.globalAlpha *= 0.5;
+        ctx.fillStyle = n.type === 'paper' ? n.color : '#0E2A46';
         ctx.fill();
         // Path is still current — the stroke below reuses it instead of
         // rebuilding the same shape a second time.
       }
       ctx.lineWidth = (n === hoverNode ? 2.5 : 1.2) / zoom;
-      ctx.strokeStyle = n === hoverNode ? '#f3c944'
-        : n.type === 'ghost' ? '#888'
-        : (n.type === 'concept' || n.type === 'paper' ? 'rgba(0,0,0,0.3)'
-        : (n.type === 'waypoint' || n.type === 'endpoint') ? (STATUS_COLOR[n.raw.status] || STATUS_COLOR.pending)
+      ctx.strokeStyle = n === hoverNode ? '#EEF0A0'
+        : n.type === 'ghost' ? '#8EAFC6'
+        : (n.type === 'concept' || n.type === 'paper' ? 'rgba(234,242,245,0.55)'
         : n.color);
       ctx.stroke();
       ctx.setLineDash([]);
@@ -5572,7 +5606,7 @@ const Graph = (function() {
       if (n.id === selectedNodeId) {
         ctx.globalAlpha = 1;
         ctx.lineWidth = 2 / zoom;
-        ctx.strokeStyle = '#f3c944';
+        ctx.strokeStyle = '#EEF0A0';
         ctx.beginPath();
         ctx.arc(n.x, n.y, r + 5 / zoom, 0, Math.PI * 2);
         ctx.stroke();
@@ -5603,13 +5637,11 @@ const Graph = (function() {
   // from it rather than hard-coded to the 8 immediate neighbours — miss
   // that and a node just inside the radius but one cell over is silently
   // un-grabbable.
-  // `nearest: true` drops the hit-radius requirement and always returns the
-  // closest visible node — used for right-click, where landing exactly on a
-  // (often tiny) node is unreliable and the user's intent is clearly "act on
-  // whatever's closest to where I clicked", not "nothing".
+  // Right-click gets a slightly wider screen-space tolerance, but empty
+  // space must never select a distant node.
   function nodeAt(sx, sy, opts) {
     const w = screenToWorld(sx, sy);
-    const r = Math.max(10, 14 / zoom);
+    const r = Math.max(10, (opts?.hitRadiusPx ?? 14) / zoom);
     const r2 = r * r;
     let best = null, bestDist = Infinity;
 
@@ -5617,10 +5649,10 @@ const Graph = (function() {
       if (!nodeVisible(n)) return;
       const dx = n.x - w.x, dy = n.y - w.y;
       const d = dx * dx + dy * dy;
-      if (d < bestDist && (d < r2 || (opts && opts.nearest))) { best = n; bestDist = d; }
+      if (d < bestDist && d < r2) { best = n; bestDist = d; }
     }
 
-    if (spatialGrid && !(opts && opts.nearest)) {
+    if (spatialGrid) {
       const cx = Math.floor(w.x / SPATIAL_CELL), cy = Math.floor(w.y / SPATIAL_CELL);
       const cellR = Math.max(1, Math.ceil(r / SPATIAL_CELL));
       for (let dx = -cellR; dx <= cellR; dx++) {
@@ -5639,7 +5671,6 @@ const Graph = (function() {
   // grid + edgesByNode index) instead of every edge in the graph. Force
   // layout keeps connected nodes close together (linkDist ~90, well inside
   // one grid cell), so this misses only the rare very-long edge passing
-  // near the cursor without either endpoint being nearby — an acceptable
   // trade for not scanning thousands of edges on every mousemove.
   function edgeAt(sx, sy) {
     const w = screenToWorld(sx, sy);
@@ -5825,7 +5856,7 @@ const Graph = (function() {
     canvas.addEventListener('contextmenu', e => {
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-      const n = nodeAt(sx, sy, { nearest: true });
+      const n = nodeAt(sx, sy, { hitRadiusPx: 24 });
       if (!n) return;
       e.preventDefault();
       isolateNode(n.id);
@@ -5929,10 +5960,8 @@ const Graph = (function() {
     document.getElementById('graph-reset-filters').addEventListener('click', () => {
       document.getElementById('graph-search').value = '';
       searchQ = '';
-      // "Missing" (ghost) nodes stay opt-in even after a reset, and so do
-      // endpoint/waypoint (they clutter the graph until a project's chain
-      // is actually being worked on) — every other type defaults to visible.
-      document.querySelectorAll('.gtype').forEach(cb => { cb.checked = cb.value !== 'ghost' && cb.value !== 'endpoint' && cb.value !== 'waypoint'; });
+      // Missing papers stay opt-in after reset; all other types are visible.
+      document.querySelectorAll('.gtype').forEach(cb => { cb.checked = cb.value !== 'ghost'; });
       typeFilter = new Set(['paper', 'concept', 'project', 'idea', 'note']);
       hideOrphans = false;
       document.getElementById('graph-show-orphans').checked = true;
@@ -6087,8 +6116,7 @@ const Graph = (function() {
     });
   }
 
-  // Clicking any node (paper, concept, project, endpoint, idea, waypoint) opens
-  // its detail sub-tab in the matching object-type tab — same behavior for
+  // Clicking a node opens its detail sub-tab — same behavior for
   // every type, so you can jump straight from the graph to full item info.
   // Ghost nodes have no record of their own to open, so they go to a Google
   // search on their title instead.
@@ -6213,6 +6241,154 @@ papersReady.then(() => {
   const overlay = document.getElementById('boot-overlay');
   if (overlay) overlay.remove();
 });
+
+// ── Layout density (rows / cards) ─────────────────────────────────────────
+// Rows are the default: a reading list is scanned, not browsed. Cards stay
+// one click away for when the citations and PDF badges matter.
+(function initDensity() {
+  let density = 'rows';
+  try { density = localStorage.getItem('tmp-density') || 'rows'; } catch (_) {}
+  const apply = d => {
+    density = d;
+    document.getElementById('grid').classList.toggle('rows', d === 'rows');
+    document.querySelectorAll('.density-btn').forEach(b =>
+      b.setAttribute('aria-pressed', String(b.dataset.density === d)));
+    try { localStorage.setItem('tmp-density', d); } catch (_) {}
+  };
+  document.querySelectorAll('.density-btn').forEach(b =>
+    b.addEventListener('click', () => apply(b.dataset.density)));
+  apply(density);
+})();
+
+// ── Command palette (Ctrl+K) ──────────────────────────────────────────────
+// One search box for everything: papers, graph objects, venues and the
+// views themselves. Enter opens the item in its drawer.
+(function initPalette() {
+  const root  = document.getElementById('palette');
+  const input = document.getElementById('palette-input');
+  const list  = document.getElementById('palette-list');
+  let items = [], sel = 0;
+
+  const KIND = { paper: 'Paper', concept: 'Concept', project: 'Project', idea: 'Idea', note: 'Note', venue: 'Venue', view: 'Go to' };
+  const VIEWS = [
+    ['paper', 'Library'], ['graph', 'Graph'], ['concept', 'Concepts'],
+    ['project', 'Projects'], ['idea', 'Ideas'], ['note', 'Notes'], ['venue', 'Venues'],
+  ];
+
+  function corpus() {
+    const out = VIEWS.map(([tab, name]) => ({ kind: 'view', id: tab, title: name, sub: '' }));
+    for (const p of allPapers) {
+      if (p.hidden) continue;
+      out.push({ kind: 'paper', id: p.id, title: p.titolo || p.id,
+        sub: [truncate(p.autori, 60), p.annoPub].filter(Boolean).join(', '), read: p.read });
+    }
+    for (const [id, n] of Object.entries(GraphNodes)) {
+      if (!KIND[n.type] || n.type === 'paper') continue;
+      out.push({ kind: n.type, id, title: n.name || n.title || id,
+        sub: truncate(n.description || n.text || n.quote || '', 70) });
+    }
+    for (const [id, v] of Object.entries(allVenues)) {
+      out.push({ kind: 'venue', id, title: v.name || id, sub: v.publisher || '' });
+    }
+    return out;
+  }
+
+  // Every word must appear; a hit in the title outranks one in the subtitle,
+  // and a title that starts with the query outranks both.
+  function score(it, words, q) {
+    const t = it.title.toLowerCase(), s = `${it.id} ${it.sub}`.toLowerCase();
+    let sc = 0;
+    for (const w of words) {
+      if (t.includes(w)) sc += 3;
+      else if (s.includes(w)) sc += 1;
+      else return -1;
+    }
+    if (t.startsWith(q)) sc += 5;
+    if (it.kind === 'view') sc += 2;
+    return sc;
+  }
+
+  function search() {
+    const q = input.value.trim().toLowerCase();
+    const all = corpus();
+    if (!q) {
+      items = all.filter(i => i.kind === 'view')
+        .concat(all.filter(i => i.kind === 'paper' && !i.read).slice(0, 8));
+    } else {
+      const words = q.split(/\s+/);
+      items = all.map(i => [score(i, words, q), i]).filter(([s]) => s >= 0)
+        .sort((a, b) => b[0] - a[0]).slice(0, 40).map(([, i]) => i);
+    }
+    sel = 0;
+    draw();
+  }
+
+  function draw() {
+    if (!items.length) {
+      list.innerHTML = `<li class="palette-empty">Nothing matches. Try an author, a year, or an ID.</li>`;
+      return;
+    }
+    list.innerHTML = items.map((it, i) => `
+      <li class="palette-item ${i === sel ? 'sel' : ''}" role="option" data-i="${i}" aria-selected="${i === sel}">
+        <span class="palette-kind k-${it.kind}">${KIND[it.kind]}</span>
+        <span class="palette-text"><span class="palette-title">${esc(it.title)}</span>${it.sub ? `<span class="palette-sub">${esc(it.sub)}</span>` : ''}</span>
+        ${it.kind === 'paper' ? `<span class="palette-id">${esc(it.id)}</span>` : ''}
+      </li>`).join('');
+    const cur = list.querySelector('.sel');
+    if (cur) cur.scrollIntoView({ block: 'nearest' });
+  }
+
+  function choose(it) {
+    close();
+    if (!it) return;
+    if (it.kind === 'view') switchTopTab(it.id);
+    else openDetail(it.kind, it.id);
+  }
+
+  function open() {
+    root.hidden = false;
+    input.value = '';
+    search();
+    input.focus();
+  }
+  function close() { root.hidden = true; }
+
+  input.addEventListener('input', search);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { sel = Math.min(items.length - 1, sel + 1); draw(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { sel = Math.max(0, sel - 1); draw(); e.preventDefault(); }
+    else if (e.key === 'Enter') { choose(items[sel]); e.preventDefault(); }
+    else if (e.key === 'Escape') { close(); e.stopPropagation(); }
+  });
+  list.addEventListener('mousemove', e => {
+    const li = e.target.closest('.palette-item');
+    if (li && +li.dataset.i !== sel) { sel = +li.dataset.i; draw(); }
+  });
+  list.addEventListener('click', e => {
+    const li = e.target.closest('.palette-item');
+    if (li) choose(items[+li.dataset.i]);
+  });
+  root.addEventListener('mousedown', e => { if (e.target === root) close(); });
+  document.getElementById('palette-open').addEventListener('click', open);
+
+  document.addEventListener('keydown', e => {
+    const typing = e.target.closest && e.target.closest('input, textarea, select, [contenteditable]');
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      root.hidden ? open() : close();
+      return;
+    }
+    if (typing || !root.hidden) return;
+    if (document.getElementById('edit-modal-overlay').classList.contains('open')) return;
+    if (e.key === '/') {
+      e.preventDefault();
+      if (currentTopTab === 'paper') document.getElementById('search-input').focus();
+      else open();
+    } else if (e.key === 'Escape' && currentTopTab !== 'graph' && activeSub[currentTopTab] && activeSub[currentTopTab] !== 'list') {
+      selectSubTab(currentTopTab, 'list');
+    }
+  });
+})();
 </script>
 </body>
 </html
