@@ -606,7 +606,7 @@ def cmd_add_paper(args):
         print(f"[PDF] {new_id}: fetched from {pdf_result['source']} -> {pdf_result['file']}")
         _log_event("pdf_fetched", id=new_id, source=pdf_result["source"])
     else:
-        data["papers"][new_id]["pdf_status"] = pdf_result["status"]
+        _mark_pdf_missing(data["papers"][new_id], pdf_result["status"])
         if pdf_result["status"] == "unavailable":
             print(f"[PDF] {new_id}: no open-access PDF found ({pdf_result['reason']}).")
         else:
@@ -1828,6 +1828,14 @@ def iter_pdf_candidates(paper: dict, notes: list):
                 yield url, "unpaywall"
 
 
+def _mark_pdf_missing(paper: dict, status: str):
+    """Record a failed fetch. A `file` naming a PDF that isn't on disk is
+    cleared, so nothing downstream mistakes it for a PDF we have."""
+    paper["pdf_status"] = status
+    if paper.get("file") and not (DATA_DIR / paper["file"]).exists():
+        paper["file"] = None
+
+
 def _fetch_pdf_for_paper(pid: str, paper: dict) -> dict:
     """Try PDF candidates in order until one downloads as a real PDF. A host
     that serves a landing page or a 403 just moves on to the next source.
@@ -1935,7 +1943,7 @@ def cmd_fetch_pdf(args):
         _log_event("pdf_fetched", id=pid, source=result["source"])
         print(f"[PDF] {pid}: fetched from {result['source']} -> {result['file']}")
     else:
-        paper["pdf_status"] = result["status"]
+        _mark_pdf_missing(paper, result["status"])
         data["_meta"]["last_updated"] = str(date.today())
         save_papers(data)
         _log_event("pdf_fetch_failed", id=pid, status=result["status"])
@@ -1967,7 +1975,7 @@ def _ensure_pdf_on_disk(pid: str, paper: dict, data: dict) -> tuple[Path | None,
         _log_event("pdf_fetched", id=pid, source=result["source"])
         return (DATA_DIR / result["file"]).resolve(), None
 
-    paper["pdf_status"] = result["status"]
+    _mark_pdf_missing(paper, result["status"])
     data["_meta"]["last_updated"] = str(date.today())
     save_papers(data)
     _log_event("pdf_fetch_failed", id=pid, status=result["status"])
@@ -2099,7 +2107,7 @@ def cmd_sync_pdfs(args):
             fetched += 1
             print(f"[{i}/{total}] {pid}: fetched from {result['source']} -> {result['file']}")
         else:
-            paper["pdf_status"] = result["status"]
+            _mark_pdf_missing(paper, result["status"])
             if result["status"] == "unavailable":
                 unavailable.append(pid)
                 print(f"[{i}/{total}] {pid}: unavailable ({result['reason']})")

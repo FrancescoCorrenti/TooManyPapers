@@ -7,6 +7,9 @@ installed plugins only move when a release is cut.
 
 ## Unreleased
 
+### Fixed
+- A failed PDF fetch now clears a `file` value that names a PDF not on disk (left over from older imports), so a missing PDF is never reported as present.
+
 ## 0.3.0 — 2026-10-04
 
 **Too Many Papers now does one thing well: for each of your projects, which papers matter, why, and whether that analysis is still current.**
