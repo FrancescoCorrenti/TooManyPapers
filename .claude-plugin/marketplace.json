@@ -8,7 +8,7 @@
     {
       "name": "too-many-papers",
       "source": "./too-many-papers-plugin",
-      "description": "LLM-powered knowledge graph for academic papers: tracks concepts, projects, and engagement as you read, with a local Too Many Papers web UI.",
+      "description": "Local paper library that tracks which papers matter to each of your projects, why, and when that analysis goes stale; with a Too Many Papers web UI.",
       "author": {
         "name": "Totti"
       },
