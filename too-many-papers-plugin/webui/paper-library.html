@@ -1865,6 +1865,26 @@
   .has-drawer.drawer-wide .pdf-notes-add > * { width: 100% !important; }
   .has-drawer:not(.drawer-wide) main:not(.rows) { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 
+  /* Graph drawer: a detail opened from the graph stays in the graph view.
+     Half width keeps the canvas on the left; "wide" lays it over the graph. */
+  #graph-drawer {
+    position: absolute; top: 0; right: 0; bottom: 0; width: var(--drawer-w); z-index: 45;
+    display: flex; flex-direction: column;
+    background: var(--surface); border-left: 1px solid var(--border-light);
+    box-shadow: -18px 0 40px -24px rgba(3,12,24,.8);
+    animation: drawer-in .22s cubic-bezier(.2,.7,.2,1);
+  }
+  #graph-drawer[hidden] { display: none; }
+  #graph-drawer.wide { width: 100%; border-left: 0; }
+  .graph-drawer-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px 4px 16px; border-bottom: 1px solid var(--border); }
+  .graph-drawer-title { font-size: 0.8rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-bottom: 6px; }
+  #graph-drawer-body { flex: 1; overflow-y: auto; max-width: none; padding: 26px 30px 60px; }
+  #graph-drawer.wide #graph-drawer-body { padding: 34px clamp(24px, 6vw, 90px) 80px; }
+  #graph-drawer.wide #graph-drawer-body > * { max-width: 1180px; }
+  #graph-drawer.wide .pdf-reader { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; align-items: start; }
+  #view-graph.graph-has-drawer #graph-wrap { right: var(--drawer-w); width: auto; }
+  #view-graph.graph-has-drawer #graph-side-panel { right: calc(var(--drawer-w) + 14px); }
+
   /* With a drawer open the list column is narrow: keep only the filters
      you reach for while reading (search, read state, concept, sort). */
   .has-drawer .toolbar .year-range, .has-drawer #paper-venue-ms, .has-drawer .sort-wrap > span,
@@ -2334,6 +2354,17 @@
       <button class="filter-btn" id="graph-preset-delete" title="Delete the selected preset">Delete</button>
     </div>
   </div>
+  <aside id="graph-drawer" hidden>
+    <div class="graph-drawer-bar">
+      <span id="graph-drawer-title" class="graph-drawer-title"></span>
+      <span class="drawer-tools">
+        <button class="drawer-tool" id="graph-drawer-library" title="Open in its tab"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
+        <button class="drawer-tool" id="graph-drawer-wide" title="Expand over the graph"></button>
+        <button class="drawer-tool" id="graph-drawer-close" title="Close (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </span>
+    </div>
+    <div id="graph-drawer-body" class="detail-pane"></div>
+  </aside>
   <div id="graph-wrap">
     <canvas id="graph-canvas"></canvas>
     <div id="graph-tooltip"></div>
@@ -3330,7 +3361,64 @@ function switchTopTab(type) {
 
 // Open (or focus, if already open) a detail sub-tab for a given object and
 // switch to its top-level tab.
+// From the graph, a detail opens in the graph's own drawer instead of
+// jumping to the library; the drawer's "open in its tab" button does that.
 function openDetail(type, id) {
+  if (currentTopTab === 'graph') { openGraphDrawer(type, id); return; }
+  openDetailTab(type, id);
+}
+
+const graphDrawer = { type: null, id: null };
+const GRAPH_DRAWER_ICONS = {
+  wide: '<svg viewBox="0 0 24 24"><path d="M4 4v16M14 9l-3 3 3 3M20 9l-3 3 3 3"/></svg>',
+  half: '<svg viewBox="0 0 24 24"><path d="M14 4v16M4 9l3 3-3 3"/></svg>',
+};
+
+function renderGraphDrawer() {
+  const { type, id } = graphDrawer;
+  const body = document.getElementById('graph-drawer-body');
+  document.getElementById('graph-drawer-title').textContent = `${TYPE_META[type] ? TYPE_META[type].label : type} · ${tabLabelFor(type, id)}`;
+  body.scrollTop = 0;
+  if (type === 'paper') renderPaperDetail(body, id);
+  else if (type === 'venue') renderVenueDetail(body, id);
+  else renderNodeDetail(body, type, id);
+}
+
+function syncGraphDrawerWideBtn() {
+  const wide = document.getElementById('graph-drawer').classList.contains('wide');
+  const btn = document.getElementById('graph-drawer-wide');
+  btn.innerHTML = wide ? GRAPH_DRAWER_ICONS.half : GRAPH_DRAWER_ICONS.wide;
+  btn.title = wide ? 'Back to half: graph on the left' : 'Expand over the graph';
+}
+
+function openGraphDrawer(type, id) {
+  graphDrawer.type = type; graphDrawer.id = id;
+  document.getElementById('graph-drawer').hidden = false;
+  document.getElementById('view-graph').classList.add('graph-has-drawer');
+  syncGraphDrawerWideBtn();
+  renderGraphDrawer();
+  if (Graph.loaded) Graph.resize();
+}
+
+function closeGraphDrawer() {
+  const d = document.getElementById('graph-drawer');
+  d.hidden = true; d.classList.remove('wide');
+  document.getElementById('view-graph').classList.remove('graph-has-drawer');
+  graphDrawer.type = graphDrawer.id = null;
+  if (Graph.loaded) Graph.resize();
+}
+
+document.getElementById('graph-drawer-wide').addEventListener('click', () => {
+  document.getElementById('graph-drawer').classList.toggle('wide');
+  syncGraphDrawerWideBtn();
+});
+document.getElementById('graph-drawer-close').addEventListener('click', closeGraphDrawer);
+document.getElementById('graph-drawer-library').addEventListener('click', () => {
+  const { type, id } = graphDrawer;
+  if (type) openDetailTab(type, id);
+});
+
+function openDetailTab(type, id) {
   if (!openTabs[type].includes(id)) openTabs[type].push(id);
   activeSub[type] = id;
   switchTopTab(type);
@@ -4024,7 +4112,9 @@ function renderPaperDetail(container, id) {
     ${p.notes ? `<div class="detail-section"><div class="detail-section-title">Notes / Abstract</div><div class="detail-text markdown-body">${renderMarkdown(p.notes)}</div></div>` : ''}
     ${citationsHTML}
     <div class="detail-section">
-      <div class="detail-section-title">PDF</div>
+      <div class="detail-section-title">${hasPdf
+        ? `<a href="/pdf/${encodeURIComponent(p.file)}" target="_blank" rel="noopener" title="Open the PDF file in a new tab" style="color:inherit;">PDF ↗</a>`
+        : 'PDF'}</div>
       ${pdfHTML}
     </div>
   `;
@@ -4726,6 +4816,7 @@ document.getElementById('edit-modal-save').addEventListener('click', async () =>
       populateFilters();
       render();
       if (activeSub.paper === id) renderPaperDetail(document.getElementById('pane-paper-detail'), id);
+      if (graphDrawer.type === 'paper' && graphDrawer.id === id) renderGraphDrawer();
       renderSubTabBar('paper');
       invalidateGraphCache();
       ensureGraphLoaded().then(() => { resetAllTypeToolbars(); populatePaperLinkedToFilter(); });
@@ -6384,6 +6475,8 @@ papersReady.then(() => {
       e.preventDefault();
       if (currentTopTab === 'paper') document.getElementById('search-input').focus();
       else open();
+    } else if (e.key === 'Escape' && currentTopTab === 'graph' && graphDrawer.type) {
+      closeGraphDrawer();
     } else if (e.key === 'Escape' && currentTopTab !== 'graph' && activeSub[currentTopTab] && activeSub[currentTopTab] !== 'list') {
       selectSubTab(currentTopTab, 'list');
     }
