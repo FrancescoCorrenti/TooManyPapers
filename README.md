@@ -1,32 +1,27 @@
 # Too Many Papers
 
-A local research assistant that keeps a knowledge graph of the papers, concepts, and projects you work on. No cloud, no database. Just JSON files and an MCP server.
+A paper library for Claude that remembers why each paper matters to each of your projects.
 
-This repo is both the plugin and a plugin marketplace, so it installs in one command.
+You talk about papers; Claude adds them with verified metadata, fetches the PDF and wires up citations. When a paper is relevant to something you are working on, Claude reads it and writes a short analysis for that project: the findings that matter, where they are in the paper, and what it does not cover. When the project or the paper changes, the analysis is flagged as stale so it gets refreshed instead of quietly going out of date. Everything is plain JSON on your disk.
+
+<p align="center">
+  <img src="docs/screenshots/demo.gif" width="700" alt="Too Many Papers web UI: library, PDF reader with notes, graph view and project analyses">
+</p>
 
 ## Install
 
-### Claude Code / Claude Desktop
+**Claude Code / Claude Desktop**
 
 ```
-/plugin marketplace add FrancescoCorrenti/too-many-papers
+/plugin marketplace add FrancescoCorrenti/TooManyPapers
 /plugin install too-many-papers@too-many-papers
 ```
 
-Restart Claude after installing.
+Restart Claude after installing. This repo is both the plugin and its marketplace.
 
-### Cowork
+**Cowork:** Customize > Plugins > Add > Add from repository, paste `https://github.com/FrancescoCorrenti/TooManyPapers`, sync, add **too-many-papers**, restart Claude.
 
-1. Open **Customize** > **Plugins**.
-2. Click **Add** > **Add from repository**.
-3. Paste `https://github.com/FrancescoCorrenti/TooManyPapers`.
-4. Sync, then add the **too-many-papers** plugin.
-
-Restart Claude after installing.
-
-### Cursor
-
-The MCP server works natively in Cursor. Add it to `~/.cursor/mcp.json`:
+**Cursor:** only the MCP tools (no skill, no slash command). Add to `~/.cursor/mcp.json`, with the path to your clone:
 
 ```json
 {
@@ -39,79 +34,70 @@ The MCP server works natively in Cursor. Add it to `~/.cursor/mcp.json`:
 }
 ```
 
-Replace the path with where you cloned this repo. Skills and slash commands are Claude Code-only and won't be available in Cursor — just the MCP tools (papers, projects, citations, PDFs).
+**Requirements**
 
-### Requirements
+- [uv](https://docs.astral.sh/uv/) runs the MCP server.
+  macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+  Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+- Node.js 18+, only for the web UI.
 
-- **[uv](https://docs.astral.sh/uv/)**, to run the MCP server.
-  - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-  - Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
-- **Node.js 18+**, only needed for the web UI.
+**Update:** `/plugin marketplace update`, then `/plugin update too-many-papers@too-many-papers`.
 
-## Usage
+## How it works
 
-Just talk about papers:
+| Piece | What it is |
+|-------|-----------|
+| **Paper** | A bibliographic record taken from a source read in the session (arXiv, Semantic Scholar, OpenAlex, Crossref). `source_verified` is mandatory and author lists are complete, never "et al.". The open-access PDF is fetched on add (arXiv, Semantic Scholar, Unpaywall, PMC, OpenAlex) and citations are linked to the papers you already have. |
+| **Concept** | A research area you follow. Concepts tag papers and seed discovery. |
+| **Project** | Something you are working on. Projects connect only to papers, and only through an analysis. |
+| **Idea** | The analysis of one paper for one project: why it is relevant, the relevant findings, evidence with section or page references, limitations. Two projects that share a paper each get their own. |
+| **Note** | A passage you selected in the PDF reader, with your comment. |
 
-- "I just read this paper: [link], add it to my library"
-- "What should I read next on transformers?"
-- "Which of my project analyses are out of date?"
-- "Connect this paper to my RAG project"
+An analysis is written only after the paper has been read. It records what the project and the paper looked like at that moment; if either changes later (new project goal, corrected abstract, new source), the analysis is marked **stale** and shows up in the review queue. Linking the same pair again refreshes the same idea and keeps its history. Time passing never makes an analysis stale, and the plugin never plans your project for you.
 
-On first use, the AI asks what you're currently working on and drafts a starting set of concepts and projects for you to confirm.
+On first use Claude asks what you are working on and drafts a starting set of concepts and projects for you to confirm.
 
-To browse visually, run `/too-many-papers:webui` or ask to open Too Many Papers. It opens at http://localhost:3737.
+## Things to ask
 
-<p align="center">
-  <img src="docs/screenshots/demo.gif" width="700" alt="Too Many Papers demo">
-</p>
+- "Add this paper: https://arxiv.org/abs/1706.03762"
+- "Find recent work on retrieval-augmented generation for scientific text"
+- "Is the LoRA paper useful for my RAG project?"
+- "What do I have for the segmentation project, and what is it missing?"
+- "Which analyses are out of date?"
+- "Export the papers on diffusion as BibTeX"
 
-The web UI has a tab per type (Papers, Concepts, Projects, Ideas, Notes, Venues) plus a graph view, search and filters everywhere, an inline PDF reader where you can select text to add a note, and a pencil icon to edit anything.
+## Web UI
 
-PDFs are fetched automatically from arXiv, Semantic Scholar, and Unpaywall when a paper is added, so there's usually something to read right away.
+Run `/too-many-papers:webui` or ask Claude to open Too Many Papers; it serves http://localhost:3737.
 
-## Example workflow
+- **Library** with search, filters (concept, year, venue, linked to) and read/unread tracking.
+- **PDF reader** inline in each paper: select text to save it as a note on that page.
+- **Graph** of papers, concepts, projects, ideas and notes, clustered by topic, with an optional layer of cited papers you do not have yet. Clicking a node opens its detail in a drawer beside the graph; one button widens it, Esc closes it.
+- Tabs for **Concepts, Projects, Ideas, Notes, Venues**, a Ctrl+K palette to jump anywhere, and a pencil on every item to edit it.
+- One-click **BibTeX** export with stable cite keys.
 
-A typical end-to-end session, from reading to shipping code:
+## Data and privacy
 
-1. **Gather papers.** "Find me recent work on retrieval-augmented generation" → `papers_discover` pulls candidates from arXiv/Semantic Scholar/OpenAlex; confirm which ones to add.
-2. **Describe a project.** "I'm building a RAG pipeline for our docs" → create a project with the user's context.
-3. **Read and associate a paper.** The assistant reads the paper, explains its relevance and summarizes only useful findings, with evidence and limitations. `graph_link_project_paper` saves the association and its required idea together.
-4. **Return to the analysis.** `graph_project_context` retrieves the project's papers and their generated ideas. Each project gets its own analysis of a shared paper.
-5. **Keep it relevant.** When the project context or paper content changes, the analysis becomes stale. The assistant reviews and refreshes the same idea, preserving its history. Project development remains up to you.
+Everything lives in `~/.too-many-papers`: `_papers.json`, `_graph.json`, `_venues.json`, a `pdfs/` folder and a `_log.jsonl` audit log. No account, no database, no cloud copy of your library; the server only goes online to query the paper sources above. Back up by copying the folder. Set `TOO_MANY_PAPERS_DATA_DIR` to use a different directory (both the MCP server and the web UI honour it).
 
-### Upgrading existing projects
+Optional environment variables raise rate limits for discovery and PDF fetching:
 
-Schema 3.0 removes waypoints and endpoints. On first graph access, the server backs up the old graph to `_graph.pre-v3.json`, converts legacy work nodes to ideas, and preserves their text and provenance. The MCP controller uses `graph_review_queue` to analyze candidate papers and incorporate those ideas into grounded project–paper associations. Unresolved items remain visible; the migration never invents relevance.
+| Variable | Purpose |
+|----------|---------|
+| `S2_API_KEY` | [Semantic Scholar](https://www.semanticscholar.org/product/api#api-key-form) API key |
+| `OPENALEX_API_KEY` | [OpenAlex](https://openalex.org/settings/api) API key |
+| `UNPAYWALL_EMAIL` | Contact email for Unpaywall PDF lookups |
+| `TOO_MANY_PAPERS_CONTACT_EMAIL` | Fallback contact email for the above |
 
-
-## Features
-
-- **It reads with you.** The graph tracks the concepts, projects, and ideas behind what you read, and quietly learns what you're actually into.
-- **Finds papers for you.** One ask hits arXiv, Semantic Scholar, and OpenAlex at once, follows citations to surface more, and drops the duplicates.
-- **Grabs the PDF automatically.** Pulled from arXiv, Semantic Scholar, or Unpaywall the moment a paper lands, so there's usually something to read right away.
-- **Wires up citations.** Connects each paper to what it cites and what cites it, and flags the references you don't have yet.
-- **Read, highlight, remember.** Select text in the built-in PDF reader and it becomes a note pinned to the paper and a node in your graph.
-- **A graph you can actually explore.** Force-directed, clustered by topic, draggable without the whole thing exploding, with a "missing papers" layer for everything cited but not yet in your library.
-- **Export that just works.** One click to BibTeX, with stable cite keys and an output check that catches anything broken before it reaches your `.bib`.
-- **Yours, on your disk.** Plain JSON at `~/.too-many-papers`. No cloud, no database, no lock-in.
-
-## FAQ
-
-**Where is my data stored?**
-Always at `~/.too-many-papers`, a fixed path in your home directory. 
-
-**How do I update?**
-`/plugin marketplace update` then `/plugin update too-many-papers@too-many-papers`.
-
-## License
-
-MIT
-
-## Development checks
+## Development
 
 ```sh
 python -m unittest discover -s too-many-papers-plugin/server/tests -v
 uv run --directory too-many-papers-plugin/server python tests/mcp_smoke.py
 ```
 
-Add `--browser` to the smoke test to launch the web UI through MCP on isolated synthetic data. `TOO_MANY_PAPERS_DATA_DIR` overrides the default data directory for testing; both servers use the same value. Without an override, user data stays at `~/.too-many-papers`.
+Add `--browser` to the smoke test to launch the web UI through MCP on isolated synthetic data. Changes go under **Unreleased** in [CHANGELOG.md](CHANGELOG.md); `python scripts/release.py X.Y.Z` cuts a release.
+
+## License
+
+MIT
