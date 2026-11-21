@@ -5,7 +5,7 @@ A paper library for Claude that remembers why each paper matters to each of your
 You talk about papers; Claude adds them with verified metadata, fetches the PDF and wires up citations. When a paper is relevant to something you are working on, Claude reads it and writes a short analysis for that project: the findings that matter, where they are in the paper, and what it does not cover. When the project or the paper changes, the analysis is flagged as stale so it gets refreshed instead of quietly going out of date. Everything is plain JSON on your disk.
 
 <p align="center">
-  <img src="docs/screenshots/demo.gif" width="700" alt="Too Many Papers web UI: library, PDF reader with notes, graph view and project analyses">
+  <img src="docs/screenshots/demo-2026-11.gif" width="700" alt="Too Many Papers web UI: library, PDF reader with notes, graph view and project analyses">
 </p>
 
 ## Install
