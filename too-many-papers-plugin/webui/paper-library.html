@@ -1389,6 +1389,13 @@
     opacity: 1;
     text-align: initial;
     transform-origin: 0 0;
+    /* pdf.js TextLayer only sets --font-height/--scale-x/--rotate on each span;
+       these rules (from pdf.js's viewer CSS) turn them into a size and
+       stretch, so selections line up with the text drawn on the canvas. */
+    --total-scale-factor: var(--scale-factor);
+    --min-font-size: 1;
+    --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
   }
   .pdf-text-layer span, .pdf-text-layer br {
     color: transparent;
@@ -1397,7 +1404,15 @@
     cursor: text;
     transform-origin: 0% 0%;
   }
-  .pdf-text-layer ::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .pdf-text-layer span:not(.markedContent) {
+    --font-height: 0;
+    --scale-x: 1;
+    --rotate: 0deg;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+  }
+  .pdf-text-layer .markedContent { display: contents; }
+  .pdf-text-layer ::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); color: transparent; }
   .pdf-loading { padding: 60px 0; text-align: center; color: var(--text-dim); }
   .pdf-note-popup {
     position: fixed;
