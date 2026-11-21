@@ -12,6 +12,9 @@ installed plugins only move when a release is cut.
 - The PDF section title of a paper is a link that opens the PDF file in a new browser tab.
 
 ### Fixed
+- The web UI calls the server it was loaded from. Before, it always called port 3737, so a server started with another `PORT` showed whatever library was running on 3737.
+- The plugin and marketplace `homepage`/`repository` links point at the renamed repo (FrancescoCorrenti/TooManyPapers).
+- Text selected in the PDF reader now lines up with the words on the page (the pdf.js text layer was missing the CSS that sizes and stretches each text run), so a selection-to-note highlights what you are actually selecting.
 - A failed PDF fetch now clears a `file` value that names a PDF not on disk (left over from older imports), so a missing PDF is never reported as present.
 
 ## 0.3.0 — 2026-10-04

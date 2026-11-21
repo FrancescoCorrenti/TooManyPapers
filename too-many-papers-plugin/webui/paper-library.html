@@ -1389,6 +1389,13 @@
     opacity: 1;
     text-align: initial;
     transform-origin: 0 0;
+    /* pdf.js TextLayer only sets --font-height/--scale-x/--rotate on each span;
+       these rules (from pdf.js's viewer CSS) turn them into a size and
+       stretch, so selections line up with the text drawn on the canvas. */
+    --total-scale-factor: var(--scale-factor);
+    --min-font-size: 1;
+    --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
   }
   .pdf-text-layer span, .pdf-text-layer br {
     color: transparent;
@@ -1397,7 +1404,15 @@
     cursor: text;
     transform-origin: 0% 0%;
   }
-  .pdf-text-layer ::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .pdf-text-layer span:not(.markedContent) {
+    --font-height: 0;
+    --scale-x: 1;
+    --rotate: 0deg;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+  }
+  .pdf-text-layer .markedContent { display: contents; }
+  .pdf-text-layer ::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); color: transparent; }
   .pdf-loading { padding: 60px 0; text-align: center; color: var(--text-dim); }
   .pdf-note-popup {
     position: fixed;
@@ -2401,7 +2416,8 @@
 <!-- d3-force (vendored): force-layout engine for the graph view. -->
 <script src="/vendor/d3-force.min.js"></script>
 <script>
-const API = 'http://localhost:3737/api';
+// same origin as the page, so a server started on another PORT talks to itself (file:// falls back to 3737)
+const API = location.protocol.startsWith('http') ? '/api' : 'http://localhost:3737/api';
 const PENCIL_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
 const TRASH_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
 
