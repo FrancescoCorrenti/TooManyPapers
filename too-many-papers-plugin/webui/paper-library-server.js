@@ -109,9 +109,10 @@ function findFileSync(dir, name) {
 // filename and dropped the PDF somewhere inside the plugin folder rather
 // than through the automatic fetcher. Returns null if nothing is found.
 function resolvePdfPath(file) {
-  if (!file) return null;
+  // `file` reaches this from the /pdf/ URL: only PDFs, never outside DATA_DIR.
+  if (!file || !/\.pdf$/i.test(file)) return null;
   const direct = path.join(DATA_DIR, file);
-  if (fs.existsSync(direct) && fs.statSync(direct).isFile()) return direct;
+  if (direct.startsWith(path.join(DATA_DIR, path.sep)) && fs.existsSync(direct) && fs.statSync(direct).isFile()) return direct;
 
   const basename = path.basename(file);
   return findFileSync(DATA_DIR, basename) || findFileSync(path.join(__dirname, '..'), basename);
@@ -525,10 +526,17 @@ function deleteEdge(src, tgt, type) {
   return graphCommand('graph-remove-edge', [String(src || ''), String(tgt || ''), '--type', String(type || '')]);
 }
 
-function cors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+// There is no password: the server only answers its own page on this machine.
+// The Host check stops DNS rebinding; the Origin check stops other websites
+// from posting here. No CORS headers, so they cannot read responses either.
+function isLocalRequest(req) {
+  const host = req.headers.host || '';
+  if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host)) return false;
+  const origin = req.headers.origin;
+  return origin === undefined || origin.toLowerCase() === 'http://' + host.toLowerCase();
+}
+
+function noCache(res) {
   // Every route here reads straight off disk on every request — the data
   // can change from one request to the next (edits, hides, PDF fetches,
   // graph updates). Without this, the browser's HTTP cache can serve a
@@ -538,10 +546,10 @@ function cors(res) {
   res.setHeader('Cache-Control', 'no-store');
 }
 
-const server = http.createServer(function(req, res) {
-  cors(res);
+function handleRequest(req, res) {
+  noCache(res);
 
-  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  if (!isLocalRequest(req)) { res.writeHead(403); res.end('Forbidden'); return; }
 
   if (req.method === 'GET' && req.url === '/') {
     try {
@@ -894,9 +902,17 @@ const server = http.createServer(function(req, res) {
   }
 
   res.writeHead(404); res.end('Not found');
-});
+}
 
-server.listen(PORT, function() {
+// Loopback only. Both addresses, because `localhost` may resolve to either and
+// falling back from one to the other costs seconds on Windows.
+http.createServer(handleRequest)
+  .on('error', function(e) {
+    if (e.code !== 'EADDRNOTAVAIL' && e.code !== 'EAFNOSUPPORT') throw e; // machine without IPv6
+  })
+  .listen(PORT, '::1');
+
+http.createServer(handleRequest).listen(PORT, '127.0.0.1', function() {
   console.log('\nToo Many Papers listening on http://localhost:' + PORT);
   console.log('   Data directory: ' + DATA_DIR);
   console.log('   Press Ctrl+C to stop the server.\n');
