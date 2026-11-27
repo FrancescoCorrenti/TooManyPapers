@@ -5970,6 +5970,18 @@ const Graph = (function() {
       if (n.type !== 'ghost') showNodeInfo(n, { forceExpand: false });
     });
 
+    // The overview closes by itself: a left click anywhere outside it (another paper included, which
+    // then opens its own detail) or Esc. Dragging the graph is not a click and leaves it open.
+    document.addEventListener('click', e => {
+      if (!infoVisible || e.button !== 0) return;
+      if (e.target.closest('#node-info-panel')) return;
+      if (e.target === canvas && dragDistance > 4) return;
+      hideNodeInfo();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && infoVisible) hideNodeInfo();
+    });
+
     document.getElementById('node-info-head').addEventListener('click', e => {
       if (e.target.closest('#node-info-collapse')) return; // its own handler toggles + stops propagation
       infoCollapsed = !infoCollapsed;
