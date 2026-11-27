@@ -13,6 +13,7 @@ installed plugins only move when a release is cut.
 ### New
 - **Details open inside the graph.** Clicking a node in the Graph view opens its detail in a drawer on the right while the graph stays on the left; an arrow expands the drawer over the whole graph and brings it back to half, Esc or ✕ closes it. Links inside the drawer open there too; "Open in its tab" jumps to the library tab.
 - The PDF section title of a paper is a link that opens the PDF file in a new browser tab.
+- The node overview closes on a left click outside it or with Esc.
 
 ### Fixed
 - The web UI calls the server it was loaded from. Before, it always called port 3737, so a server started with another `PORT` showed whatever library was running on 3737.
