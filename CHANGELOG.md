@@ -7,6 +7,8 @@ installed plugins only move when a release is cut.
 
 ## Unreleased
 
+## 0.3.1 — 2026-11-27
+
 ### Security
 - **Update recommended.** In 0.3.0 and earlier the web UI was reachable from other devices on the network, without a password, and its PDF route could read files outside the library. It now listens on this machine only, serves only PDFs from the library and the plugin folder, and refuses requests coming from other websites. To use it from another device, forward the port (for example `ssh -L 3737:localhost:3737`). Opening `paper-library.html` directly as a file no longer works.
 

@@ -10,7 +10,7 @@ description: >
   reading or wants to track. Also trigger when the user sets up their library
   for the first time, or asks to open the Too Many Papers web UI.
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
 ---
 
 # Too Many Papers
