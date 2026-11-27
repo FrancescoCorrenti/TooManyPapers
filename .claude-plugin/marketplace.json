@@ -11,8 +11,8 @@
         "source": "git-subdir",
         "url": "https://github.com/FrancescoCorrenti/TooManyPapers.git",
         "path": "too-many-papers-plugin",
-        "ref": "v0.3.0",
-        "sha": "bf40d825fe87abcdf5b4d6a0331982b3bf799b61"
+        "ref": "v0.3.1",
+        "sha": "31a8d43b8530876d4b2c9dbea30cfba9bd8f285f"
       },
       "description": "Local paper library that tracks which papers matter to each of your projects, why, and when that analysis goes stale; with a Too Many Papers web UI.",
       "author": {
