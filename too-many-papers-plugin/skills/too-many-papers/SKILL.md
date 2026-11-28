@@ -87,4 +87,4 @@ When `graph_status` shows an empty library:
 
 ## Web UI
 
-`webui_launch` starts the local UI at http://localhost:3737 (requires Node.js): papers, concepts, projects, ideas and notes, the graph, an inline PDF reader with select-to-note. Call it only when the user asks to open it. Edges between nodes are edited from the UI, not by these tools.
+`webui_launch` starts the local UI at http://localhost:3737 (requires Node.js): papers, concepts, projects, ideas and notes, the graph, an inline PDF reader with select-to-note. Call it only when the user asks to open it. Edges between nodes are edited from the UI, not by these tools. `webui_shortcut(create)` puts a desktop icon that opens it (or records that the user does not want one); the server's instructions say when to offer it.
