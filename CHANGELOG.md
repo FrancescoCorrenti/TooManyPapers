@@ -7,6 +7,9 @@ installed plugins only move when a release is cut.
 
 ## Unreleased
 
+### New
+- **Desktop icon for the web UI.** The first time you use the plugin, Claude asks once whether you want an icon on the desktop that opens Too Many Papers in the browser (starting the web UI if needed). Windows, macOS and Linux. Your answer is remembered per machine; ask Claude for the icon later with `webui_shortcut`. Each new version repoints the icon at its own files.
+
 ## 0.3.1 — 2026-11-27
 
 ### Security

@@ -9,6 +9,7 @@ from mcp.server.fastmcp import FastMCP
 import io
 import contextlib
 import json
+import os
 import platform
 import shutil
 import socket
@@ -21,7 +22,35 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import papers_api
 
-mcp = FastMCP("papers-research-assistant", instructions=(
+# server/_scripts/mcp_server.py -> plugin root -> webui/
+PLUGIN_ROOT = Path(__file__).parent.parent.parent
+WEBUI_DIR = PLUGIN_ROOT / "webui"
+WEBUI_SERVER = WEBUI_DIR / "paper-library-server.js"
+WEBUI_PORT = 3737
+# The user's answer to the desktop-shortcut offer: {"answer": "created"|"declined", "version": ...}.
+# Per machine, not in the library: a library synced between machines must not carry it.
+SHORTCUT_STATE = (Path(os.environ.get("LOCALAPPDATA") or
+                       os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+                  / "too-many-papers" / "shortcut.json")
+SHORTCUT_NAME = "Too Many Papers"
+
+
+def _plugin_version() -> tuple:
+    try:
+        v = json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
+        return tuple(int(x) for x in v.split("."))
+    except Exception:
+        return (0,)
+
+
+def _shortcut_state() -> dict:
+    try:
+        return json.loads(SHORTCUT_STATE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+INSTRUCTIONS = (
     "Projects connect only to papers. For every association you MUST read the paper, "
     "analyze its relevance to the project, and call graph_link_project_paper with a "
     "grounded summary of ONLY relevant findings, evidence and limitations. First call "
@@ -30,13 +59,17 @@ mcp = FastMCP("papers-research-assistant", instructions=(
     "Do not invent links for legacy ideas without an identified paper. Refresh analyses "
     "with graph_link_project_paper; use legacy_idea_ids to record incorporated legacy content. "
     "Project development and task planning remain under the user's control."
-))
+)
+if not _shortcut_state():
+    INSTRUCTIONS += (
+        " The user has not yet been offered a desktop shortcut to the web UI. The first time "
+        "you use any tool of this server in a conversation, also ask once, in one line, whether "
+        "they want a desktop icon that opens the Too Many Papers web UI, and call "
+        "webui_shortcut(create=true) or webui_shortcut(create=false) with their answer, so "
+        "they are not asked again."
+    )
 
-# server/_scripts/mcp_server.py -> plugin root -> webui/
-PLUGIN_ROOT = Path(__file__).parent.parent.parent
-WEBUI_DIR = PLUGIN_ROOT / "webui"
-WEBUI_SERVER = WEBUI_DIR / "paper-library-server.js"
-WEBUI_PORT = 3737
+mcp = FastMCP("papers-research-assistant", instructions=INSTRUCTIONS)
 
 
 # Seconds one tool call may spend on the network before giving up cleanly.
@@ -503,7 +536,7 @@ def webui_launch() -> str:
                 break
             time.sleep(0.2)
 
-    import os
+
 
     process = subprocess.Popen(
         ["node", str(WEBUI_SERVER)],
@@ -535,5 +568,100 @@ def webui_launch() -> str:
     )
 
 
+def _make_shortcut() -> Path:
+    """Desktop icon that runs this file with --open-webui. It points at this
+    plugin version's files, so a newer version rewrites it on startup."""
+    py = Path(sys.executable)
+    script = Path(__file__).resolve()
+    system = platform.system()
+    if system == "Windows":
+        pyw = py.with_name("pythonw.exe")  # no console window
+        env = {**os.environ,
+               "TMP_TARGET": str(pyw if pyw.exists() else py),
+               "TMP_ARGS": f'"{script}" --open-webui',
+               "TMP_DIR": str(script.parent),
+               "TMP_ICON": str(WEBUI_DIR / "icon.ico"),
+               "TMP_NAME": SHORTCUT_NAME}
+        ps = ("$p = Join-Path ([Environment]::GetFolderPath('Desktop')) ($env:TMP_NAME + '.lnk');"
+              "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($p);"
+              "$s.TargetPath = $env:TMP_TARGET; $s.Arguments = $env:TMP_ARGS;"
+              "$s.WorkingDirectory = $env:TMP_DIR; $s.IconLocation = $env:TMP_ICON;"
+              "$s.Description = 'Open the Too Many Papers web UI'; $s.Save(); $p")
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                           capture_output=True, text=True, timeout=30, env=env,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        if r.returncode != 0 or not r.stdout.strip():
+            raise RuntimeError(r.stderr.strip() or "PowerShell could not create the shortcut")
+        return Path(r.stdout.strip().splitlines()[-1])
+    if system == "Darwin":
+        path = Path.home() / "Desktop" / f"{SHORTCUT_NAME}.command"
+        text = f'#!/bin/sh\n"{py}" "{script}" --open-webui\n'
+    else:
+        try:
+            desk = subprocess.run(["xdg-user-dir", "DESKTOP"], capture_output=True,
+                                  text=True, timeout=5).stdout.strip()
+        except Exception:
+            desk = ""
+        path = Path(desk or Path.home() / "Desktop") / "too-many-papers.desktop"
+        # ponytail: GNOME may still ask to "Allow Launching" once; gio metadata::trusted if that annoys.
+        text = ("[Desktop Entry]\nType=Application\n"
+                f"Name={SHORTCUT_NAME}\nComment=Open the Too Many Papers web UI\n"
+                f'Exec="{py}" "{script}" --open-webui\nIcon={WEBUI_DIR / "icon.png"}\nTerminal=false\n')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def _save_shortcut_state(answer: str, path: Path | None = None) -> None:
+    SHORTCUT_STATE.parent.mkdir(parents=True, exist_ok=True)
+    SHORTCUT_STATE.write_text(json.dumps({
+        "answer": answer,
+        "version": ".".join(map(str, _plugin_version())),
+        "path": str(path) if path else None,
+    }), encoding="utf-8")
+
+
+@mcp.tool()
+def webui_shortcut(create: bool = True) -> str:
+    """Put an icon on the desktop that opens the web UI in the browser
+    (starting it if needed), or with create=false record that the user does
+    not want one. Either way the user is not offered it again."""
+    if not create:
+        _save_shortcut_state("declined")
+        return "Noted: no desktop shortcut. The user will not be asked again."
+    try:
+        path = _make_shortcut()
+    except Exception as e:
+        return f"Error: could not create the desktop shortcut: {e}"
+    _save_shortcut_state("created", path)
+    return f"Desktop shortcut created: {path}. Double-click it to open the web UI."
+
+
+def _refresh_shortcut() -> None:
+    """A newer plugin version repoints an existing shortcut at its own files."""
+    state = _shortcut_state()
+    if state.get("answer") != "created":
+        return
+    old = tuple(int(x) for x in str(state.get("version", "0")).split(".") if x.isdigit())
+    if old < _plugin_version() or not Path(state.get("path") or "").exists():
+        try:
+            _save_shortcut_state("created", _make_shortcut())
+        except Exception:
+            pass  # the old shortcut keeps working until its version is removed
+
+
+def _open_webui() -> None:
+    import webbrowser
+    msg = webui_launch()
+    if not msg.startswith("Too Many Papers"):
+        sys.exit(msg)  # ponytail: invisible under pythonw; a message box if users hit it
+    webbrowser.open(f"http://localhost:{WEBUI_PORT}")
+
+
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    if "--open-webui" in sys.argv:
+        _open_webui()
+    else:
+        _refresh_shortcut()
+        mcp.run(transport="stdio")
